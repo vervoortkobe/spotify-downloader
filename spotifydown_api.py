@@ -387,15 +387,31 @@ class SpotifyEmbedAPI:
         if isinstance(audio_preview, dict):
             preview_url = audio_preview.get("url")
 
-        # Extract cover URL from album.coverArt.sources if available
+        # Extract cover URL with multiple fallbacks
         cover_url = None
+        
+        # 1. album.coverArt.sources (Standard for playlist tracks)
         album_data = track.get("album")
         if isinstance(album_data, dict):
             cover_art = album_data.get("coverArt", {})
             sources = cover_art.get("sources", [])
             if sources:
-                # Use the largest image
                 cover_url = sources[-1].get("url")
+            elif "images" in album_data and isinstance(album_data["images"], list) and album_data["images"]:
+                cover_url = album_data["images"][0].get("url")
+        
+        # 2. coverArt.sources (Directly on track)
+        if not cover_url:
+            cover_art = track.get("coverArt", {})
+            sources = cover_art.get("sources", [])
+            if sources:
+                cover_url = sources[-1].get("url")
+
+        # 3. images (Directly on track)
+        if not cover_url:
+            images = track.get("images", [])
+            if isinstance(images, list) and images:
+                cover_url = images[0].get("url")
 
         duration_ms = track.get("duration")
 
@@ -435,17 +451,34 @@ class SpotifyEmbedAPI:
         if isinstance(audio_preview, dict):
             preview_url = audio_preview.get("url")
 
-        # Extract cover URL from visualIdentity.image
+        # Extract cover URL with multiple fallbacks
         cover_url = None
+        
+        # 1. visualIdentity.image (Common for single tracks)
         visual_identity = entity.get("visualIdentity", {})
         images = visual_identity.get("image", [])
+        if not images and "images" in entity:
+            images = entity.get("images", [])
+            
         if images:
-            # Get the largest image (usually last or highest resolution)
-            for img in images:
-                if isinstance(img, dict) and img.get("url"):
-                    cover_url = img.get("url")
-                    if img.get("maxWidth", 0) >= 300:
-                        break  # Use 300px+ image
+            # Get the largest image (usually last)
+            cover_url = images[-1].get("url")
+            # If there's a specific size preference, we can check maxWidth here if needed
+            
+        # 2. album.coverArt.sources (If track is part of an album)
+        if not cover_url:
+            album_data = entity.get("album", {})
+            cover_art = album_data.get("coverArt", {})
+            sources = cover_art.get("sources", [])
+            if sources:
+                cover_url = sources[-1].get("url")
+
+        # 3. coverArt.sources
+        if not cover_url:
+            cover_art = entity.get("coverArt", {})
+            sources = cover_art.get("sources", [])
+            if sources:
+                cover_url = sources[-1].get("url")
 
         # Extract release date properly
         release_date = None

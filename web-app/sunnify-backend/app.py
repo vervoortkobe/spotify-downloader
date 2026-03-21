@@ -58,6 +58,31 @@ CORS(app, origins=allowed_origins)
 # Reusable client (saves memory on repeated requests)
 _playlist_client: PlaylistClient | None = None
 
+def get_yt_thumbnail(track_title, artists):
+    """Fetch YouTube thumbnail for a track (fast meta-only search)."""
+    try:
+        search_query = f"ytsearch1:{track_title} {artists} audio"
+        ydl_opts = {
+            "quiet": True,
+            "noplaylist": True,
+            "skip_download": True,
+            "extract_flat": True # Fetch metadata only
+        }
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_query, download=False)
+            if 'entries' in info and info['entries']:
+                info = info['entries'][0]
+            
+            thumbnails = info.get('thumbnails', [])
+            if thumbnails:
+                # Find largest JPEG
+                jpegs = [t for t in thumbnails if '.jpg' in t.get('url', '') or '.jpeg' in t.get('url', '')]
+                if jpegs:
+                    return jpegs[-1].get('url')
+            return info.get('thumbnail') or ""
+    except Exception as e:
+        print(f"YT Thumb fetch failed for {track_title}: {e}")
+        return ""
 
 def get_playlist_client() -> PlaylistClient:
     """Get or create a playlist client (singleton pattern for memory efficiency)."""
@@ -105,13 +130,17 @@ def scrape_playlist():
             # Single track
             api = SpotifyEmbedAPI()
             track = api.get_track(item_id)
+            
+            # Fetch YT Thumbnail as priority
+            yt_cover = get_yt_thumbnail(track.title, track.artists)
+            
             tracks.append(
                 {
                     "id": track.spotify_id,
                     "title": track.title,
                     "artists": track.artists,
                     "album": track.album or "",
-                    "cover": track.cover_url or "",
+                    "cover": yt_cover or track.cover_url or "",
                     "releaseDate": track.release_date or "",
                     "downloadLink": "",  # No server-side downloads
                 }
@@ -124,23 +153,29 @@ def scrape_playlist():
             playlist_name = f"{metadata.name} - {metadata.owner or 'Unknown'}"
 
             # Fetch tracks with memory-efficient iteration
-            for track in client.iter_playlist_tracks(item_id):
-                cover = track.cover_url or ""
-                tracks.append(
-                    {
-                        "id": track.spotify_id,
-                        "title": track.title,
-                        "artists": track.artists,
-                        "album": track.album or "",
-                        "cover": cover,
-                        "releaseDate": track.release_date or "",
-                        "downloadLink": "",  # No server-side downloads
-                    }
-                )
+            raw_tracks = list(client.iter_playlist_tracks(item_id))
+            
+            # Fetch YT thumbnails in parallel for speed
+            from concurrent.futures import ThreadPoolExecutor
+            
+            def process_track(track):
+                yt_cover = get_yt_thumbnail(track.title, track.artists)
+                return {
+                    "id": track.spotify_id,
+                    "title": track.title,
+                    "artists": track.artists,
+                    "album": track.album or "",
+                    "cover": yt_cover or track.cover_url or "",
+                    "releaseDate": track.release_date or "",
+                    "downloadLink": "",
+                }
 
-                # Memory management for large playlists
-                if len(tracks) % 50 == 0:
-                    gc.collect()
+            # Limit parallel tasks to avoid hitting YT rate limits
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                tracks = list(executor.map(process_track, raw_tracks))
+
+            # Memory management for large playlists
+            gc.collect()
 
         # Final cleanup
         gc.collect()
@@ -158,6 +193,9 @@ def scrape_playlist():
     except SpotifyDownAPIError as e:
         return jsonify({"event": "error", "data": {"message": f"Spotify API error: {e}"}}), 500
     except Exception as e:
+        print(f"Scrape error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"event": "error", "data": {"message": f"Error: {e}"}}), 500
 
 progress_store = {}
@@ -171,13 +209,14 @@ def get_progress(track_id):
 
 def download_cover(url):
     try:
-        if not url: return None
+        if not url: return None, None
         response = requests.get(url, stream=True, timeout=10)
         if response.status_code == 200:
-            return response.content
+            content_type = response.headers.get("Content-Type", "image/jpeg")
+            return response.content, content_type
     except Exception:
         pass
-    return None
+    return None, None
 
 def apply_metadata(filepath, track_title, artists, album, release_date, cover_url):
     try:
@@ -194,10 +233,16 @@ def apply_metadata(filepath, track_title, artists, album, release_date, cover_ur
         audio_easy["date"] = release_date or ""
         audio_easy.save(v2_version=3)
 
-        cover_data = download_cover(cover_url)
+        cover_data, mime_type = download_cover(cover_url)
         if cover_data:
             audio_id3 = ID3(filepath)
-            audio_id3["APIC"] = APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover_data)
+            audio_id3["APIC"] = APIC(
+                encoding=3, 
+                mime=mime_type or "image/jpeg", 
+                type=3, 
+                desc="Cover", 
+                data=cover_data
+            )
             audio_id3.save(v2_version=3)
             
     except Exception as e:
@@ -244,6 +289,21 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         
     if os.path.exists(final_path):
         progress_store[track_id] = 95.0
+        
+        # ALWAYS use YouTube thumbnail for song cover as requested
+        # Try to find the highest resolution JPEG from thumbnails if available
+        thumbnails = info.get('thumbnails', [])
+        cover_url = None
+        if thumbnails:
+            # Filter for JPEG/JPG and sort by resolution
+            jpegs = [t for t in thumbnails if '.jpg' in t.get('url', '') or '.jpeg' in t.get('url', '')]
+            if jpegs:
+                cover_url = jpegs[-1].get('url')
+        
+        if not cover_url:
+            cover_url = info.get('thumbnail')
+            
+        print(f"Applying metadata to {final_path} with cover: {cover_url}")
         apply_metadata(final_path, track_title, artists, album, release_date, cover_url)
         progress_store[track_id] = 100.0
         

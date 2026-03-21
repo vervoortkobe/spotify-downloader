@@ -188,11 +188,11 @@ class MusicScraper(QThread):
                 info = info["entries"][0]
             expected_path = base + ".mp3"
             if os.path.exists(expected_path):
-                return expected_path
+                return expected_path, info
             fallback = ydl.prepare_filename(info)
             if os.path.exists(fallback):
-                return fallback
-        return base + ".mp3"
+                return fallback, info
+        return base + ".mp3", info
 
     def download_http_file(self, url, destination):
         response = self.session.get(url, stream=True, timeout=60)
@@ -264,7 +264,7 @@ class MusicScraper(QThread):
             # Download via YouTube search (spotifydown mirrors are dead)
             search_query = f"ytsearch1:{track_title} {artists} audio"
             try:
-                final_path = self.download_track_audio(search_query, filepath)
+                final_path, info = self.download_track_audio(search_query, filepath)
             except Exception as error_status:
                 error_msg = self._get_user_friendly_error(error_status, track_title)
                 self.error_signal.emit(error_msg)
@@ -277,6 +277,10 @@ class MusicScraper(QThread):
                 print(f"[*] Download did not produce an audio file for: {track_title}")
                 self._failed_tracks.append(track_title)
                 continue
+
+            # Fallback to YouTube thumbnail if Spotify cover is missing
+            if not song_meta.get("cover") and info:
+                song_meta["cover"] = info.get("thumbnail", "")
 
             song_meta["file"] = final_path
             self.add_song_meta.emit(song_meta)
@@ -343,7 +347,7 @@ class MusicScraper(QThread):
         # Download via YouTube search
         search_query = f"ytsearch1:{track_title} {artists} audio"
         try:
-            final_path = self.download_track_audio(search_query, filepath)
+            final_path, info = self.download_track_audio(search_query, filepath)
         except Exception as error_status:
             error_msg = self._get_user_friendly_error(error_status, track_title)
             print(f"[*] Error downloading '{track_title}': {error_status}")
@@ -354,6 +358,10 @@ class MusicScraper(QThread):
             print(f"[*] Download did not produce an audio file for: {track_title}")
             self.PlaylistCompleted.emit("Download failed - no audio file produced")
             return
+
+        # Fallback to YouTube thumbnail if Spotify cover is missing
+        if not song_meta.get("cover") and info:
+            song_meta["cover"] = info.get("thumbnail", "")
 
         song_meta["file"] = final_path
         self.add_song_meta.emit(song_meta)
@@ -406,9 +414,15 @@ class DownloadCover(QThread):
         self.url = url
 
     def run(self):
-        response = requests.get(self.url, stream=True)
-        if response.status_code == 200:
-            self.albumCover.emit(response.content)
+        try:
+            response = requests.get(self.url, stream=True, timeout=20)
+            if response.status_code == 200:
+                content_type = response.headers.get("Content-Type", "image/jpeg")
+                self.albumCover.emit((response.content, content_type))
+            else:
+                self.albumCover.emit((None, None))
+        except Exception:
+            self.albumCover.emit((None, None))
 
 
 # Scraper Thread
@@ -440,13 +454,20 @@ class WritingMetaTagsThread(QThread):
         except Exception as e:
             print(f"[*] Error writing meta tags: {e}")
 
-    def setPIC(self, data):
+    def setPIC(self, cover_info):
+        data, mime_type = cover_info
         if data is None:
             self.tags_success.emit("Cover Not Added..!")
         else:
             try:
                 audio = ID3(self.filename)
-                audio["APIC"] = APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=data)
+                audio["APIC"] = APIC(
+                    encoding=3, 
+                    mime=mime_type or "image/jpeg", 
+                    type=3, 
+                    desc="Cover", 
+                    data=data
+                )
                 audio.save()
                 self.tags_success.emit("Tags added successfully")
             except Exception as e:
