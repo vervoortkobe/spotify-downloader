@@ -387,17 +387,25 @@ class SpotifyEmbedAPI:
         if isinstance(audio_preview, dict):
             preview_url = audio_preview.get("url")
 
+        # Extract cover URL from album.coverArt.sources if available
+        cover_url = None
+        album_data = track.get("album")
+        if isinstance(album_data, dict):
+            cover_art = album_data.get("coverArt", {})
+            sources = cover_art.get("sources", [])
+            if sources:
+                # Use the largest image
+                cover_url = sources[-1].get("url")
+
         duration_ms = track.get("duration")
 
         return TrackInfo(
             id=track_id,
             title=str(title),
             artists=str(artists),
-            album=track.get("album", {}).get("name")
-            if isinstance(track.get("album"), dict)
-            else None,
+            album=album_data.get("name") if isinstance(album_data, dict) else None,
             release_date=track.get("releaseDate"),
-            cover_url=None,
+            cover_url=cover_url,
             duration_ms=int(duration_ms) if duration_ms else None,
             preview_url=preview_url,
             raw=dict(track),
