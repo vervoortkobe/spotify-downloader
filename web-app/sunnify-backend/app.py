@@ -23,6 +23,9 @@ from flask_cors import CORS
 from yt_dlp import YoutubeDL
 import mutagen
 from mutagen.easyid3 import EasyID3
+from dotenv import load_dotenv
+
+load_dotenv()
 from mutagen.id3 import APIC, ID3
 from mutagen.mp3 import MP3
 
@@ -40,7 +43,17 @@ from spotifydown_api import (  # noqa: E402
 )
 
 app = Flask(__name__)
-CORS(app)
+
+# Load allowed origins from environment variable 'FRONTEND_URL'
+# For multiple domains, separate them with a comma.
+# Defaults to local development origins if not set.
+frontend_urls = os.environ.get(
+    "FRONTEND_URL", 
+    "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+)
+allowed_origins = [url.strip() for url in frontend_urls.split(",") if url.strip()]
+
+CORS(app, origins=allowed_origins)
 
 # Reusable client (saves memory on repeated requests)
 _playlist_client: PlaylistClient | None = None
