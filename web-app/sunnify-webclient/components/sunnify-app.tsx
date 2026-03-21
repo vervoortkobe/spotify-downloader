@@ -6,6 +6,7 @@ import {
   Download,
   Loader2,
   Sparkles,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -89,6 +90,8 @@ export default function SunnifyApp() {
 
       setTimeout(() => {
         setTrackProgress((prev) => {
+          // Keep failure status visible for longer if needed
+          if (prev[track.id] === -1) return prev
           const newState = { ...prev }
           delete newState[track.id]
           return newState
@@ -97,11 +100,14 @@ export default function SunnifyApp() {
     } catch (err) {
       console.error(err)
       toast.error("Download failed")
-      setTrackProgress((prev) => {
-        const newState = { ...prev }
-        delete newState[track.id]
-        return newState
-      })
+      setTrackProgress((prev) => ({ ...prev, [track.id]: -1 }))
+      setTimeout(() => {
+        setTrackProgress((prev) => {
+          const newState = { ...prev }
+          delete newState[track.id]
+          return newState
+        })
+      }, 5000) // Keep the error visible for 5 seconds
     } finally {
       setIsDownloadingTrack(null)
     }
@@ -382,6 +388,8 @@ export default function SunnifyApp() {
                           >
                             {isDownloadingTrack === track.id ? (
                               <Loader2 className="h-5 w-5 animate-spin" />
+                            ) : trackProgress[track.id] === -1 ? (
+                              <X className="h-5 w-5 text-red-500" />
                             ) : (
                               <Download className="h-5 w-5" />
                             )}
@@ -389,13 +397,21 @@ export default function SunnifyApp() {
                         </div>
                         {trackProgress[track.id] !== undefined && (
                           <div className="absolute bottom-0 left-0 right-0 px-6 pb-1.5 pointer-events-none flex items-center gap-2">
-                            <Progress
-                              value={trackProgress[track.id]}
-                              className="h-1 flex-1 rounded-full bg-white/10 [&>div]:rounded-full [&>div]:bg-gradient-to-r [&>div]:from-green-400 [&>div]:to-emerald-500"
-                            />
-                            <span className="w-8 text-right text-[10px] font-bold text-green-400">
-                              {Math.round(trackProgress[track.id])}%
-                            </span>
+                            {trackProgress[track.id] === -1 ? (
+                              <div className="flex-1 bg-red-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-red-400">
+                                Song not found on YouTube
+                              </div>
+                            ) : (
+                              <>
+                                <Progress
+                                  value={trackProgress[track.id]}
+                                  className="h-1 flex-1 rounded-full bg-white/10 [&>div]:rounded-full [&>div]:bg-gradient-to-r [&>div]:from-green-400 [&>div]:to-emerald-500"
+                                />
+                                <span className="w-8 text-right text-[10px] font-bold text-green-400">
+                                  {Math.round(trackProgress[track.id])}%
+                                </span>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
