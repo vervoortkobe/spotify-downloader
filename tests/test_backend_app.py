@@ -187,7 +187,7 @@ class TestCORS:
         """OPTIONS preflight request should work."""
         response = client.options(
             "/api/scrape-playlist",
-            headers={"Origin": "http://localhost:3000"},
+            headers={"Origin": "http://localhost:3001"},
         )
         # Should not error
         assert response.status_code in (200, 204)

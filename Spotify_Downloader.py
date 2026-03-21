@@ -649,7 +649,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if hasattr(self, "scraper_thread") and self.scraper_thread.isRunning():
             self.scraper_thread.request_cancel()
             # Give thread time to finish current operation and exit cleanly
-            if not self.scraper_thread.wait(3000):  # Wait up to 3 seconds
+            if not self.scraper_thread.wait(3001):  # Wait up to 3 seconds
                 # Only terminate as last resort if thread doesn't respond
                 self.scraper_thread.terminate()
                 self.scraper_thread.wait(1000)

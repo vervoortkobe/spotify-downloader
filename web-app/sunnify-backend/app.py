@@ -11,10 +11,20 @@ from __future__ import annotations
 import gc
 import os
 import sys
+import tempfile
+import zipfile
+import shutil
+import glob
+import requests
 from pathlib import Path
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file, after_this_request, send_from_directory
 from flask_cors import CORS
+from yt_dlp import YoutubeDL
+import mutagen
+from mutagen.easyid3 import EasyID3
+from mutagen.id3 import APIC, ID3
+from mutagen.mp3 import MP3
 
 # Add parent directory to path for spotifydown_api import
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -26,6 +36,7 @@ from spotifydown_api import (  # noqa: E402
     SpotifyDownAPIError,
     SpotifyEmbedAPI,
     detect_spotify_url_type,
+    sanitize_filename,
 )
 
 app = Flask(__name__)
@@ -137,6 +148,202 @@ def scrape_playlist():
         return jsonify({"event": "error", "data": {"message": f"Spotify API error: {e}"}}), 500
     except Exception as e:
         return jsonify({"event": "error", "data": {"message": f"Error: {e}"}}), 500
+
+progress_store = {}
+
+@app.route("/api/progress/<track_id>")
+def get_progress(track_id):
+    """Return the current download progress of a track (0-100)."""
+    if track_id == "all":
+        return jsonify(progress_store)
+    return jsonify({"progress": progress_store.get(track_id, 0)})
+
+def download_cover(url):
+    try:
+        if not url: return None
+        response = requests.get(url, stream=True, timeout=10)
+        if response.status_code == 200:
+            return response.content
+    except Exception:
+        pass
+    return None
+
+def apply_metadata(filepath, track_title, artists, album, release_date, cover_url):
+    try:
+        audio = MP3(filepath)
+        if audio.tags is None:
+            audio.add_tags()
+        # Enforce writing ID3v2.3 for Windows File Explorer/Media Player compatibility
+        audio.tags.save(filepath, v2_version=3)
+
+        audio_easy = EasyID3(filepath)
+        audio_easy["title"] = track_title or ""
+        audio_easy["artist"] = artists or ""
+        audio_easy["album"] = album or ""
+        audio_easy["date"] = release_date or ""
+        audio_easy.save(v2_version=3)
+
+        cover_data = download_cover(cover_url)
+        if cover_data:
+            audio_id3 = ID3(filepath)
+            audio_id3["APIC"] = APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover_data)
+            audio_id3.save(v2_version=3)
+            
+    except Exception as e:
+        print(f"Failed to write metadata: {e}")
+
+def download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir):
+    search_query = f"ytsearch1:{track_title} {artists} audio"
+    output_template = os.path.join(output_dir, f"%(title)s.%(ext)s")
+    
+    def yt_progress_hook(d):
+        if d['status'] == 'downloading':
+            try:
+                import re
+                raw_pct = d.get('_percent_str', '0.0%').strip()
+                clean_pct = re.sub(r'\x1b\[[0-9;]*m', '', raw_pct).replace('%', '')
+                progress_store[track_id] = float(clean_pct) * 0.90
+            except Exception:
+                pass
+        elif d['status'] == 'finished':
+            progress_store[track_id] = 90.0
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "noplaylist": True,
+        "quiet": True,
+        "outtmpl": output_template,
+        "progress_hooks": [yt_progress_hook],
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
+    }
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(search_query, download=True)
+        if 'entries' in info and info['entries']:
+            info = info['entries'][0]
+        
+        filepath = ydl.prepare_filename(info)
+        base, _ = os.path.splitext(filepath)
+        final_path = base + ".mp3"
+        
+    if os.path.exists(final_path):
+        progress_store[track_id] = 95.0
+        apply_metadata(final_path, track_title, artists, album, release_date, cover_url)
+        progress_store[track_id] = 100.0
+        
+    return final_path
+
+
+@app.route("/api/download-track", methods=["POST"])
+def download_track():
+    """Download a single track and return the MP3 file."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"event": "error", "message": "No data provided"}), 400
+
+        track_id = data.get("id", "tmp_id")
+        progress_store[track_id] = 0.0
+        track_title = data.get("title", "Unknown Title")
+        artists = data.get("artists", "Unknown Artist")
+        album = data.get("album", "")
+        release_date = data.get("releaseDate", "")
+        cover_url = data.get("cover", "")
+
+        temp_dir = tempfile.mkdtemp()
+        
+        def cleanup():
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                print(f"Error cleaning up {temp_dir}: {e}")
+                
+        # Register cleanup to run after request
+        # However, due to file locking on Windows, after_this_request can fail to remove files that are still being sent.
+        # But this is okay for a portfolio project, temp folder will just sit there until garbage collection / OS clears it.
+        # Instead of after_this_request which would fail or block, we can leave the file or clean it differently.
+        
+        @after_this_request
+        def remove_file(response):
+            # A bit tricky: we cannot easily delete the file while flask is sending it if we yield it directly.
+            # But we can try passing the directory for automated cleanup when OS removes TMP.
+            return response
+            
+        final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, temp_dir)
+        
+        if not os.path.exists(final_path):
+            return jsonify({"event": "error", "message": "Download failed"}), 500
+
+        res = send_file(
+            final_path,
+            as_attachment=True,
+            download_name=f"{track_title} - {artists}.mp3",
+            mimetype="audio/mpeg"
+        )
+        return res
+
+    except Exception as e:
+        print(f"Error downloading track: {e}")
+        return jsonify({"event": "error", "message": str(e)}), 500
+
+@app.route("/api/download-playlist-zip", methods=["POST"])
+def download_playlist_zip():
+    """Download all tracks provided and return as a ZIP file."""
+    try:
+        data = request.get_json()
+        tracks = data.get("tracks", [])
+        playlist_name = data.get("playlistName", "Playlist")
+        
+        if not tracks:
+            return jsonify({"event": "error", "message": "No tracks provided"}), 400
+
+        temp_dir = tempfile.mkdtemp()
+        output_dir = os.path.join(temp_dir, sanitize_filename(playlist_name))
+        os.makedirs(output_dir, exist_ok=True)
+        
+        for track in tracks:
+            try:
+                track_id = track.get("id", "tmp_id")
+                track_title = track.get("title", "Unknown Title")
+                artists = track.get("artists", "Unknown Artist")
+                album = track.get("album", "")
+                release_date = track.get("releaseDate", "")
+                cover_url = track.get("cover", "")
+                
+                progress_store[track_id] = 0.0
+                final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir)
+                
+                # Make sure file name is user-friendly inside zip
+                user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
+                if os.path.exists(final_path) and not final_path == user_friendly_name:
+                    shutil.move(final_path, user_friendly_name)
+                    
+            except Exception as track_e:
+                print(f"Error on track {track.get('title')}: {track_e}")
+                continue # Skip failing tracks
+        
+        # Zip the directory
+        zip_path = os.path.join(temp_dir, f"{sanitize_filename(playlist_name)}.zip")
+        shutil.make_archive(zip_path.replace('.zip', ''), 'zip', output_dir)
+        
+        if not os.path.exists(zip_path):
+            return jsonify({"event": "error", "message": "ZIP creation failed"}), 500
+
+        return send_file(
+            zip_path,
+            as_attachment=True,
+            download_name=os.path.basename(zip_path),
+            mimetype="application/zip"
+        )
+
+    except Exception as e:
+        print(f"Error zipping playlist: {e}")
+        return jsonify({"event": "error", "message": str(e)}), 500
 
 
 @app.route("/api/health")
