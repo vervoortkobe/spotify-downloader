@@ -346,7 +346,7 @@ export default function SunnifyApp() {
                   </p>
                 </div>
               ) : (
-                <ScrollArea className="h-[420px]">
+                <ScrollArea className="h-[600px]">
                   <div className="divide-y divide-white/5">
                     {tracks.map((track, index) => (
                       <div key={track.id || index} className="relative flex flex-col">
