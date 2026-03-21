@@ -243,7 +243,7 @@ class MusicScraper(QThread):
 
             album_name = track.album or ""
             release_date = track.release_date or ""
-            cover_url = track.cover_url or metadata.cover_url
+            cover_url = track.cover_url
 
             song_meta = {
                 "title": track_title,
