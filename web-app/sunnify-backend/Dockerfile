@@ -12,7 +12,9 @@ COPY . .
 
 WORKDIR /app/web-app/sunnify-backend
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip and install latest yt-dlp for reliable downloads
+RUN pip install --no-cache-dir --upgrade pip yt-dlp && \
+    pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 5000
 
