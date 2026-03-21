@@ -7,11 +7,14 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+# Copy the entire root project so spotifydown_api.py is available
 COPY . .
+
+WORKDIR /app/web-app/sunnify-backend
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 5000
 
+ENV PYTHONPATH=/app
 CMD ["python", "app.py"]

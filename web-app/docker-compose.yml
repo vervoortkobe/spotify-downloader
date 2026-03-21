@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
   backend:
     build:
-      context: ./sunnify-backend
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: web-app/sunnify-backend/Dockerfile
     ports:
       - "5000:5000"
     restart: unless-stopped
