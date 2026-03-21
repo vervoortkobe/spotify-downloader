@@ -278,14 +278,19 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
             }
         ],
     }
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(search_query, download=True)
-        if 'entries' in info and info['entries']:
-            info = info['entries'][0]
-        
-        filepath = ydl.prepare_filename(info)
-        base, _ = os.path.splitext(filepath)
-        final_path = base + ".mp3"
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_query, download=True)
+            if 'entries' in info and info['entries']:
+                info = info['entries'][0]
+            
+            filepath = ydl.prepare_filename(info)
+            base, _ = os.path.splitext(filepath)
+            final_path = base + ".mp3"
+    except Exception as e:
+        print(f"YT Download failed for {track_title}: {e}")
+        progress_store[track_id] = -1.0 # Signal failure
+        return None
         
     if os.path.exists(final_path):
         progress_store[track_id] = 95.0
@@ -306,6 +311,11 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         print(f"Applying metadata to {final_path} with cover: {cover_url}")
         apply_metadata(final_path, track_title, artists, album, release_date, cover_url)
         progress_store[track_id] = 100.0
+        
+        
+    if not os.path.exists(final_path):
+        progress_store[track_id] = -1.0
+        return None
         
     return final_path
 
@@ -347,8 +357,9 @@ def download_track():
             
         final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, temp_dir)
         
-        if not os.path.exists(final_path):
-            return jsonify({"event": "error", "message": "Download failed"}), 500
+        if not final_path or not os.path.exists(final_path):
+            progress_store[track_id] = -1.0
+            return jsonify({"event": "error", "message": "Download failed - song not found on YouTube"}), 500
 
         res = send_file(
             final_path,
@@ -389,6 +400,10 @@ def download_playlist_zip():
                 progress_store[track_id] = 0.0
                 final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir)
                 
+                if not final_path or not os.path.exists(final_path):
+                    progress_store[track_id] = -1.0
+                    continue
+
                 # Make sure file name is user-friendly inside zip
                 user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
                 if os.path.exists(final_path) and not final_path == user_friendly_name:
