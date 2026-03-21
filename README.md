@@ -258,7 +258,7 @@ gunicorn app:app --bind 0.0.0.0:5000
 cd ..\sunnify-webclient
 npm install
 npm run dev
-# Opens http://localhost:3000
+# Opens http://localhost:3001
 ```
 
 Configure API base in `.env.local` (recommended):
@@ -313,7 +313,7 @@ Desktop app (GUI):
 Web client:
 
 1. Start Flask backend and Next.js client.
-2. Open `http://localhost:3000`.
+2. Open `http://localhost:3001`.
 3. Enter playlist URL and a writable download path.
 4. Click Process Playlist and watch progress.
 

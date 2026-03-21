@@ -1,23 +1,11 @@
 "use client"
 
-import React, { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Music2,
   Download,
   Loader2,
-  Github,
-  Linkedin,
-  Globe,
-  Apple,
-  Monitor,
-  Terminal,
-  Disc3,
   Sparkles,
-  ExternalLink,
-  Clock,
-  X,
-  Heart,
-  Coffee,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,6 +26,10 @@ interface Track {
 
 export default function SunnifyApp() {
   const [playlistLink, setPlaylistLink] = useState("")
+
+  useEffect(() => {
+    setPlaylistLink("")
+  }, [])
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [songsDownloaded, setSongsDownloaded] = useState(0)
   const [totalSongs, setTotalSongs] = useState(0)
@@ -47,6 +39,126 @@ export default function SunnifyApp() {
   const [tracks, setTracks] = useState<Track[]>([])
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
   const [showBanner, setShowBanner] = useState(true)
+  const [isDownloadingTrack, setIsDownloadingTrack] = useState<string | null>(null)
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false)
+  const [trackProgress, setTrackProgress] = useState<Record<string, number>>({})
+
+  const LOCAL_API = "http://127.0.0.1:5000"
+
+  const downloadTrack = async (track: Track) => {
+    try {
+      setIsDownloadingTrack(track.id)
+      setTrackProgress((prev) => ({ ...prev, [track.id]: 0 }))
+
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(`${LOCAL_API}/api/progress/${track.id}`)
+          if (res.ok) {
+            const data = await res.json()
+            setTrackProgress((prev) => ({ ...prev, [track.id]: data.progress || 0 }))
+          }
+        } catch (e) { }
+      }, 500)
+
+      const res = await fetch(`${LOCAL_API}/api/download-track`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(track),
+      })
+
+      clearInterval(interval)
+      setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
+
+      if (!res.ok) throw new Error("Failed to download track")
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${track.title} - ${track.artists}.mp3`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      toast.success(`Downloaded ${track.title}`)
+
+      setTimeout(() => {
+        setTrackProgress((prev) => {
+          const newState = { ...prev }
+          delete newState[track.id]
+          return newState
+        })
+      }, 1500)
+    } catch (err) {
+      console.error(err)
+      toast.error("Download failed")
+      setTrackProgress((prev) => {
+        const newState = { ...prev }
+        delete newState[track.id]
+        return newState
+      })
+    } finally {
+      setIsDownloadingTrack(null)
+    }
+  }
+
+  const downloadAll = async () => {
+    if (tracks.length === 0) return
+    try {
+      setIsDownloadingAll(true)
+      toast.loading("Zipping playlist, this might take a while...", { id: "zip-toast" })
+
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(`${LOCAL_API}/api/progress/all`)
+          if (res.ok) {
+            const data = await res.json()
+            setTrackProgress((prev) => {
+              const ns = { ...prev }
+              tracks.forEach(t => {
+                if (data[t.id] !== undefined) {
+                  ns[t.id] = data[t.id]
+                }
+              })
+              return ns
+            })
+          }
+        } catch (e) { }
+      }, 500)
+
+      const res = await fetch(`${LOCAL_API}/api/download-playlist-zip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tracks, playlistName }),
+      })
+
+      clearInterval(interval)
+
+      if (!res.ok) throw new Error("Failed to zip playlist")
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${playlistName || "Playlist"}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      toast.success("Playlist downloaded", { id: "zip-toast" })
+
+      setTimeout(() => {
+        setTrackProgress({})
+      }, 1500)
+    } catch (err) {
+      console.error(err)
+      toast.error("Zip download failed", { id: "zip-toast" })
+      setTrackProgress({})
+    } finally {
+      setIsDownloadingAll(false)
+    }
+  }
 
   const handleProcess = async () => {
     if (!playlistLink) {
@@ -69,7 +181,7 @@ export default function SunnifyApp() {
 
     try {
       const response = await fetch(
-        "https://sunnify-spotify-downloader.onrender.com/api/scrape-playlist",
+        `${LOCAL_API}/api/scrape-playlist`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -95,6 +207,7 @@ export default function SunnifyApp() {
         }
 
         toast.success(`Loaded ${processedTracks.length} tracks!`)
+        setPlaylistLink("")
       } else if (result.event === "error") {
         throw new Error(result.data?.message || "Processing failed")
       }
@@ -123,65 +236,7 @@ export default function SunnifyApp() {
         }}
       />
 
-      {/* Cold Start Banner */}
-      {showBanner && (
-        <div className="relative z-50 border-b border-amber-500/20 bg-amber-500/10 px-4 py-3 backdrop-blur-sm">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Clock className="h-4 w-4 flex-shrink-0 text-amber-400" />
-              <p className="text-sm text-amber-200">
-                <span className="font-semibold">Heads up:</span> The backend runs on a free server
-                that spins down after inactivity. First request may take up to 50 seconds to wake
-                up.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowBanner(false)}
-              className="flex-shrink-0 rounded-lg p-1 text-amber-400 transition-colors hover:bg-amber-500/20"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Info Banner - Web Preview Only */}
-      <div className="relative z-40 border-b border-blue-500/20 bg-blue-500/10 px-4 py-3 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center justify-center gap-3">
-          <Download className="h-4 w-4 flex-shrink-0 text-blue-400" />
-          <p className="text-sm text-blue-200">
-            <span className="font-semibold">Preview mode:</span> This web app displays playlist
-            metadata only. To download MP3s, use the{" "}
-            <a
-              href="https://github.com/sunnypatell/sunnify-spotify-downloader/releases/latest"
-              className="font-semibold underline hover:text-blue-100"
-            >
-              desktop app
-            </a>
-            .
-          </p>
-        </div>
-      </div>
-
       <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-8">
-        {/* Header */}
-        <header className="mb-12 text-center">
-          <div className="mb-4 inline-flex items-center gap-4">
-            <div className="relative">
-              <div className="absolute inset-0 animate-pulse rounded-2xl bg-green-500/20 blur-xl" />
-              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-green-400 via-green-500 to-emerald-600 shadow-2xl shadow-green-500/25">
-                <Disc3 className="h-9 w-9 text-white" />
-              </div>
-            </div>
-            <div className="text-left">
-              <h1 className="bg-gradient-to-r from-green-400 via-emerald-400 to-green-500 bg-clip-text text-5xl font-black tracking-tight text-transparent">
-                Sunnify
-              </h1>
-              <p className="text-sm font-medium text-gray-400">Spotify Playlist Downloader</p>
-            </div>
-          </div>
-        </header>
-
         {/* Main Content */}
         <div className="grid flex-1 gap-8 lg:grid-cols-[1fr,380px]">
           {/* Left Column */}
@@ -249,10 +304,24 @@ export default function SunnifyApp() {
 
             {/* Track List */}
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
-              <div className="border-b border-white/10 px-8 py-5">
+              <div className="border-b border-white/10 px-8 py-5 flex justify-between items-center">
                 <h2 className="text-xl font-bold">
                   {tracks.length > 0 ? `${tracks.length} Tracks` : "Track List"}
                 </h2>
+                {tracks.length > 0 && (
+                  <Button
+                    onClick={downloadAll}
+                    disabled={isDownloadingAll}
+                    className="h-10 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 px-4 text-sm font-bold text-black shadow-lg shadow-green-500/25 transition-all hover:scale-105 hover:shadow-green-500/40 disabled:scale-100 disabled:opacity-50"
+                  >
+                    {isDownloadingAll ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-2 h-4 w-4" />
+                    )}
+                    {isDownloadingAll ? "Zipping..." : "Download All (ZIP)"}
+                  </Button>
+                )}
               </div>
 
               {tracks.length === 0 ? (
@@ -269,36 +338,60 @@ export default function SunnifyApp() {
                 <ScrollArea className="h-[420px]">
                   <div className="divide-y divide-white/5">
                     {tracks.map((track, index) => (
-                      <div
-                        key={track.id || index}
-                        onClick={() => setSelectedTrack(track)}
-                        className={`flex cursor-pointer items-center gap-4 px-6 py-4 transition-all hover:bg-white/5 ${
-                          selectedTrack?.id === track.id ? "bg-green-500/10" : ""
-                        }`}
-                      >
-                        <span className="w-8 text-center text-sm font-medium text-gray-500">
-                          {index + 1}
-                        </span>
-                        {track.cover ? (
-                          <Image
-                            src={track.cover}
-                            alt=""
-                            width={56}
-                            height={56}
-                            className="h-14 w-14 rounded-lg object-cover shadow-lg"
-                            unoptimized
-                          />
-                        ) : (
-                          <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-white/10">
-                            <Music2 className="h-6 w-6 text-gray-500" />
+                      <div key={track.id || index} className="relative flex flex-col">
+                        <div
+                          onClick={() => setSelectedTrack(track)}
+                          className={`flex cursor-pointer items-center gap-4 px-6 py-4 transition-all hover:bg-white/5 ${selectedTrack?.id === track.id ? "bg-green-500/10" : ""
+                            }`}
+                        >
+                          <span className="w-8 text-center text-sm font-medium text-gray-500">
+                            {index + 1}
+                          </span>
+                          {track.cover ? (
+                            <Image
+                              src={track.cover}
+                              alt=""
+                              width={56}
+                              height={56}
+                              className="h-14 w-14 rounded-lg object-cover shadow-lg"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-white/10">
+                              <Music2 className="h-6 w-6 text-gray-500" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-semibold">{track.title}</p>
+                            <p className="truncate text-sm text-gray-400">{track.artists}</p>
                           </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold">{track.title}</p>
-                          <p className="truncate text-sm text-gray-400">{track.artists}</p>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              downloadTrack(track)
+                            }}
+                            disabled={isDownloadingTrack === track.id}
+                            className="text-green-400 hover:bg-green-500/20 hover:text-green-300 pointer-events-auto shrink-0 z-10"
+                          >
+                            {isDownloadingTrack === track.id ? (
+                              <Loader2 className="h-5 w-5 animate-spin" />
+                            ) : (
+                              <Download className="h-5 w-5" />
+                            )}
+                          </Button>
                         </div>
-                        {selectedTrack?.id === track.id && (
-                          <div className="h-2 w-2 rounded-full bg-green-500" />
+                        {trackProgress[track.id] !== undefined && (
+                          <div className="absolute bottom-0 left-0 right-0 px-6 pb-1.5 pointer-events-none flex items-center gap-2">
+                            <Progress
+                              value={trackProgress[track.id]}
+                              className="h-1 flex-1 rounded-full bg-white/10 [&>div]:rounded-full [&>div]:bg-gradient-to-r [&>div]:from-green-400 [&>div]:to-emerald-500"
+                            />
+                            <span className="w-8 text-right text-[10px] font-bold text-green-400">
+                              {Math.round(trackProgress[track.id])}%
+                            </span>
+                          </div>
                         )}
                       </div>
                     ))}
@@ -313,7 +406,7 @@ export default function SunnifyApp() {
             {/* Now Playing */}
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
               <div className="border-b border-white/10 px-6 py-4">
-                <h2 className="font-bold">Now Playing</h2>
+                <h2 className="font-bold">Track Details</h2>
               </div>
 
               <div className="p-6">
@@ -369,132 +462,14 @@ export default function SunnifyApp() {
                   </div>
                 ) : (
                   <div className="flex aspect-square flex-col items-center justify-center rounded-2xl bg-black/30 text-center">
-                    <Disc3 className="mb-3 h-16 w-16 text-gray-700" />
+                    <Music2 className="mb-3 h-16 w-16 text-gray-700" />
                     <p className="font-medium text-gray-500">Select a track</p>
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Download Desktop */}
-            <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <div className="mb-4 flex items-center gap-2">
-                <Download className="h-5 w-5 text-green-400" />
-                <h2 className="font-bold">Desktop App</h2>
-              </div>
-              <p className="mb-5 text-sm text-gray-400">
-                Full offline experience with bundled FFmpeg.
-              </p>
-
-              <div className="space-y-2">
-                <a
-                  href="https://github.com/sunnypatell/sunnify-spotify-downloader/releases/latest"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between rounded-xl bg-black/40 px-4 py-3 transition-all hover:bg-white/10"
-                >
-                  <div className="flex items-center gap-3">
-                    <Monitor className="h-5 w-5 text-blue-400" />
-                    <span className="font-medium">Windows</span>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-gray-500" />
-                </a>
-                <a
-                  href="https://github.com/sunnypatell/sunnify-spotify-downloader/releases/latest"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between rounded-xl bg-black/40 px-4 py-3 transition-all hover:bg-white/10"
-                >
-                  <div className="flex items-center gap-3">
-                    <Apple className="h-5 w-5 text-gray-300" />
-                    <span className="font-medium">macOS</span>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-gray-500" />
-                </a>
-                <a
-                  href="https://github.com/sunnypatell/sunnify-spotify-downloader/releases/latest"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between rounded-xl bg-black/40 px-4 py-3 transition-all hover:bg-white/10"
-                >
-                  <div className="flex items-center gap-3">
-                    <Terminal className="h-5 w-5 text-orange-400" />
-                    <span className="font-medium">Linux</span>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-gray-500" />
-                </a>
-              </div>
-
-              <div className="mt-4 rounded-xl bg-black/40 p-3">
-                <p className="mb-1 text-xs font-semibold text-gray-500">Homebrew (macOS)</p>
-                <code className="block text-xs text-green-400">
-                  brew tap sunnypatell/sunnify
-                  https://github.com/sunnypatell/sunnify-spotify-downloader
-                </code>
-                <code className="block text-xs text-green-400">brew install --cask sunnify</code>
-              </div>
-            </div>
           </div>
         </div>
-
-        {/* Footer */}
-        <footer className="mt-12 border-t border-white/10 pt-8">
-          <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
-            <p className="text-sm text-gray-500">
-              © 2026 Sunny Jayendra Patel — Educational use only
-            </p>
-
-            {/* Sponsor Buttons */}
-            <div className="flex items-center gap-3">
-              <a
-                href="https://buymeacoffee.com/sunnypatell"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-xl bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-400 transition-all hover:bg-amber-500/20 hover:text-amber-300"
-              >
-                <Coffee className="h-4 w-4" />
-                Buy Me a Coffee
-              </a>
-              <a
-                href="https://github.com/sponsors/sunnypatell"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-400 transition-all hover:bg-pink-500/20 hover:text-pink-300"
-              >
-                <Heart className="h-4 w-4" />
-                Sponsor
-              </a>
-            </div>
-
-            {/* Social Links */}
-            <div className="flex items-center gap-2">
-              <a
-                href="https://github.com/sunnypatell/sunnify-spotify-downloader"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-xl p-3 text-gray-500 transition-all hover:bg-white/5 hover:text-white"
-              >
-                <Github className="h-5 w-5" />
-              </a>
-              <a
-                href="https://www.linkedin.com/in/sunny-patel-30b460204/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-xl p-3 text-gray-500 transition-all hover:bg-white/5 hover:text-white"
-              >
-                <Linkedin className="h-5 w-5" />
-              </a>
-              <a
-                href="https://www.sunnypatel.net/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-xl p-3 text-gray-500 transition-all hover:bg-white/5 hover:text-white"
-              >
-                <Globe className="h-5 w-5" />
-              </a>
-            </div>
-          </div>
-        </footer>
       </div>
     </div>
   )
