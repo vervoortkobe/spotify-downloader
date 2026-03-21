@@ -42,9 +42,13 @@ export default function SunnifyApp() {
   const [isDownloadingTrack, setIsDownloadingTrack] = useState<string | null>(null)
   const [isDownloadingAll, setIsDownloadingAll] = useState(false)
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({})
-  const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000"
+  const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000"
   // Sanitize the URL: remove trailing slash and trailing '/api' if included by mistake
-  const LOCAL_API = NEXT_PUBLIC_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
+  let LOCAL_API = RAW_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
+  // Ensure it is absolute by adding https:// if is a bare domain, to avoid relative path duplication
+  if (!LOCAL_API.startsWith("http") && !LOCAL_API.startsWith("//") && LOCAL_API !== "") {
+    LOCAL_API = `https://${LOCAL_API}`
+  }
 
   const downloadTrack = async (track: Track) => {
     try {
