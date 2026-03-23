@@ -117,7 +117,7 @@ export default function SunnifyApp() {
     if (tracks.length === 0) return
     try {
       setIsDownloadingAll(true)
-      toast.loading("Zipping playlist, this might take a while...", { id: "zip-toast" })
+      toast.loading("Downloading playlist, this might take a while...", { id: "download-toast" })
 
       // Reset frontend progress for all tracks
       setTrackProgress((prev) => {
@@ -166,14 +166,14 @@ export default function SunnifyApp() {
       document.body.removeChild(a)
       window.URL.revokeObjectURL(url)
 
-      toast.success("Playlist downloaded", { id: "zip-toast" })
+      toast.success("Playlist downloaded", { id: "download-toast" })
 
       setTimeout(() => {
         setTrackProgress({})
       }, 1500)
     } catch (err) {
       console.error(err)
-      toast.error("Zip download failed", { id: "zip-toast" })
+      toast.error("Playlist download failed", { id: "download-toast" })
       setTrackProgress({})
     } finally {
       setIsDownloadingAll(false)
