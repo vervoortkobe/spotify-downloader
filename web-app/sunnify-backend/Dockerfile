@@ -1,8 +1,8 @@
 FROM python:3.11-slim
 
-# Install ffmpeg for yt-dlp audio extraction
+# Install ffmpeg and Node.js for yt-dlp (audio extraction + JS runtime)
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y ffmpeg nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
