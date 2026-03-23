@@ -1,9 +1,13 @@
 FROM python:3.11-slim
 
-# Install ffmpeg and Node.js for yt-dlp (audio extraction + JS runtime)
+# Install ffmpeg, deno, and prerequisites for yt-dlp
 RUN apt-get update && \
-    apt-get install -y ffmpeg nodejs && \
+    apt-get install -y ffmpeg curl unzip && \
+    curl -fsSL https://deno.land/x/install/install.sh | sh && \
     rm -rf /var/lib/apt/lists/*
+
+ENV DENO_INSTALL="/root/.deno"
+ENV PATH="$DENO_INSTALL/bin:$PATH"
 
 WORKDIR /app
 

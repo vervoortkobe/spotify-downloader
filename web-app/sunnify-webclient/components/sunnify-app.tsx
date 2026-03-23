@@ -256,34 +256,13 @@ export default function SunnifyApp() {
         }}
       />
 
-      <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
-        {/* Header */}
-        <header className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
-              <Sparkles className="h-6 w-6 text-black" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
-                Sunnify<span className="text-green-500">.</span>
-              </h1>
-              <p className="hidden text-xs font-medium text-gray-500 sm:block">Spotify Playlist Downloader</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1.5 border border-white/10 backdrop-blur-md">
-              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">System Ready</span>
-            </div>
-          </div>
-        </header>
-
+      <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
         {/* Main Content */}
         <div className="grid flex-1 gap-4 sm:gap-8 lg:grid-cols-[1fr,380px]">
           {/* Left Column */}
           <div className="space-y-6">
             {/* Search Card */}
-            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur-xl transition-all hover:border-green-500/30 hover:bg-white/[0.07]">
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-8 backdrop-blur-xl transition-all hover:border-green-500/30 hover:bg-white/[0.07]">
               <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-green-500/10 blur-3xl transition-all group-hover:bg-green-500/20" />
 
               <div className="relative">
@@ -345,7 +324,7 @@ export default function SunnifyApp() {
 
             {/* Track List */}
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
-              <div className="border-b border-white/10 px-6 sm:px-8 py-4 sm:py-5 flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+              <div className="border-b border-white/10 px-4 sm:px-8 py-4 sm:py-5 flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
                 <h2 className="text-xl font-bold">
                   {tracks.length > 0 ? `${tracks.length} Tracks` : "Track List"}
                 </h2>
@@ -360,7 +339,7 @@ export default function SunnifyApp() {
                     ) : (
                       <Download className="mr-2 h-4 w-4" />
                     )}
-                    {isDownloadingAll ? "Zipping..." : "Download All (ZIP)"}
+                    {isDownloadingAll ? "Downloading..." : "Download All (ZIP)"}
                   </Button>
                 )}
               </div>
@@ -382,24 +361,24 @@ export default function SunnifyApp() {
                       <div key={track.id || index} className="relative flex flex-col">
                         <div
                           onClick={() => setSelectedTrack(track)}
-                          className={`flex cursor-pointer items-center gap-3 sm:gap-4 px-4 py-3 sm:px-6 sm:py-4 transition-all hover:bg-white/5 ${selectedTrack?.id === track.id ? "bg-green-500/10" : ""
+                          className={`flex cursor-pointer items-center gap-2 sm:gap-4 px-2 py-3 sm:px-6 sm:py-4 transition-all hover:bg-white/5 ${selectedTrack?.id === track.id ? "bg-green-500/10" : ""
                             }`}
                         >
-                          <span className="w-8 text-center text-sm font-medium text-gray-500">
+                          <span className="w-6 sm:w-8 shrink-0 text-center text-[10px] sm:text-sm font-medium text-gray-500">
                             {index + 1}
                           </span>
                           {track.cover ? (
                             <Image
                               src={track.cover}
                               alt=""
-                              width={48}
-                              height={48}
-                              className="h-12 w-12 sm:h-14 sm:w-14 rounded-lg object-cover shadow-lg"
+                              width={40}
+                              height={40}
+                              className="h-10 w-10 sm:h-14 sm:w-14 shrink-0 rounded-lg object-cover shadow-lg"
                               unoptimized
                             />
                           ) : (
-                            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-lg bg-white/10">
-                              <Music2 className="h-5 w-5 sm:h-6 sm:w-6 text-gray-500" />
+                            <div className="flex h-10 w-10 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-lg bg-white/10">
+                              <Music2 className="h-4 w-4 sm:h-6 sm:w-6 text-gray-500" />
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
@@ -426,7 +405,7 @@ export default function SunnifyApp() {
                           </Button>
                         </div>
                         {trackProgress[track.id] !== undefined && (
-                          <div className="absolute bottom-0 left-0 right-0 px-4 sm:px-6 pb-1.5 pointer-events-none flex items-center gap-2">
+                          <div className="absolute bottom-0 left-0 right-0 px-2 sm:px-6 pb-1.5 pointer-events-none flex items-center gap-2">
                             {trackProgress[track.id] === -1 ? (
                               <div className="flex-1 bg-red-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-red-400">
                                 Song not found on YouTube
@@ -487,27 +466,11 @@ export default function SunnifyApp() {
                         </p>
                         <p className="text-lg font-bold leading-tight">{selectedTrack.title}</p>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-gray-500">
-                            Artist
-                          </p>
-                          <p className="text-sm text-gray-300">{selectedTrack.artists}</p>
-                        </div>
-                        <div>
-                          <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-gray-500">
-                            Album
-                          </p>
-                          <p className="text-sm text-gray-300">{selectedTrack.album || "—"}</p>
-                        </div>
-                        <div className="col-span-2">
-                          <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-gray-500">
-                            Release Date
-                          </p>
-                          <p className="text-sm text-gray-300">
-                            {selectedTrack.releaseDate || "—"}
-                          </p>
-                        </div>
+                      <div>
+                        <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-gray-500">
+                          Artist
+                        </p>
+                        <p className="text-lg text-gray-300 font-medium leading-tight">{selectedTrack.artists}</p>
                       </div>
                     </div>
                   </div>
