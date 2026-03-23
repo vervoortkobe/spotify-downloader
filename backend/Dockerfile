@@ -14,7 +14,7 @@ WORKDIR /app
 # Copy the entire root project so spotifydown_api.py is available
 COPY . .
 
-WORKDIR /app/web-app/sunnify-backend
+WORKDIR /app/backend
 
 # Upgrade pip and install latest yt-dlp for reliable downloads
 RUN pip install --no-cache-dir --upgrade pip yt-dlp && \

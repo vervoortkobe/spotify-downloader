@@ -1,4 +1,3 @@
-import type { Metadata } from "next"
 import localFont from "next/font/local"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
@@ -13,19 +12,6 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
   weight: "100 900",
 })
-
-export const metadata: Metadata = {
-  title: "Spotify Playlist Downloader",
-  description:
-    "Download entire Spotify playlists to local MP3s with embedded artwork and tags. Free, open-source, no account required.",
-  keywords: ["spotify", "downloader", "mp3", "playlist", "music", "converter"],
-  authors: [{ name: "Sunny Jayendra Patel" }],
-  openGraph: {
-    title: "Spotify Playlist Downloader",
-    description: "Download Spotify playlists to MP3 with artwork and tags",
-    type: "website",
-  },
-}
 
 export default function RootLayout({
   children,

@@ -1,11 +1,3 @@
-"""Flask backend for Sunnify web client.
-
-Lightweight API that fetches Spotify metadata without downloading.
-Optimized for free-tier hosting (512MB RAM, 0.1 CPU).
-
-For actual MP3 downloads, use the desktop app.
-"""
-
 from __future__ import annotations
 
 import gc
@@ -94,12 +86,7 @@ def get_playlist_client() -> PlaylistClient:
 
 @app.route("/api/scrape-playlist", methods=["POST"])
 def scrape_playlist():
-    """Fetch Spotify playlist/track metadata (no downloads).
-
-    This endpoint is optimized for free-tier hosting:
-    - No file downloads (saves CPU/memory/disk)
-    - No yt-dlp/FFmpeg processing
-    - Just returns metadata for the frontend to display
+    """Fetch Spotify playlist/track metadata.
 
     Request body:
         {"playlistUrl": "https://open.spotify.com/playlist/..."}
@@ -457,24 +444,13 @@ def download_playlist_zip():
 @app.route("/api/health")
 def health_check():
     """Health check endpoint for monitoring."""
-    return jsonify({"status": "ok", "mode": "metadata-only"})
+    return jsonify({"online": True})
 
 
 @app.route("/")
 def index():
     """Root endpoint with API info."""
-    return jsonify(
-        {
-            "name": "Sunnify API",
-            "version": "2.0.2",
-            "mode": "metadata-only",
-            "description": "Fetches Spotify metadata. For MP3 downloads, use the desktop app.",
-            "endpoints": {
-                "POST /api/scrape-playlist": "Fetch playlist/track metadata",
-                "GET /api/health": "Health check",
-            },
-        }
-    )
+    return jsonify({"online": True})
 
 
 if __name__ == "__main__":
