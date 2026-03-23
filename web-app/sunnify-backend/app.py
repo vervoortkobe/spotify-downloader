@@ -270,6 +270,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         "quiet": True,
         "outtmpl": output_template,
         "progress_hooks": [yt_progress_hook],
+        "javascript_runtime": "deno",
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -281,6 +282,13 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     try:
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(search_query, download=True)
+            
+            # If search produced no results, skip this track
+            if not info or ('entries' in info and not info['entries']):
+                print(f"Track not found on YouTube: {track_title}")
+                progress_store[track_id] = -1.0
+                return None
+
             if 'entries' in info and info['entries']:
                 info = info['entries'][0]
             
