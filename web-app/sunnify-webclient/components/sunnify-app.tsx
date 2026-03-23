@@ -75,7 +75,10 @@ export default function SunnifyApp() {
       clearInterval(interval)
       setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
 
-      if (!res.ok) throw new Error("Failed to download track")
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData.message || "Download failed")
+      }
 
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
@@ -97,9 +100,9 @@ export default function SunnifyApp() {
           return newState
         })
       }, 1500)
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      toast.error("Download failed")
+      toast.error(err.message || "Download failed")
       setTrackProgress((prev) => ({ ...prev, [track.id]: -1 }))
       setTimeout(() => {
         setTrackProgress((prev) => {
@@ -154,7 +157,10 @@ export default function SunnifyApp() {
 
       clearInterval(interval)
 
-      if (!res.ok) throw new Error("Failed to zip playlist")
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData.message || "Failed to download playlist")
+      }
 
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
@@ -171,9 +177,9 @@ export default function SunnifyApp() {
       setTimeout(() => {
         setTrackProgress({})
       }, 1500)
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      toast.error("Playlist download failed", { id: "download-toast" })
+      toast.error(err.message || "Playlist download failed", { id: "download-toast" })
       setTrackProgress({})
     } finally {
       setIsDownloadingAll(false)

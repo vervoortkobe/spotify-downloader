@@ -271,6 +271,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         "outtmpl": output_template,
         "progress_hooks": [yt_progress_hook],
         "javascript_runtime": "deno",
+        "remote_components": ["ejs:github"],
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -428,12 +429,18 @@ def download_playlist_zip():
         with ThreadPoolExecutor(max_workers=5) as executor:
             list(executor.map(process_track_for_zip, tracks))
         
-        # Zip the directory
-        zip_path = os.path.join(temp_dir, f"{sanitize_filename(playlist_name)}.zip")
-        shutil.make_archive(zip_path.replace('.zip', ''), 'zip', output_dir)
+        # Zip the directory - ensure playlist_name isn't empty after sanitization
+        safe_playlist_name = sanitize_filename(playlist_name) or "Sunnify_Playlist"
+        
+        # Check if we have any files to zip
+        if not os.listdir(output_dir):
+            return jsonify({"event": "error", "message": "No tracks were found on YouTube to download."}), 404
+
+        zip_base_name = os.path.join(temp_dir, safe_playlist_name)
+        zip_path = shutil.make_archive(zip_base_name, 'zip', output_dir)
         
         if not os.path.exists(zip_path):
-            return jsonify({"event": "error", "message": "ZIP creation failed"}), 500
+            return jsonify({"event": "error", "message": "Failed to create the ZIP archive."}), 500
 
         return send_file(
             zip_path,
