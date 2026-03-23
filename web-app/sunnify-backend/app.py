@@ -384,6 +384,14 @@ def download_playlist_zip():
         if not tracks:
             return jsonify({"event": "error", "message": "No tracks provided"}), 400
 
+        # Pre-reset progress for all tracks to 0.0 so frontend doesn't show old state
+        for t in tracks:
+            tid = t.get("id")
+            if tid:
+                progress_store[tid] = 0.0
+        # Also ensure "all" progress is manageable if needed, 
+        # but resetting individual tracks is most important.
+
         temp_dir = tempfile.mkdtemp()
         output_dir = os.path.join(temp_dir, sanitize_filename(playlist_name))
         os.makedirs(output_dir, exist_ok=True)
@@ -397,7 +405,7 @@ def download_playlist_zip():
                 release_date = track.get("releaseDate", "")
                 cover_url = track.get("cover", "")
                 
-                progress_store[track_id] = 0.0
+                # Progress already reset above, but double check
                 final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir)
                 
                 if not final_path or not os.path.exists(final_path):
