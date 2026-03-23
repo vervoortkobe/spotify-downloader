@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import localFont from "next/font/local"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
@@ -12,6 +13,11 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
   weight: "100 900",
 })
+
+export const metadata: Metadata = {
+  title: "Spotify Downloader",
+  description: "Download your Spotify playlists and tracks.",
+}
 
 export default function RootLayout({
   children,
