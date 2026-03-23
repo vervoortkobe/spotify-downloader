@@ -435,7 +435,7 @@ def download_playlist_zip():
         )
 
     except Exception as e:
-        print(f"Error zipping playlist: {e}")
+        print(f"Error downloading playlist: {e}")
         return jsonify({"event": "error", "message": str(e)}), 500
 
 
