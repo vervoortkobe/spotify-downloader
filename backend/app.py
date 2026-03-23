@@ -8,6 +8,9 @@ import zipfile
 import shutil
 import glob
 import requests
+import threading
+import uuid
+import time
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_file, after_this_request, send_from_directory
@@ -49,6 +52,12 @@ CORS(app, origins=allowed_origins)
 
 # Reusable client (saves memory on repeated requests)
 _playlist_client: PlaylistClient | None = None
+
+# Job store for background playlist downloads
+JOB_STORE = {}
+# Temporary directory for completed jobs
+COMPLETED_JOBS_DIR = os.path.join(tempfile.gettempdir(), "spotify_downloader_jobs")
+os.makedirs(COMPLETED_JOBS_DIR, exist_ok=True)
 
 def get_yt_thumbnail(track_title, artists):
     """Fetch YouTube thumbnail for a track (fast meta-only search)."""
@@ -371,7 +380,7 @@ def download_track():
 
 @app.route("/api/download-playlist-zip", methods=["POST"])
 def download_playlist_zip():
-    """Download all tracks provided and return as a ZIP file."""
+    """Start downloading tracks in the background and return a job handle."""
     try:
         data = request.get_json()
         tracks = data.get("tracks", [])
@@ -380,15 +389,29 @@ def download_playlist_zip():
         if not tracks:
             return jsonify({"event": "error", "message": "No tracks provided"}), 400
 
-        # Pre-reset progress for all tracks to 0.0 so frontend doesn't show old state
+        # Pre-reset progress for all tracks
         for t in tracks:
             tid = t.get("id")
             if tid:
                 progress_store[tid] = 0.0
-        # Also ensure "all" progress is manageable if needed, 
-        # but resetting individual tracks is most important.
 
-        temp_dir = tempfile.mkdtemp()
+        job_id = str(uuid.uuid4())
+        JOB_STORE[job_id] = {"status": "processing", "progress": 0, "path": None, "error": None}
+
+        # Start background processing
+        thread = threading.Thread(target=process_playlist_job, args=(job_id, tracks, playlist_name))
+        thread.start()
+
+        return jsonify({"job_id": job_id})
+
+    except Exception as e:
+        print(f"Error starting playlist job: {e}")
+        return jsonify({"event": "error", "message": str(e)}), 500
+
+def process_playlist_job(job_id, tracks, playlist_name):
+    """Background task to download and zip songs."""
+    temp_dir = tempfile.mkdtemp()
+    try:
         output_dir = os.path.join(temp_dir, sanitize_filename(playlist_name))
         os.makedirs(output_dir, exist_ok=True)
         
@@ -406,7 +429,6 @@ def download_playlist_zip():
                 final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir)
                 
                 if final_path and os.path.exists(final_path):
-                    # Make sure file name is user-friendly inside zip
                     user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
                     if not final_path == user_friendly_name:
                         shutil.move(final_path, user_friendly_name)
@@ -416,29 +438,67 @@ def download_playlist_zip():
         with ThreadPoolExecutor(max_workers=5) as executor:
             list(executor.map(process_track_for_zip, tracks))
         
-        # Zip the directory - ensure playlist_name isn't empty after sanitization
-        safe_playlist_name = sanitize_filename(playlist_name) or "Spotify_Playlist"
-        
-        # Check if we have any files to zip
-        if not os.listdir(output_dir):
-            return jsonify({"event": "error", "message": "No tracks were found on YouTube to download."}), 404
+        if not os.path.exists(output_dir) or not os.listdir(output_dir):
+            JOB_STORE[job_id] = {"status": "error", "message": "No tracks found/downloaded"}
+            return
 
+        safe_playlist_name = sanitize_filename(playlist_name) or "Spotify_Playlist"
         zip_base_name = os.path.join(temp_dir, safe_playlist_name)
         zip_path = shutil.make_archive(zip_base_name, 'zip', output_dir)
         
-        if not os.path.exists(zip_path):
-            return jsonify({"event": "error", "message": "Failed to create the ZIP archive."}), 500
-
-        return send_file(
-            zip_path,
-            as_attachment=True,
-            download_name=os.path.basename(zip_path),
-            mimetype="application/zip"
-        )
+        if os.path.exists(zip_path):
+            # Move to permanent job folder
+            final_zip_path = os.path.join(COMPLETED_JOBS_DIR, f"{job_id}.zip")
+            shutil.move(zip_path, final_zip_path)
+            JOB_STORE[job_id] = {"status": "completed", "path": final_zip_path, "filename": f"{safe_playlist_name}.zip"}
+        else:
+            JOB_STORE[job_id] = {"status": "error", "message": "Failed to create ZIP"}
 
     except Exception as e:
-        print(f"Error downloading playlist: {e}")
-        return jsonify({"event": "error", "message": str(e)}), 500
+        print(f"Playlist job {job_id} failed: {e}")
+        JOB_STORE[job_id] = {"status": "error", "message": str(e)}
+    finally:
+        try:
+            shutil.rmtree(temp_dir)
+        except:
+            pass
+
+@app.route("/api/job-status/<job_id>")
+def job_status(job_id):
+    """Check status of a playlist download job."""
+    job = JOB_STORE.get(job_id)
+    if not job:
+        return jsonify({"status": "not_found"}), 404
+    return jsonify(job)
+
+@app.route("/api/download-job/<job_id>")
+def download_job(job_id):
+    """Download the completed ZIP for a job."""
+    job = JOB_STORE.get(job_id)
+    if not job or job.get("status") != "completed":
+        return jsonify({"error": "Job not finished or not found"}), 404
+    
+    path = job.get("path")
+    if not path or not os.path.exists(path):
+        return jsonify({"error": "File not found"}), 404
+
+    @after_this_request
+    def remove_job(response):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+            if job_id in JOB_STORE:
+                del JOB_STORE[job_id]
+        except Exception as e:
+            print(f"Cleanup error: {e}")
+        return response
+
+    return send_file(
+        path,
+        as_attachment=True,
+        download_name=job.get("filename", "playlist.zip"),
+        mimetype="application/zip"
+    )
 
 
 @app.route("/api/health")

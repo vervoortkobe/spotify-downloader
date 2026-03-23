@@ -131,7 +131,8 @@ export default function SpotifyDownloaderApp() {
         return ns
       })
 
-      const interval = setInterval(async () => {
+      // Start progress polling for individual tracks
+      const progressInterval = setInterval(async () => {
         try {
           const res = await fetch(`${LOCAL_API}/api/progress/all`)
           if (res.ok) {
@@ -147,32 +148,71 @@ export default function SpotifyDownloaderApp() {
             })
           }
         } catch (e) { }
-      }, 500)
+      }, 1000)
 
+      // 1. Initial request to start the job
       const res = await fetch(`${LOCAL_API}/api/download-playlist-zip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tracks, playlistName }),
       })
 
-      clearInterval(interval)
-
       if (!res.ok) {
+        clearInterval(progressInterval)
         const errorData = await res.json().catch(() => ({}))
-        throw new Error(errorData.message || "Failed to download playlist")
+        throw new Error(errorData.message || "Failed to start playlist download")
       }
 
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `${playlistName || "Playlist"}.zip`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
+      const { job_id } = await res.json()
+      if (!job_id) {
+        clearInterval(progressInterval)
+        throw new Error("No job ID received from server")
+      }
 
-      toast.success("Playlist downloaded", { id: "download-toast" })
+      // 2. Poll for job status
+      let jobFinished = false
+      let success = false
+
+      while (!jobFinished) {
+        // Wait 2 seconds between polls
+        await new Promise(resolve => setTimeout(resolve, 2000))
+
+        try {
+          const statusRes = await fetch(`${LOCAL_API}/api/job-status/${job_id}`)
+          if (!statusRes.ok) continue
+
+          const job = await statusRes.json()
+          if (job.status === "completed") {
+            jobFinished = true
+            success = true
+          } else if (job.status === "error") {
+            jobFinished = true
+            throw new Error(job.message || "Background processing failed")
+          } else {
+            toast.loading("Downloading and zipping tracks...", { id: "download-toast" })
+          }
+        } catch (e: any) {
+          if (e.message.includes("Background processing failed")) throw e
+          // Ignore network errors during polling
+        }
+      }
+
+      clearInterval(progressInterval)
+
+      if (success) {
+        // 3. Trigger the actual file download
+        toast.loading("Finalizing ZIP file...", { id: "download-toast" })
+        const downloadUrl = `${LOCAL_API}/api/download-job/${job_id}`
+
+        const a = document.createElement("a")
+        a.href = downloadUrl
+        a.download = `${playlistName || "Playlist"}.zip`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+
+        toast.success("Playlist downloaded", { id: "download-toast" })
+      }
 
       setTimeout(() => {
         setTrackProgress({})
