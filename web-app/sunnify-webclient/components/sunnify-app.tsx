@@ -119,6 +119,15 @@ export default function SunnifyApp() {
       setIsDownloadingAll(true)
       toast.loading("Zipping playlist, this might take a while...", { id: "zip-toast" })
 
+      // Reset frontend progress for all tracks
+      setTrackProgress((prev) => {
+        const ns = { ...prev }
+        tracks.forEach(track => {
+          ns[track.id] = 0
+        })
+        return ns
+      })
+
       const interval = setInterval(async () => {
         try {
           const res = await fetch(`${LOCAL_API}/api/progress/all`)
