@@ -1,4 +1,4 @@
-import SpotifyDownloaderApp from "@/components/spotify-downloader-app"
+import SpotifyDownloaderApp from "@/components/app"
 
 export default function Home() {
   return (

@@ -417,7 +417,7 @@ def download_playlist_zip():
             list(executor.map(process_track_for_zip, tracks))
         
         # Zip the directory - ensure playlist_name isn't empty after sanitization
-        safe_playlist_name = sanitize_filename(playlist_name) or "Sunnify_Playlist"
+        safe_playlist_name = sanitize_filename(playlist_name) or "Spotify_Playlist"
         
         # Check if we have any files to zip
         if not os.listdir(output_dir):

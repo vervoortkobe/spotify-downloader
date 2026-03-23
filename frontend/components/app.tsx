@@ -25,7 +25,7 @@ interface Track {
   downloadLink: string
 }
 
-export default function SunnifyApp() {
+export default function SpotifyDownloaderApp() {
   const [playlistLink, setPlaylistLink] = useState("")
 
   useEffect(() => {
