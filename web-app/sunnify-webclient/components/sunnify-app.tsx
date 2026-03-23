@@ -233,27 +233,48 @@ export default function SunnifyApp() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-black text-white">
-      {/* Animated background */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-1/4 -top-1/4 h-[800px] w-[800px] rounded-full bg-green-500/10 blur-[120px]" />
-        <div className="absolute -bottom-1/4 -right-1/4 h-[600px] w-[600px] rounded-full bg-emerald-500/10 blur-[100px]" />
-        <div className="absolute left-1/2 top-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-green-600/5 blur-[80px]" />
+      {/* Animated background - scaled down for mobile */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-1/4 -top-1/4 h-[400px] w-[400px] sm:h-[800px] sm:w-[800px] rounded-full bg-green-500/10 blur-[80px] sm:blur-[120px]" />
+        <div className="absolute -bottom-1/4 -right-1/4 h-[300px] w-[300px] sm:h-[600px] sm:w-[600px] rounded-full bg-emerald-500/10 blur-[60px] sm:blur-[100px]" />
+        <div className="absolute left-1/2 top-1/2 h-[200px] w-[200px] sm:h-[400px] sm:w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-green-600/5 blur-[50px] sm:blur-[80px]" />
       </div>
 
       <Toaster
-        position="top-center"
+        position={typeof window !== 'undefined' && window.innerWidth < 640 ? "bottom-center" : "top-center"}
         toastOptions={{
           style: { background: "#1a1a1a", color: "#fff", border: "1px solid #333" },
         }}
       />
 
-      <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-8 sm:px-6 lg:px-8">
+      <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
+        {/* Header */}
+        <header className="mb-8 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/20">
+              <Sparkles className="h-6 w-6 text-black" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
+                Sunnify<span className="text-green-500">.</span>
+              </h1>
+              <p className="hidden text-xs font-medium text-gray-500 sm:block">Spotify Playlist Downloader</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1.5 border border-white/10 backdrop-blur-md">
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">System Ready</span>
+            </div>
+          </div>
+        </header>
+
         {/* Main Content */}
-        <div className="grid flex-1 gap-8 lg:grid-cols-[1fr,380px]">
+        <div className="grid flex-1 gap-4 sm:gap-8 lg:grid-cols-[1fr,380px]">
           {/* Left Column */}
           <div className="space-y-6">
             {/* Search Card */}
-            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl transition-all hover:border-green-500/30 hover:bg-white/[0.07]">
+            <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur-xl transition-all hover:border-green-500/30 hover:bg-white/[0.07]">
               <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-green-500/10 blur-3xl transition-all group-hover:bg-green-500/20" />
 
               <div className="relative">
@@ -262,7 +283,7 @@ export default function SunnifyApp() {
                   <h2 className="text-xl font-bold">Enter Spotify URL</h2>
                 </div>
 
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                   <div className="relative flex-1">
                     <Input
                       type="text"
@@ -276,7 +297,7 @@ export default function SunnifyApp() {
                   <Button
                     onClick={handleProcess}
                     disabled={isProcessing}
-                    className="h-14 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 px-8 text-base font-bold text-black shadow-lg shadow-green-500/25 transition-all hover:scale-105 hover:shadow-green-500/40 disabled:scale-100 disabled:opacity-50"
+                    className="h-14 w-full sm:w-auto rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 px-8 text-base font-bold text-black shadow-lg shadow-green-500/25 transition-all hover:scale-105 hover:shadow-green-500/40 disabled:scale-100 disabled:opacity-50"
                   >
                     {isProcessing ? (
                       <Loader2 className="h-6 w-6 animate-spin" />
@@ -315,7 +336,7 @@ export default function SunnifyApp() {
 
             {/* Track List */}
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
-              <div className="border-b border-white/10 px-8 py-5 flex justify-between items-center">
+              <div className="border-b border-white/10 px-6 sm:px-8 py-4 sm:py-5 flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
                 <h2 className="text-xl font-bold">
                   {tracks.length > 0 ? `${tracks.length} Tracks` : "Track List"}
                 </h2>
@@ -323,7 +344,7 @@ export default function SunnifyApp() {
                   <Button
                     onClick={downloadAll}
                     disabled={isDownloadingAll}
-                    className="h-10 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 px-4 text-sm font-bold text-black shadow-lg shadow-green-500/25 transition-all hover:scale-105 hover:shadow-green-500/40 disabled:scale-100 disabled:opacity-50"
+                    className="h-10 w-full sm:w-auto rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 px-4 text-sm font-bold text-black shadow-lg shadow-green-500/25 transition-all hover:scale-105 hover:shadow-green-500/40 disabled:scale-100 disabled:opacity-50"
                   >
                     {isDownloadingAll ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -346,13 +367,13 @@ export default function SunnifyApp() {
                   </p>
                 </div>
               ) : (
-                <ScrollArea className="h-[600px]">
+                <ScrollArea className="h-[400px] sm:h-[600px]">
                   <div className="divide-y divide-white/5">
                     {tracks.map((track, index) => (
                       <div key={track.id || index} className="relative flex flex-col">
                         <div
                           onClick={() => setSelectedTrack(track)}
-                          className={`flex cursor-pointer items-center gap-4 px-6 py-4 transition-all hover:bg-white/5 ${selectedTrack?.id === track.id ? "bg-green-500/10" : ""
+                          className={`flex cursor-pointer items-center gap-3 sm:gap-4 px-4 py-3 sm:px-6 sm:py-4 transition-all hover:bg-white/5 ${selectedTrack?.id === track.id ? "bg-green-500/10" : ""
                             }`}
                         >
                           <span className="w-8 text-center text-sm font-medium text-gray-500">
@@ -362,14 +383,14 @@ export default function SunnifyApp() {
                             <Image
                               src={track.cover}
                               alt=""
-                              width={56}
-                              height={56}
-                              className="h-14 w-14 rounded-lg object-cover shadow-lg"
+                              width={48}
+                              height={48}
+                              className="h-12 w-12 sm:h-14 sm:w-14 rounded-lg object-cover shadow-lg"
                               unoptimized
                             />
                           ) : (
-                            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-white/10">
-                              <Music2 className="h-6 w-6 text-gray-500" />
+                            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-lg bg-white/10">
+                              <Music2 className="h-5 w-5 sm:h-6 sm:w-6 text-gray-500" />
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
@@ -396,7 +417,7 @@ export default function SunnifyApp() {
                           </Button>
                         </div>
                         {trackProgress[track.id] !== undefined && (
-                          <div className="absolute bottom-0 left-0 right-0 px-6 pb-1.5 pointer-events-none flex items-center gap-2">
+                          <div className="absolute bottom-0 left-0 right-0 px-4 sm:px-6 pb-1.5 pointer-events-none flex items-center gap-2">
                             {trackProgress[track.id] === -1 ? (
                               <div className="flex-1 bg-red-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-red-400">
                                 Song not found on YouTube
@@ -430,7 +451,7 @@ export default function SunnifyApp() {
                 <h2 className="font-bold">Track Details</h2>
               </div>
 
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 {selectedTrack ? (
                   <div className="space-y-6">
                     <div className="relative mx-auto aspect-square w-full max-w-[280px] overflow-hidden rounded-2xl shadow-2xl shadow-black/50">
