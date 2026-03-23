@@ -396,7 +396,9 @@ def download_playlist_zip():
         output_dir = os.path.join(temp_dir, sanitize_filename(playlist_name))
         os.makedirs(output_dir, exist_ok=True)
         
-        for track in tracks:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def process_track_for_zip(track):
             try:
                 track_id = track.get("id", "tmp_id")
                 track_title = track.get("title", "Unknown Title")
@@ -405,21 +407,18 @@ def download_playlist_zip():
                 release_date = track.get("releaseDate", "")
                 cover_url = track.get("cover", "")
                 
-                # Progress already reset above, but double check
                 final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir)
                 
-                if not final_path or not os.path.exists(final_path):
-                    progress_store[track_id] = -1.0
-                    continue
-
-                # Make sure file name is user-friendly inside zip
-                user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
-                if os.path.exists(final_path) and not final_path == user_friendly_name:
-                    shutil.move(final_path, user_friendly_name)
-                    
+                if final_path and os.path.exists(final_path):
+                    # Make sure file name is user-friendly inside zip
+                    user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
+                    if not final_path == user_friendly_name:
+                        shutil.move(final_path, user_friendly_name)
             except Exception as track_e:
                 print(f"Error on track {track.get('title')}: {track_e}")
-                continue # Skip failing tracks
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            list(executor.map(process_track_for_zip, tracks))
         
         # Zip the directory
         zip_path = os.path.join(temp_dir, f"{sanitize_filename(playlist_name)}.zip")
