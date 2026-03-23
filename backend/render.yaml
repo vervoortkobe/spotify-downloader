@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sunnify-backend
+    name: backend
     env: docker
     region: oregon
     plan: free
