@@ -2,15 +2,17 @@
   <defs>
     <linearGradient id="grad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
       <stop stop-color="#22c55e" />
-      <stop offset="1" stop-color="#059669" />
+      <stop offset="1" stop-color="#10b981" />
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="url(#grad)" />
+  <rect width="64" height="64" rx="16" fill="#09090b" />
+  <rect width="64" height="64" rx="16" fill="url(#grad)" fill-opacity="0.1" />
+  <rect x="1" y="1" width="62" height="62" rx="15" stroke="url(#grad)" stroke-opacity="0.2" stroke-width="2" />
   <g transform="translate(12, 12) scale(1.666)">
-    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-    <path d="M20 3v4" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M22 5h-4" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M4 17v2" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M5 18H3" stroke="black" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" fill="url(#grad)" />
+    <path d="M20 3v4" stroke="url(#grad)" stroke-width="2" stroke-linecap="round" />
+    <path d="M22 5h-4" stroke="url(#grad)" stroke-width="2" stroke-linecap="round" />
+    <path d="M4 17v2" stroke="url(#grad)" stroke-width="2" stroke-linecap="round" />
+    <path d="M5 18H3" stroke="url(#grad)" stroke-width="2" stroke-linecap="round" />
   </g>
 </svg>

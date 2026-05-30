@@ -195,6 +195,29 @@ def scrape_playlist():
         return jsonify({"event": "error", "data": {"message": f"Error: {e}"}}), 500
 
 progress_store = {}
+CANCELLED_TRACKS = set()
+CANCELLED_PLAYLIST_JOBS = set()
+
+@app.route("/api/cancel-track/<track_id>", methods=["POST"])
+def cancel_track(track_id):
+    """Cancel a downloading track by raising an exception in its hook."""
+    CANCELLED_TRACKS.add(track_id)
+    if track_id in progress_store:
+        del progress_store[track_id]
+    return jsonify({"status": "cancelled"})
+
+
+@app.route("/api/cancel-playlist/<job_id>", methods=["POST"])
+def cancel_playlist(job_id):
+    """Cancel a background playlist download job."""
+    job = JOB_STORE.get(job_id)
+    if not job:
+        return jsonify({"status": "not_found"}), 404
+
+    CANCELLED_PLAYLIST_JOBS.add(job_id)
+    job["status"] = "cancelled"
+    job["message"] = "Playlist download cancelled"
+    return jsonify({"status": "cancelled"})
 
 @app.route("/api/progress/<track_id>")
 def get_progress(track_id):
@@ -244,11 +267,17 @@ def apply_metadata(filepath, track_title, artists, album, release_date, cover_ur
     except Exception as e:
         print(f"Failed to write metadata: {e}")
 
-def download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir):
+def download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=None):
     search_query = f"ytsearch1:{track_title} {artists} audio"
     output_template = os.path.join(output_dir, f"%(title)s.%(ext)s")
     
+    if track_id in CANCELLED_TRACKS:
+        CANCELLED_TRACKS.discard(track_id)
+    
     def yt_progress_hook(d):
+        if track_id in CANCELLED_TRACKS or (job_id and job_id in CANCELLED_PLAYLIST_JOBS):
+            raise Exception("Download cancelled by user")
+            
         if d['status'] == 'downloading':
             try:
                 import re
@@ -426,7 +455,10 @@ def process_playlist_job(job_id, tracks, playlist_name):
                 release_date = track.get("releaseDate", "")
                 cover_url = track.get("cover", "")
                 
-                final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir)
+                if job_id in CANCELLED_PLAYLIST_JOBS:
+                    return
+
+                final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=job_id)
                 
                 if final_path and os.path.exists(final_path):
                     user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
@@ -437,6 +469,10 @@ def process_playlist_job(job_id, tracks, playlist_name):
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             list(executor.map(process_track_for_zip, tracks))
+
+        if job_id in CANCELLED_PLAYLIST_JOBS:
+            JOB_STORE[job_id] = {"status": "cancelled", "message": "Playlist download cancelled"}
+            return
         
         if not os.path.exists(output_dir) or not os.listdir(output_dir):
             JOB_STORE[job_id] = {"status": "error", "message": "No tracks found/downloaded"}
