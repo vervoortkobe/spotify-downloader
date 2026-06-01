@@ -30,6 +30,7 @@ interface Track {
   cover: string
   releaseDate: string
   downloadLink: string
+  youtubeUrl?: string
 }
 
 const getApiUrl = () => {
@@ -270,9 +271,15 @@ export default function SpotifyDownloaderApp() {
   // ---- Audio streaming ----
 
   const stopStream = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ""
+    const audio = audioRef.current
+    if (audio) {
+      audio.onerror = null
+      audio.onloadedmetadata = null
+      audio.ontimeupdate = null
+      audio.onended = null
+      audio.pause()
+      audio.src = ""
+      audio.load()
     }
     setStreamingTrackId(null)
     setIsPlaying(false)
@@ -931,11 +938,11 @@ export default function SpotifyDownloaderApp() {
                       {track.cover ? (
                         <div className="relative w-11 h-11 md:w-14 md:h-14 rounded-xl overflow-hidden shrink-0 shadow-md transition-transform duration-200 group-hover:translate-x-1">
                           <Image src={track.cover} alt="" fill className="object-cover" unoptimized />
-                          {selectedTrack?.id === track.id && (
-                            <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
-                              <div className="w-1 h-3 bg-emerald-300 rounded-full animate-bounce mx-0.5" style={{ animationDelay: '0ms' }} />
-                              <div className="w-1 h-4 bg-emerald-300 rounded-full animate-bounce mx-0.5" style={{ animationDelay: '150ms' }} />
-                              <div className="w-1 h-2 bg-emerald-300 rounded-full animate-bounce mx-0.5" style={{ animationDelay: '300ms' }} />
+                          {streamingTrackId === track.id && isPlaying && (
+                            <div className="absolute inset-0 bg-black/35 flex items-center justify-center gap-1">
+                              <div className="w-1.5 h-5 bg-emerald-500 rounded-full animate-smooth-bounce" style={{ animationDelay: '0ms' }} />
+                              <div className="w-1.5 h-7 bg-emerald-500 rounded-full animate-smooth-bounce" style={{ animationDelay: '150ms' }} />
+                              <div className="w-1.5 h-4 bg-emerald-500 rounded-full animate-smooth-bounce" style={{ animationDelay: '300ms' }} />
                             </div>
                           )}
                         </div>
@@ -1182,11 +1189,21 @@ export default function SpotifyDownloaderApp() {
                           </a>
                         </div>
                       ) : (
-                        <p className="text-xs text-zinc-600 italic">
-                          {youtubeUrls[selectedTrack.id]
-                            ? "Custom URL set — click ✏️ to change"
-                            : "Auto-detected — click ✏️ to override"}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          {(youtubeUrls[selectedTrack.id] || selectedTrack.youtubeUrl) ? (
+                            <a
+                              href={youtubeUrls[selectedTrack.id] || selectedTrack.youtubeUrl!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-emerald-400 transition-colors min-w-0"
+                            >
+                              <ExternalLink className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{youtubeUrls[selectedTrack.id] ? youtubeUrls[selectedTrack.id] : selectedTrack.youtubeUrl}</span>
+                            </a>
+                          ) : (
+                            <p className="text-xs text-zinc-600 italic">Auto-detected — click ✏️ to override</p>
+                          )}
+                        </div>
                       )}
                     </div>
 
