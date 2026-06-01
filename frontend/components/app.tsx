@@ -25,12 +25,48 @@ interface Track {
   downloadLink: string
 }
 
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000"
+let LOCAL_API = RAW_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
+if (!LOCAL_API.startsWith("http") && !LOCAL_API.startsWith("//") && LOCAL_API !== "") {
+  LOCAL_API = `https://${LOCAL_API}`
+}
+
 export default function SpotifyDownloaderApp() {
   const [playlistLink, setPlaylistLink] = useState("")
+
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null)
 
   useEffect(() => {
     setPlaylistLink("")
   }, [])
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      console.log(`[Health Check] Polling backend health at ${LOCAL_API}/api/health...`)
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 4000)
+        const res = await fetch(`${LOCAL_API}/api/health`, { signal: controller.signal })
+        clearTimeout(timeoutId)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.online) {
+            setBackendOnline(true)
+            console.log("[Health Check] Backend is online!")
+            return
+          }
+        }
+        setBackendOnline(false)
+        console.log("[Health Check] Backend returned non-OK status or not online.")
+      } catch (e) {
+        setBackendOnline(false)
+        console.error("[Health Check] Failed to reach backend:", e)
+      }
+    }
+
+    checkHealth()
+  }, [])
+
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [songsDownloaded, setSongsDownloaded] = useState(0)
   const [totalSongs, setTotalSongs] = useState(0)
@@ -51,13 +87,8 @@ export default function SpotifyDownloaderApp() {
   const playlistStartAbortRef = useRef<AbortController | null>(null)
   const playlistStatusAbortRef = useRef<AbortController | null>(null)
   const playlistCancelRequestedRef = useRef(false)
-  const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000"
-  let LOCAL_API = RAW_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
-  if (!LOCAL_API.startsWith("http") && !LOCAL_API.startsWith("//") && LOCAL_API !== "") {
-    LOCAL_API = `https://${LOCAL_API}`
-  }
 
-  const progressBarClassName = "h-2 bg-[#0f1f16] [&>div]:bg-emerald-700 rounded-full"
+  const progressBarClassName = "h-3 bg-[#0f1f16] [&>div]:bg-emerald-700 rounded-full"
   const allTracksSelected = tracks.length > 0 && selectedTrackIds.length === tracks.length
   const selectedDownloadTracks = tracks.filter((track) => selectedTrackIds.includes(track.id))
 
@@ -501,7 +532,23 @@ export default function SpotifyDownloaderApp() {
 
         {/* Header / Input Section */}
         <div className={`relative transition-all duration-700 ease-in-out flex flex-col items-center justify-center ${tracks.length > 0 ? "mb-8 md:mb-12" : "min-h-[76dvh] md:min-h-[70dvh] -translate-y-6 md:-translate-y-8 mb-0"}`}>
-          <div className="absolute right-0 top-0 z-20">
+          <div className="absolute right-0 top-0 z-20 flex items-center gap-2">
+            {backendOnline === null ? (
+              <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-pulse" />
+                Backend: Connecting
+              </span>
+            ) : backendOnline ? (
+              <span className="flex items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Backend: Online
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 rounded-full border border-red-900/75 bg-red-950/50 px-2.5 py-1 text-[10px] font-medium text-red-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                Backend: Offline
+              </span>
+            )}
             <div className="group relative">
               <button
                 type="button"
@@ -586,10 +633,26 @@ export default function SpotifyDownloaderApp() {
               </div>
               <button
                 onClick={handleProcess}
-                disabled={isProcessing}
-                className="w-full sm:w-auto bg-emerald-900/80 text-emerald-50 px-6 py-3.5 md:px-8 md:py-4 rounded-2xl font-semibold hover:bg-emerald-800/85 transition-all duration-300 hover:scale-105 disabled:opacity-70 flex items-center justify-center gap-2 shrink-0 border border-emerald-700/70 shadow-[0_0_20px_rgba(6,95,70,0.25)] disabled:hover:scale-100"
+                disabled={isProcessing || backendOnline === false}
+                className={`w-full sm:w-auto px-6 py-3.5 md:px-8 md:py-4 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 disabled:opacity-70 flex items-center justify-center gap-2 shrink-0 disabled:hover:scale-100 ${
+                  backendOnline === false
+                    ? "bg-red-900/30 text-red-300 border border-red-900/50 cursor-not-allowed"
+                    : "bg-emerald-900/80 text-emerald-50 hover:bg-emerald-800/85 border border-emerald-700/70 shadow-[0_0_20px_rgba(6,95,70,0.25)]"
+                }`}
               >
-                {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Download className="w-5 h-5" /> <span className="font-bold">Fetch</span></>}
+                {isProcessing ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : backendOnline === false ? (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                    <span className="font-bold">Offline</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-5 h-5" />
+                    <span className="font-bold">Fetch</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

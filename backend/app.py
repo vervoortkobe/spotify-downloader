@@ -540,7 +540,10 @@ def download_job(job_id):
 @app.route("/api/health")
 def health_check():
     """Health check endpoint for monitoring."""
-    return jsonify({"online": True})
+    print("[Health Check] Received check request from frontend", flush=True)
+    response = jsonify({"online": True})
+    print("[Health Check] Responding to health check: online=True", flush=True)
+    return response
 
 
 @app.route("/")
