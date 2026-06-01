@@ -58,9 +58,13 @@ export default function SpotifyDownloaderApp() {
         }
         setBackendOnline(false)
         console.log("[Health Check] Backend returned non-OK status or not online.")
-      } catch (e) {
+      } catch (e: any) {
         setBackendOnline(false)
-        console.error("[Health Check] Failed to reach backend:", e)
+        if (e?.name === "AbortError") {
+          console.warn("[Health Check] Health check request timed out.")
+        } else {
+          console.error("[Health Check] Failed to reach backend:", e)
+        }
       }
     }
 
@@ -513,8 +517,8 @@ export default function SpotifyDownloaderApp() {
             iconTheme: {
               primary: '#10b981',
               secondary: '#09090b',
-              },
             },
+          },
           error: {
             style: {
               border: "1px solid rgba(239, 68, 68, 0.2)",
@@ -530,79 +534,81 @@ export default function SpotifyDownloaderApp() {
 
       <main className="relative z-10 max-w-[1200px] mx-auto px-2 py-4 md:px-4 md:py-16 flex flex-col min-h-dvh">
 
-        {/* Header / Input Section */}
-        <div className={`relative transition-all duration-700 ease-in-out flex flex-col items-center justify-center ${tracks.length > 0 ? "mb-8 md:mb-12" : "min-h-[76dvh] md:min-h-[70dvh] -translate-y-6 md:-translate-y-8 mb-0"}`}>
-          <div className="absolute right-0 top-0 z-20 flex items-center gap-2">
-            {backendOnline === null ? (
-              <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-pulse" />
-                Backend: Connecting
-              </span>
-            ) : backendOnline ? (
-              <span className="flex items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Backend: Online
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 rounded-full border border-red-900/75 bg-red-950/50 px-2.5 py-1 text-[10px] font-medium text-red-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-                Backend: Offline
-              </span>
-            )}
-            <div className="group relative">
-              <button
-                type="button"
-                className="rounded-full border border-emerald-900/70 bg-emerald-950/70 px-3 py-1 text-xs font-medium text-emerald-200 shadow-lg shadow-black/20 transition-colors hover:bg-emerald-900/80 hover:text-emerald-100"
-                aria-label="Version information"
-              >
-                v2.0.0
-              </button>
-              <div className="pointer-events-none absolute right-0 top-full mt-3 w-[min(22rem,calc(100vw-1.5rem))] translate-y-1 rounded-2xl border border-emerald-900/80 bg-[#020604]/40 p-4 text-sm text-zinc-200 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/90">Version Roadmap</p>
-                    <div className="mt-2 space-y-3">
-                      <p className="text-sm font-semibold text-zinc-100">To Do</p>
-                      <div>
-                        <p className="font-semibold text-zinc-100">v4.0.0: Spotifull Web Player</p>
-                        <p className="mt-1 text-zinc-300">Build Spotifull as a web player that can stream and download songs from Spotify, YouTube and SoundCloud. It works the same as the Android app and supports the same features, but in your browser.</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">v3.0.0: Spotifull Android App</p>
-                        <p className="mt-1 text-zinc-300">Build Spotifull as an Android app that can stream and download tracks from Spotify, YouTube, and SoundCloud, with custom profiles, imported Spotify profiles, and saved playlist URLs.</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">v2.2.0: Multi-Source Downloads</p>
-                        <p className="mt-1 text-zinc-300">Add support for downloading songs and playlists from Spotify, YouTube, and SoundCloud.</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">v2.1.0: YouTube Source Review</p>
-                        <p className="mt-1 text-zinc-300">Add support for editing the fetched YouTube URL for a song from a given Spotify playlist when needed, in case the wrong track is found on YouTube, and stream tracks for quick review.</p>
-                      </div>
+        {/* Top Header Bar */}
+        <div className="w-full flex justify-end items-center gap-2 mb-6 md:mb-12 shrink-0">
+          {backendOnline === null ? (
+            <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-pulse" />
+              Backend: Connecting
+            </span>
+          ) : backendOnline ? (
+            <span className="flex items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              Backend: Online
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 rounded-full border border-red-900/75 bg-red-950/50 px-2.5 py-1 text-[10px] font-medium text-red-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+              Backend: Offline
+            </span>
+          )}
+          <div className="group relative">
+            <button
+              type="button"
+              className="rounded-full border border-emerald-900/70 bg-emerald-950/70 px-3 py-1 text-xs font-medium text-emerald-200 shadow-lg shadow-black/20 transition-colors hover:bg-emerald-900/80 hover:text-emerald-100"
+              aria-label="Version information"
+            >
+              v2.0.0
+            </button>
+            <div className="pointer-events-none absolute right-0 top-full mt-3 w-[min(22rem,calc(100vw-1.5rem))] translate-y-1 rounded-2xl border border-emerald-900/80 bg-[#020604]/40 p-4 text-sm text-zinc-200 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 z-30">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/90">Version Roadmap</p>
+                  <div className="mt-2 space-y-3">
+                    <p className="text-sm font-semibold text-zinc-100">To Do</p>
+                    <div>
+                      <p className="font-semibold text-zinc-100">v4.0.0: Spotifull Web Player</p>
+                      <p className="mt-1 text-zinc-300">Build Spotifull as a web player that can stream and download songs from Spotify, YouTube and SoundCloud. It works the same as the Android app and supports the same features, but in your browser.</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-zinc-100">v3.0.0: Spotifull Android App</p>
+                      <p className="mt-1 text-zinc-300">Build Spotifull as an Android app that can stream and download tracks from Spotify, YouTube, and SoundCloud, with custom profiles, imported Spotify profiles, and saved playlist URLs.</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-zinc-100">v2.2.0: Multi-Source Downloads</p>
+                      <p className="mt-1 text-zinc-300">Add support for downloading songs and playlists from Spotify, YouTube, and SoundCloud.</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-zinc-100">v2.1.0: YouTube Source Review</p>
+                      <p className="mt-1 text-zinc-300">Add support for editing the fetched YouTube URL for a song from a given Spotify playlist when needed, in case the wrong track is found on YouTube, and stream tracks for quick review.</p>
                     </div>
                   </div>
-                  <div className="h-px bg-white/70" />
-                  <div>
-                    <p className="text-sm font-semibold text-zinc-100">History</p>
-                    <div className="mt-2 space-y-3">
-                      <div>
-                        <p className="font-semibold text-zinc-100">v2.0.0: Updated UI</p>
-                        <p className="mt-1 text-zinc-300">Refreshed the UI and added song selection and cancellation controls.</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">v1.0.0: Spotify Playlist Downloads</p>
-                        <p className="mt-1 text-zinc-300">Introduced Spotify URL processing for songs and playlists.</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">base: Sunnify Fork</p>
-                        <p className="mt-1 text-zinc-300">Forked from sunnypattel/sunnify-spotify-downloader.</p>
-                      </div>
+                </div>
+                <div className="h-px bg-white/70" />
+                <div>
+                  <p className="text-sm font-semibold text-zinc-100">History</p>
+                  <div className="mt-2 space-y-3">
+                    <div>
+                      <p className="font-semibold text-zinc-100">v2.0.0: Updated UI</p>
+                      <p className="mt-1 text-zinc-300">Refreshed the UI and added song selection and cancellation controls.</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-zinc-100">v1.0.0: Spotify Playlist Downloads</p>
+                      <p className="mt-1 text-zinc-300">Introduced Spotify URL processing for songs and playlists.</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-zinc-100">base: Sunnify Fork</p>
+                      <p className="mt-1 text-zinc-300">Forked from sunnypattel/sunnify-spotify-downloader.</p>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Header / Input Section */}
+        <div className={`relative transition-all duration-700 ease-in-out flex flex-col items-center justify-center ${tracks.length > 0 ? "mb-8 md:mb-12" : "flex-1 pb-12 md:pb-24"}`}>
 
           <div className="text-center space-y-4 mb-8 md:mb-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-900/70 text-xs font-medium mb-2 text-emerald-200">
@@ -634,11 +640,10 @@ export default function SpotifyDownloaderApp() {
               <button
                 onClick={handleProcess}
                 disabled={isProcessing || backendOnline === false}
-                className={`w-full sm:w-auto px-6 py-3.5 md:px-8 md:py-4 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 disabled:opacity-70 flex items-center justify-center gap-2 shrink-0 disabled:hover:scale-100 ${
-                  backendOnline === false
+                className={`w-full sm:w-auto px-6 py-3.5 md:px-8 md:py-4 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 disabled:opacity-70 flex items-center justify-center gap-2 shrink-0 disabled:hover:scale-100 ${backendOnline === false
                     ? "bg-red-900/30 text-red-300 border border-red-900/50 cursor-not-allowed"
                     : "bg-emerald-900/80 text-emerald-50 hover:bg-emerald-800/85 border border-emerald-700/70 shadow-[0_0_20px_rgba(6,95,70,0.25)]"
-                }`}
+                  }`}
               >
                 {isProcessing ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
