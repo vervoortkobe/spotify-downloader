@@ -41,7 +41,6 @@ export default function SpotifyDownloaderApp() {
   }, [])
 
   useEffect(() => {
-    // Resolve correct API URL dynamically on mount (falls back to current browser host on port 5000 if env is empty)
     if (process.env.NEXT_PUBLIC_API_URL) {
       let url = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
       if (!url.startsWith("http") && !url.startsWith("//") && url !== "") {
@@ -652,8 +651,8 @@ export default function SpotifyDownloaderApp() {
                 onClick={handleProcess}
                 disabled={isProcessing || backendOnline === false}
                 className={`w-full sm:w-auto px-6 py-3.5 md:px-8 md:py-4 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 disabled:opacity-70 flex items-center justify-center gap-2 shrink-0 disabled:hover:scale-100 ${backendOnline === false
-                    ? "bg-red-900/30 text-red-300 border border-red-900/50 cursor-not-allowed"
-                    : "bg-emerald-900/80 text-emerald-50 hover:bg-emerald-800/85 border border-emerald-700/70 shadow-[0_0_20px_rgba(6,95,70,0.25)]"
+                  ? "bg-red-900/30 text-red-300 border border-red-900/50 cursor-not-allowed"
+                  : "bg-emerald-900/80 text-emerald-50 hover:bg-emerald-800/85 border border-emerald-700/70 shadow-[0_0_20px_rgba(6,95,70,0.25)]"
                   }`}
               >
                 {isProcessing ? (
