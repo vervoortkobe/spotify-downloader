@@ -25,11 +25,20 @@ interface Track {
   downloadLink: string
 }
 
-const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000"
-let LOCAL_API = RAW_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
-if (!LOCAL_API.startsWith("http") && !LOCAL_API.startsWith("//") && LOCAL_API !== "") {
-  LOCAL_API = `https://${LOCAL_API}`
+const getApiUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const url = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
+    return url.match(/^https?:\/\/|^\/\//) ? url : `https://${url}`
+  }
+
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location
+    const port = hostname === "localhost" || hostname === "127.0.0.1" ? ":5000" : ""
+    return `${protocol}//${hostname}${port}`
+  }
 }
+
+let LOCAL_API = getApiUrl()
 
 export default function SpotifyDownloaderApp() {
   const [playlistLink, setPlaylistLink] = useState("")
@@ -41,15 +50,7 @@ export default function SpotifyDownloaderApp() {
   }, [])
 
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      let url = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
-      if (!url.startsWith("http") && !url.startsWith("//") && url !== "") {
-        url = `https://${url}`
-      }
-      LOCAL_API = url
-    } else if (typeof window !== "undefined") {
-      LOCAL_API = `${window.location.protocol}//${window.location.hostname}:5000`
-    }
+    LOCAL_API = getApiUrl()
 
     const checkHealth = async () => {
       console.log(`[Health Check] Polling backend health at ${LOCAL_API}/api/health...`)
