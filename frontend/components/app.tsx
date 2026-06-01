@@ -8,7 +8,14 @@ import {
   Loader2,
   Sparkles,
   Search,
-  Square
+  Square,
+  Play,
+  Pause,
+  Pencil,
+  X,
+  RotateCcw,
+  ExternalLink,
+  Radio
 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -103,6 +110,21 @@ export default function SpotifyDownloaderApp() {
   const playlistStatusAbortRef = useRef<AbortController | null>(null)
   const playlistCancelRequestedRef = useRef(false)
 
+  // YouTube URL override state
+  const [youtubeUrls, setYoutubeUrls] = useState<Record<string, string>>({})
+  const [isEditingYtUrl, setIsEditingYtUrl] = useState(false)
+  const [ytUrlDraft, setYtUrlDraft] = useState("")
+  const [isResolvingYtUrl, setIsResolvingYtUrl] = useState(false)
+  const [ytUrlMeta, setYtUrlMeta] = useState<Record<string, { title: string; channel: string; thumbnail: string; duration: number } | null>>({})
+
+  // Streaming state
+  const [streamingTrackId, setStreamingTrackId] = useState<string | null>(null)
+  const [isLoadingStream, setIsLoadingStream] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [streamProgress, setStreamProgress] = useState(0) // 0-1
+  const [streamDuration, setStreamDuration] = useState(0)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
   const progressBarClassName = "h-3 bg-[#0f1f16] [&>div]:bg-emerald-700 rounded-full"
   const allTracksSelected = tracks.length > 0 && selectedTrackIds.length === tracks.length
   const selectedDownloadTracks = tracks.filter((track) => selectedTrackIds.includes(track.id))
@@ -191,6 +213,139 @@ export default function SpotifyDownloaderApp() {
     }
   }
 
+  // ---- YouTube URL management ----
+
+  const startEditingYtUrl = (track: Track) => {
+    setYtUrlDraft(youtubeUrls[track.id] || "")
+    setIsEditingYtUrl(true)
+  }
+
+  const cancelEditingYtUrl = () => {
+    setIsEditingYtUrl(false)
+    setYtUrlDraft("")
+  }
+
+  const resetYtUrl = (trackId: string) => {
+    setYoutubeUrls((prev) => { const n = { ...prev }; delete n[trackId]; return n })
+    setYtUrlMeta((prev) => { const n = { ...prev }; delete n[trackId]; return n })
+    setIsEditingYtUrl(false)
+    setYtUrlDraft("")
+    toast.success("Reset to auto-detected YouTube source")
+  }
+
+  const saveYtUrl = async (track: Track) => {
+    const url = ytUrlDraft.trim()
+    if (!url) {
+      cancelEditingYtUrl()
+      return
+    }
+    if (!(url.includes("youtube.com") || url.includes("youtu.be"))) {
+      toast.error("Please enter a valid YouTube URL")
+      return
+    }
+    setIsResolvingYtUrl(true)
+    try {
+      const res = await fetch(`${LOCAL_API}/api/resolve-youtube-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ youtubeUrl: url }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Could not resolve URL")
+      }
+      const meta = await res.json()
+      setYoutubeUrls((prev) => ({ ...prev, [track.id]: url }))
+      setYtUrlMeta((prev) => ({ ...prev, [track.id]: meta }))
+      setIsEditingYtUrl(false)
+      setYtUrlDraft("")
+      toast.success("YouTube source updated")
+    } catch (err: any) {
+      toast.error(err.message || "Failed to resolve YouTube URL")
+    } finally {
+      setIsResolvingYtUrl(false)
+    }
+  }
+
+  // ---- Audio streaming ----
+
+  const stopStream = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ""
+    }
+    setStreamingTrackId(null)
+    setIsPlaying(false)
+    setIsLoadingStream(false)
+    setStreamProgress(0)
+    setStreamDuration(0)
+  }
+
+  const toggleStream = async (track: Track) => {
+    if (streamingTrackId === track.id && audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      } else {
+        audioRef.current.play()
+        setIsPlaying(true)
+      }
+      return
+    }
+
+    stopStream()
+
+    setStreamingTrackId(track.id)
+    setIsLoadingStream(true)
+
+    try {
+      const youtubeUrl = youtubeUrls[track.id] || ""
+      const params = new URLSearchParams()
+      if (youtubeUrl) {
+        params.set("youtube_url", youtubeUrl)
+      } else {
+        params.set("title", track.title)
+        params.set("artists", track.artists)
+      }
+      const streamUrl = `${LOCAL_API}/api/stream?${params.toString()}`
+
+      if (!audioRef.current) {
+        audioRef.current = new Audio()
+      }
+      const audio = audioRef.current
+      audio.src = streamUrl
+      audio.onloadedmetadata = () => {
+        setStreamDuration(audio.duration || 0)
+        setIsLoadingStream(false)
+      }
+      audio.ontimeupdate = () => {
+        if (audio.duration) setStreamProgress(audio.currentTime / audio.duration)
+      }
+      audio.onended = () => { setIsPlaying(false); setStreamProgress(1) }
+      audio.onerror = () => { toast.error("Stream error"); stopStream() }
+      await audio.play()
+      setIsPlaying(true)
+    } catch (err: any) {
+      toast.error(err.message || "Failed to stream track")
+      stopStream()
+    } finally {
+      setIsLoadingStream(false)
+    }
+  }
+
+  const seekStream = (ratio: number) => {
+    if (audioRef.current && streamDuration) {
+      audioRef.current.currentTime = ratio * streamDuration
+      setStreamProgress(ratio)
+    }
+  }
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => { stopStream() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const cancelPlaylistDownload = async () => {
     playlistCancelRequestedRef.current = true
     clearPlaylistProgressInterval()
@@ -229,10 +384,11 @@ export default function SpotifyDownloaderApp() {
         } catch (e) { }
       }, 500)
 
+      const youtubeUrl = youtubeUrls[track.id] || ""
       const res = await fetch(`${LOCAL_API}/api/download-track`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(track),
+        body: JSON.stringify({ ...track, youtubeUrl }),
         signal: controller.signal
       })
 
@@ -337,7 +493,10 @@ export default function SpotifyDownloaderApp() {
       const res = await fetch(`${LOCAL_API}/api/download-playlist-zip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tracks: selectedDownloadTracks, playlistName }),
+        body: JSON.stringify({
+          tracks: selectedDownloadTracks.map((t) => ({ ...t, youtubeUrl: youtubeUrls[t.id] || "" })),
+          playlistName
+        }),
         signal: playlistStartAbortRef.current?.signal,
       })
 
@@ -569,7 +728,7 @@ export default function SpotifyDownloaderApp() {
               className="rounded-full border border-emerald-900/70 bg-emerald-950/70 px-3 py-1 text-xs font-medium text-emerald-200 shadow-lg shadow-black/20 transition-colors hover:bg-emerald-900/80 hover:text-emerald-100"
               aria-label="Version information"
             >
-              v2.0.0
+              v2.1.0
             </button>
             <div className="pointer-events-none absolute right-0 top-full mt-3 w-[min(22rem,calc(100vw-1.5rem))] translate-y-1 rounded-2xl border border-emerald-900/80 bg-[#020604]/40 p-4 text-sm text-zinc-200 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 z-30">
               <div className="space-y-3">
@@ -589,16 +748,16 @@ export default function SpotifyDownloaderApp() {
                       <p className="font-semibold text-zinc-100">v2.2.0: Multi-Source Downloads</p>
                       <p className="mt-1 text-zinc-300">Add support for downloading songs and playlists from Spotify, YouTube, and SoundCloud.</p>
                     </div>
-                    <div>
-                      <p className="font-semibold text-zinc-100">v2.1.0: YouTube Source Review</p>
-                      <p className="mt-1 text-zinc-300">Add support for editing the fetched YouTube URL for a song from a given Spotify playlist when needed, in case the wrong track is found on YouTube, and stream tracks for quick review.</p>
-                    </div>
                   </div>
                 </div>
                 <div className="h-px bg-white/70" />
                 <div>
                   <p className="text-sm font-semibold text-zinc-100">History</p>
                   <div className="mt-2 space-y-3">
+                    <div>
+                      <p className="font-semibold text-zinc-100">v2.1.0: YouTube Source Review</p>
+                      <p className="mt-1 text-zinc-300">Added in-browser track previewing and YouTube URL override per track, so you can fix wrong matches before downloading.</p>
+                    </div>
                     <div>
                       <p className="font-semibold text-zinc-100">v2.0.0: Updated UI</p>
                       <p className="mt-1 text-zinc-300">Refreshed the UI and added song selection and cancellation controls.</p>
@@ -872,7 +1031,165 @@ export default function SpotifyDownloaderApp() {
                   <h3 className="text-2xl font-bold text-white mb-2 leading-tight px-2">{selectedTrack.title}</h3>
                   <p className="text-zinc-400 font-medium text-base mb-8">{selectedTrack.artists}</p>
 
-                  <div className="w-full space-y-3">
+                <div className="w-full space-y-3">
+                    {/* Stream / Preview Player */}
+                    <div className="w-full rounded-2xl border border-emerald-900/50 bg-emerald-950/20 p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <button
+                          id={`stream-btn-${selectedTrack.id}`}
+                          onClick={() => toggleStream(selectedTrack)}
+                          disabled={isLoadingStream && streamingTrackId !== selectedTrack.id}
+                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 hover:scale-105 active:scale-95 border disabled:opacity-50 disabled:hover:scale-100 ${
+                            streamingTrackId === selectedTrack.id
+                              ? "bg-emerald-900/70 border-emerald-700/70 text-emerald-200 hover:bg-emerald-800/80"
+                              : "bg-zinc-900/70 border-zinc-700/60 text-zinc-300 hover:bg-zinc-800/80 hover:text-white"
+                          }`}
+                          aria-label={streamingTrackId === selectedTrack.id && isPlaying ? "Pause preview" : "Play preview"}
+                        >
+                          {isLoadingStream && streamingTrackId === selectedTrack.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : streamingTrackId === selectedTrack.id && isPlaying ? (
+                            <Pause className="w-4 h-4 fill-current" />
+                          ) : (
+                            <Play className="w-4 h-4 fill-current" />
+                          )}
+                          <span>
+                            {isLoadingStream && streamingTrackId === selectedTrack.id
+                              ? "Loading…"
+                              : streamingTrackId === selectedTrack.id && isPlaying
+                              ? "Pause"
+                              : streamingTrackId === selectedTrack.id
+                              ? "Resume"
+                              : "Preview"}
+                          </span>
+                          <Radio className="w-3.5 h-3.5 opacity-60" />
+                        </button>
+                        {streamingTrackId === selectedTrack.id && (
+                          <button
+                            onClick={stopStream}
+                            className="p-2 rounded-xl border border-zinc-700/60 bg-zinc-900/50 text-zinc-400 hover:text-white hover:bg-zinc-800/70 transition-all duration-200"
+                            aria-label="Stop preview"
+                          >
+                            <Square className="w-3.5 h-3.5 fill-current" />
+                          </button>
+                        )}
+                        <span className="ml-auto text-xs text-zinc-500 font-mono tabular-nums">
+                          {streamingTrackId === selectedTrack.id && streamDuration > 0
+                            ? `${Math.floor(streamProgress * streamDuration / 60).toString().padStart(2, "0")}:${Math.floor((streamProgress * streamDuration) % 60).toString().padStart(2, "0")} / ${Math.floor(streamDuration / 60).toString().padStart(2, "0")}:${Math.floor(streamDuration % 60).toString().padStart(2, "0")}`
+                            : ""}
+                        </span>
+                      </div>
+                      {streamingTrackId === selectedTrack.id && (
+                        <div
+                          className="relative h-1.5 w-full rounded-full bg-zinc-800 cursor-pointer overflow-hidden"
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            seekStream((e.clientX - rect.left) / rect.width)
+                          }}
+                          role="slider"
+                          aria-valuenow={Math.round(streamProgress * 100)}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label="Playback position"
+                        >
+                          <div
+                            className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] transition-[width] duration-200 rounded-full"
+                            style={{ width: `${streamProgress * 100}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* YouTube Source Section */}
+                    <div className="w-full rounded-2xl border border-zinc-800/70 bg-zinc-900/30 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">YouTube Source</p>
+                        <div className="flex items-center gap-1.5">
+                          {youtubeUrls[selectedTrack.id] && (
+                            <button
+                              onClick={() => resetYtUrl(selectedTrack.id)}
+                              className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-all duration-200"
+                              title="Reset to auto-detected source"
+                              aria-label="Reset YouTube source"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {!isEditingYtUrl ? (
+                            <button
+                              onClick={() => startEditingYtUrl(selectedTrack)}
+                              className="p-1.5 rounded-lg text-zinc-500 hover:text-emerald-400 hover:bg-emerald-950/40 transition-all duration-200"
+                              title="Edit YouTube URL"
+                              aria-label="Edit YouTube source URL"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={cancelEditingYtUrl}
+                              className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-all duration-200"
+                              aria-label="Cancel editing"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {isEditingYtUrl ? (
+                        <div className="space-y-2">
+                          <input
+                            id={`yt-url-input-${selectedTrack.id}`}
+                            type="url"
+                            placeholder="https://www.youtube.com/watch?v=..."
+                            value={ytUrlDraft}
+                            onChange={(e) => setYtUrlDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveYtUrl(selectedTrack)
+                              if (e.key === "Escape") cancelEditingYtUrl()
+                            }}
+                            className="w-full bg-zinc-900/80 border border-zinc-700/60 rounded-xl px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-emerald-700/70 focus:ring-1 focus:ring-emerald-900/50 transition-all"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => saveYtUrl(selectedTrack)}
+                            disabled={isResolvingYtUrl}
+                            className="w-full py-2 rounded-xl bg-emerald-900/70 hover:bg-emerald-800/80 border border-emerald-700/60 text-emerald-200 text-xs font-semibold transition-all duration-200 hover:scale-[1.02] disabled:opacity-60 flex items-center justify-center gap-2"
+                          >
+                            {isResolvingYtUrl ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            {isResolvingYtUrl ? "Resolving…" : "Save URL"}
+                          </button>
+                        </div>
+                      ) : ytUrlMeta[selectedTrack.id] ? (
+                        <div className="flex items-center gap-3">
+                          {ytUrlMeta[selectedTrack.id]!.thumbnail && (
+                            <div className="relative w-14 h-10 rounded-lg overflow-hidden shrink-0 border border-zinc-700/50">
+                              <Image src={ytUrlMeta[selectedTrack.id]!.thumbnail} alt="" fill className="object-cover" unoptimized />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium text-zinc-200 truncate">{ytUrlMeta[selectedTrack.id]!.title}</p>
+                            <p className="text-[11px] text-zinc-500 truncate">{ytUrlMeta[selectedTrack.id]!.channel}</p>
+                          </div>
+                          <a
+                            href={youtubeUrls[selectedTrack.id]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 transition-all duration-200"
+                            aria-label="Open on YouTube"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-zinc-600 italic">
+                          {youtubeUrls[selectedTrack.id]
+                            ? "Custom URL set — click ✏️ to change"
+                            : "Auto-detected — click ✏️ to override"}
+                        </p>
+                      )}
+                    </div>
+
                     <button
                       onClick={() => {
                         if (isDownloadingTrack === selectedTrack.id) void cancelTrackDownload(selectedTrack.id);
