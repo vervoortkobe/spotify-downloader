@@ -267,8 +267,14 @@ def apply_metadata(filepath, track_title, artists, album, release_date, cover_ur
     except Exception as e:
         print(f"Failed to write metadata: {e}")
 
-def download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=None):
-    search_query = f"ytsearch1:{track_title} {artists} audio"
+def download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=None, youtube_url=None):
+    """Download a track from YouTube (by search or direct URL) to output_dir as MP3.
+    
+    Args:
+        youtube_url: Optional explicit YouTube URL to use instead of searching.
+    """
+    # Use direct URL if provided, otherwise build a search query
+    source = youtube_url if youtube_url else f"ytsearch1:{track_title} {artists} audio"
     output_template = os.path.join(output_dir, f"%(title)s.%(ext)s")
     
     if track_id in CANCELLED_TRACKS:
@@ -307,7 +313,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     }
     try:
         with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(search_query, download=True)
+            info = ydl.extract_info(source, download=True)
             
             # If search produced no results, skip this track
             if not info or ('entries' in info and not info['entries']):
@@ -354,9 +360,194 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     return final_path
 
 
+@app.route("/api/resolve-youtube-url", methods=["POST"])
+def resolve_youtube_url():
+    """Resolve a YouTube URL and return its metadata (title, thumbnail, duration).
+    
+    Request body:
+        {"youtubeUrl": "https://www.youtube.com/watch?v=..."}
+
+    Response:
+        {"title": "...", "thumbnail": "...", "duration": 123, "videoId": "..."}
+    """
+    try:
+        data = request.get_json()
+        youtube_url = (data or {}).get("youtubeUrl", "").strip()
+
+        if not youtube_url:
+            return jsonify({"error": "No URL provided"}), 400
+
+        # Basic validation
+        if not ("youtube.com" in youtube_url or "youtu.be" in youtube_url):
+            return jsonify({"error": "Not a valid YouTube URL"}), 400
+
+        ydl_opts = {
+            "quiet": True,
+            "noplaylist": True,
+            "skip_download": True,
+        }
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(youtube_url, download=False)
+
+        if not info:
+            return jsonify({"error": "Could not resolve URL"}), 400
+
+        # Pick best thumbnail
+        thumbnails = info.get("thumbnails", [])
+        thumbnail = ""
+        if thumbnails:
+            jpegs = [t for t in thumbnails if ".jpg" in t.get("url", "") or ".jpeg" in t.get("url", "")]
+            thumbnail = (jpegs[-1].get("url") if jpegs else thumbnails[-1].get("url")) or ""
+        if not thumbnail:
+            thumbnail = info.get("thumbnail", "")
+
+        return jsonify({
+            "title": info.get("title", ""),
+            "thumbnail": thumbnail,
+            "duration": info.get("duration", 0),
+            "videoId": info.get("id", ""),
+            "channel": info.get("channel", info.get("uploader", "")),
+        })
+
+    except Exception as e:
+        print(f"resolve-youtube-url error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+def _resolve_audio_stream(source):
+    """Resolve a YouTube source to a direct audio stream URL.
+    
+    Returns (audio_url, content_type, error_message).
+    If error_message is not None, the other values are None.
+    """
+    ydl_opts = {
+        "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
+        "noplaylist": True,
+        "quiet": True,
+        "skip_download": True,
+        "socket_timeout": 15,
+    }
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(source, download=False)
+    except Exception as e:
+        return None, None, f"Failed to resolve source: {e}"
+
+    if not info:
+        return None, None, "Could not resolve source"
+
+    if "entries" in info and info["entries"]:
+        info = info["entries"][0]
+
+    audio_url = None
+    content_type = "audio/webm"
+    formats = info.get("formats", [])
+    for fmt in reversed(formats):
+        if fmt.get("vcodec") == "none" and fmt.get("url"):
+            ext = fmt.get("ext", "webm")
+            content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
+            audio_url = fmt["url"]
+            break
+    if not audio_url:
+        audio_url = info.get("url", "")
+
+    if not audio_url:
+        return None, None, "No streamable audio URL found"
+
+    return audio_url, content_type, None
+
+
+def _proxy_audio_stream(audio_url, content_type, range_header=None):
+    """Proxy an audio stream from YouTube to the client.
+    
+    Returns a Flask Response with streaming content.
+    """
+    from flask import Response, stream_with_context
+
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "*/*",
+    }
+    if range_header:
+        headers["Range"] = range_header
+
+    upstream = requests.get(audio_url, headers=headers, stream=True, timeout=30)
+
+    status = upstream.status_code
+    resp_headers = {
+        "Content-Type": upstream.headers.get("Content-Type", content_type),
+        "Accept-Ranges": "bytes",
+    }
+    for h in ("Content-Length", "Content-Range"):
+        if h in upstream.headers:
+            resp_headers[h] = upstream.headers[h]
+
+    def generate():
+        for chunk in upstream.iter_content(chunk_size=65536):
+            if chunk:
+                yield chunk
+
+    return Response(
+        stream_with_context(generate()),
+        status=status,
+        headers=resp_headers,
+        direct_passthrough=True,
+    )
+
+
+@app.route("/api/stream", methods=["GET"])
+def stream_track_get():
+    """Stream audio via GET (for direct use with <audio> elements).
+    
+    Query params:
+        youtube_url=... (optional, preferred)
+        title=...       (fallback search)
+        artists=...     (fallback search)
+    """
+    youtube_url = request.args.get("youtube_url", "").strip()
+    title = request.args.get("title", "").strip()
+    artists = request.args.get("artists", "").strip()
+
+    if not youtube_url and not (title or artists):
+        return jsonify({"error": "Provide youtube_url or title+artists"}), 400
+
+    source = youtube_url if youtube_url else f"ytsearch1:{title} {artists} audio"
+
+    audio_url, content_type, err = _resolve_audio_stream(source)
+    if err:
+        return jsonify({"error": err}), 404
+
+    range_header = request.headers.get("Range", None)
+    return _proxy_audio_stream(audio_url, content_type, range_header)
+
+
+@app.route("/api/stream-track", methods=["POST"])
+def stream_track():
+    """Stream audio via POST (legacy, used by older frontend builds)."""
+    data = request.get_json()
+    youtube_url = (data or {}).get("youtubeUrl", "").strip()
+    title = (data or {}).get("title", "").strip()
+    artists = (data or {}).get("artists", "").strip()
+
+    if not youtube_url and not (title or artists):
+        return jsonify({"error": "Provide youtubeUrl or title+artists"}), 400
+
+    source = youtube_url if youtube_url else f"ytsearch1:{title} {artists} audio"
+
+    audio_url, content_type, err = _resolve_audio_stream(source)
+    if err:
+        return jsonify({"error": err}), 404
+
+    range_header = request.headers.get("Range", None)
+    return _proxy_audio_stream(audio_url, content_type, range_header)
+
+
 @app.route("/api/download-track", methods=["POST"])
 def download_track():
-    """Download a single track and return the MP3 file."""
+    """Download a single track and return the MP3 file.
+    
+    Accepts an optional 'youtubeUrl' field to override the automatic YouTube search.
+    """
     try:
         data = request.get_json()
         if not data:
@@ -369,6 +560,7 @@ def download_track():
         album = data.get("album", "")
         release_date = data.get("releaseDate", "")
         cover_url = data.get("cover", "")
+        youtube_url = data.get("youtubeUrl", "").strip() or None
 
         temp_dir = tempfile.mkdtemp()
         
@@ -389,7 +581,7 @@ def download_track():
             # But we can try passing the directory for automated cleanup when OS removes TMP.
             return response
             
-        final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, temp_dir)
+        final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, temp_dir, youtube_url=youtube_url)
         
         if not final_path or not os.path.exists(final_path):
             progress_store[track_id] = -1.0
@@ -454,11 +646,12 @@ def process_playlist_job(job_id, tracks, playlist_name):
                 album = track.get("album", "")
                 release_date = track.get("releaseDate", "")
                 cover_url = track.get("cover", "")
+                youtube_url = track.get("youtubeUrl", "").strip() or None
                 
                 if job_id in CANCELLED_PLAYLIST_JOBS:
                     return
 
-                final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=job_id)
+                final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=job_id, youtube_url=youtube_url)
                 
                 if final_path and os.path.exists(final_path):
                     user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
