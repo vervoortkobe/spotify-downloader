@@ -41,6 +41,17 @@ export default function SpotifyDownloaderApp() {
   }, [])
 
   useEffect(() => {
+    // Resolve correct API URL dynamically on mount (falls back to current browser host on port 5000 if env is empty)
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      let url = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
+      if (!url.startsWith("http") && !url.startsWith("//") && url !== "") {
+        url = `https://${url}`
+      }
+      LOCAL_API = url
+    } else if (typeof window !== "undefined") {
+      LOCAL_API = `${window.location.protocol}//${window.location.hostname}:5000`
+    }
+
     const checkHealth = async () => {
       console.log(`[Health Check] Polling backend health at ${LOCAL_API}/api/health...`)
       try {
