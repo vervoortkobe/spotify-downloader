@@ -2,6 +2,7 @@ services:
   backend:
     build:
       context: ./backend
+    container_name: spotify-downloader-backend
     ports:
       - "5000:5000"
     restart: unless-stopped
@@ -9,6 +10,7 @@ services:
   frontend:
     build:
       context: ./frontend
+    container_name: spotify-downloader-frontend
     ports:
       - "3001:3001"
     depends_on:
