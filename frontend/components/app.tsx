@@ -548,17 +548,17 @@ export default function SpotifyDownloaderApp() {
         {/* Top Header Bar */}
         <div className="w-full flex justify-end items-center gap-2 mb-6 md:mb-12 shrink-0">
           {backendOnline === null ? (
-            <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
+            <span className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[10px] font-medium text-zinc-400 transition-all duration-300 hover:bg-zinc-800/80 hover:text-zinc-200 shadow-lg shadow-black/20 cursor-default">
               <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-pulse" />
               Backend: Connecting
             </span>
           ) : backendOnline ? (
-            <span className="flex items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
+            <span className="flex items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100 shadow-lg shadow-black/20 cursor-default">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               Backend: Online
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 rounded-full border border-red-900/75 bg-red-950/50 px-2.5 py-1 text-[10px] font-medium text-red-300">
+            <span className="flex items-center gap-1.5 rounded-full border border-red-900/75 bg-red-950/50 px-2.5 py-1 text-[10px] font-medium text-red-300 transition-all duration-300 hover:bg-red-900/80 hover:text-red-100 shadow-lg shadow-black/20 cursor-default">
               <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
               Backend: Offline
             </span>
@@ -622,7 +622,7 @@ export default function SpotifyDownloaderApp() {
         <div className={`relative transition-all duration-700 ease-in-out flex flex-col items-center justify-center ${tracks.length > 0 ? "mb-8 md:mb-12" : "flex-1 pb-12 md:pb-24"}`}>
 
           <div className="text-center space-y-4 mb-8 md:mb-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-900/70 text-xs font-medium mb-2 text-emerald-200">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-900/70 text-xs font-medium mb-2 text-emerald-200 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100 shadow-lg shadow-black/20 cursor-default">
               <Sparkles className="w-3 h-3 text-emerald-400" />
               <span>Spotifull Playlist Downloader</span>
             </div>
