@@ -6,13 +6,19 @@ services:
     ports:
       - "5000:5000"
     restart: unless-stopped
+    environment:
+      - FRONTEND_URL
 
   frontend:
     build:
       context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL
     container_name: spotify-downloader-frontend
     ports:
       - "3001:3001"
     depends_on:
       - backend
     restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL
