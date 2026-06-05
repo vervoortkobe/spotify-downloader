@@ -532,62 +532,6 @@ class SpotifyEmbedAPI:
         return track_info
 
 
-# Legacy class kept for compatibility - redirects to embed API
-class SpotifyDownAPI:
-    """Legacy wrapper - spotifydown mirrors are dead.
-
-    This class is kept for API compatibility but now raises errors
-    since all spotifydown endpoints are non-functional.
-    """
-
-    def __init__(self, **kwargs) -> None:
-        pass
-
-    def get_playlist_metadata(self, playlist_id: str) -> PlaylistInfo:
-        raise SpotifyDownAPIError(
-            "spotifydown mirrors are no longer functional. Use SpotifyEmbedAPI instead."
-        )
-
-    def iter_playlist_tracks(self, playlist_id: str) -> Iterator[TrackInfo]:
-        raise SpotifyDownAPIError(
-            "spotifydown mirrors are no longer functional. Use SpotifyEmbedAPI instead."
-        )
-
-    def get_track_download_link(self, track_id: str) -> str | None:
-        raise SpotifyDownAPIError(
-            "spotifydown mirrors are no longer functional. "
-            "Use yt-dlp YouTube search for audio downloads."
-        )
-
-    def get_track_youtube_id(self, track_id: str) -> str | None:
-        raise SpotifyDownAPIError(
-            "spotifydown mirrors are no longer functional. "
-            "Use yt-dlp YouTube search for audio downloads."
-        )
-
-
-# Legacy class kept for compatibility - token endpoint is blocked
-class SpotifyPublicAPI:
-    """Legacy wrapper - Spotify's anonymous token endpoint is blocked.
-
-    This class is kept for API compatibility but now raises errors
-    since the /get_access_token endpoint returns 403.
-    """
-
-    def __init__(self, **kwargs) -> None:
-        pass
-
-    def get_playlist_metadata(self, playlist_id: str) -> PlaylistInfo:
-        raise SpotifyDownAPIError(
-            "Spotify's anonymous token endpoint is blocked. Use SpotifyEmbedAPI instead."
-        )
-
-    def iter_playlist_tracks(self, playlist_id: str) -> Iterator[TrackInfo]:
-        raise SpotifyDownAPIError(
-            "Spotify's anonymous token endpoint is blocked. Use SpotifyEmbedAPI instead."
-        )
-
-
 class PlaylistClient:
     """High-level client for fetching Spotify playlist data.
 
@@ -741,10 +685,8 @@ __all__ = [
     "PlaylistClient",
     "PlaylistInfo",
     "RateLimitError",
-    "SpotifyDownAPI",
-    "SpotifyDownAPIError",
     "SpotifyEmbedAPI",
-    "SpotifyPublicAPI",
+    "SpotifyDownAPIError",
     "TrackInfo",
     "detect_spotify_url_type",
     "extract_playlist_id",
