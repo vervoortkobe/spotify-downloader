@@ -46,6 +46,119 @@ def get_yt_info(track_title, artists):
         return "", ""
 
 
+def detect_url_service(url):
+    """Detect service, type, and ID from a URL.
+    Returns (service, type, id) or (None, None, None).
+    """
+    url = url.strip()
+
+    # Spotify
+    m = re.search(r'open\.spotify\.com/(track|playlist)/([a-zA-Z0-9]+)', url)
+    if m:
+        return 'spotify', m.group(1), m.group(2)
+
+    # YouTube (watch / youtu.be / shorts / music.youtube.com)
+    m = re.search(r'(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})', url)
+    if m:
+        return 'youtube', 'track', m.group(1)
+
+    # YouTube (playlist)
+    m = re.search(r'(?:youtube\.com|music\.youtube\.com)/playlist\?.*list=([a-zA-Z0-9_-]+)', url)
+    if m:
+        return 'youtube', 'playlist', m.group(1)
+
+    # SoundCloud (set/playlist)
+    m = re.search(r'soundcloud\.com/([a-zA-Z0-9_-]+)/sets/', url)
+    if m:
+        return 'soundcloud', 'playlist', url
+
+    # SoundCloud (track)
+    m = re.search(r'soundcloud\.com/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)', url)
+    if m:
+        return 'soundcloud', 'track', url
+
+    return None, None, None
+
+
+def scrape_external_data(url, service, url_type):
+    """Scrape track/playlist data from YouTube or SoundCloud using yt-dlp.
+    Returns (playlist_name, tracks_list).
+    """
+    is_flat = url_type == "playlist"
+    ydl_opts = {
+        "quiet": True,
+        "skip_download": True,
+        "extract_flat": is_flat,
+    }
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    if not info:
+        raise ValueError(f"Could not fetch data from {url}")
+
+    if url_type == "playlist":
+        entries = info.get("entries", [])
+        tracks = []
+        for entry in entries:
+            if not entry:
+                continue
+            vid = entry.get("id", "")
+            entry_url = entry.get("url") or entry.get("webpage_url") or ""
+            if not entry_url and vid:
+                if service == "youtube":
+                    entry_url = f"https://www.youtube.com/watch?v={vid}"
+                elif service == "soundcloud":
+                    uploader = entry.get("uploader_id") or entry.get("channel_id") or ""
+                    slug = entry.get("title", "").lower().replace(" ", "-") if entry.get("title") else ""
+                    if uploader and slug:
+                        entry_url = f"https://soundcloud.com/{uploader}/{slug}"
+
+            thumbnail = entry.get("thumbnail", "")
+            if not thumbnail and service == "youtube" and vid:
+                thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+            if not thumbnail and service == "soundcloud":
+                thumbnails = entry.get("thumbnails", [])
+                if thumbnails:
+                    thumbnail = thumbnails[-1].get("url", "")
+
+            tracks.append({
+                "id": vid or entry_url,
+                "title": entry.get("title", "Unknown Track"),
+                "artists": entry.get("channel") or entry.get("uploader") or "",
+                "album": "",
+                "cover": thumbnail,
+                "releaseDate": "",
+                "downloadLink": "",
+                "sourceUrl": entry_url,
+            })
+        playlist_name = info.get("title", f"{service.title()} Playlist")
+    else:
+        vid = info.get("id", "")
+        thumbnail = info.get("thumbnail", "")
+        thumbnails = info.get("thumbnails", [])
+        if thumbnails:
+            jpegs = [t for t in thumbnails if ".jpg" in t.get("url", "") or ".jpeg" in t.get("url", "")]
+            thumbnail = (jpegs[-1].get("url") if jpegs else thumbnails[-1].get("url")) or thumbnail
+        if not thumbnail and service == "youtube" and vid:
+            thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+
+        entry_url = info.get("webpage_url") or url
+        artists = info.get("channel") or info.get("uploader") or ""
+        tracks = [{
+            "id": vid or url,
+            "title": info.get("title", "Unknown Track"),
+            "artists": artists,
+            "album": "",
+            "cover": thumbnail,
+            "releaseDate": "",
+            "downloadLink": "",
+            "sourceUrl": entry_url,
+        }]
+        playlist_name = f"{info.get('title', 'Track')} - {artists}" if artists else info.get('title', 'Track')
+
+    return playlist_name, tracks
+
+
 def get_playlist_client():
     global _playlist_client
     if _playlist_client is None:
@@ -70,7 +183,7 @@ def apply_metadata(filepath, track_title, artists, album, release_date, cover_ur
         audio = MP3(filepath)
         if audio.tags is None:
             audio.add_tags()
-        audio.tags.save(filepath, v2_version=3)
+            audio.tags.save(filepath, v2_version=3)
 
         audio_easy = EasyID3(filepath)
         audio_easy["title"] = track_title or ""
@@ -95,8 +208,8 @@ def apply_metadata(filepath, track_title, artists, album, release_date, cover_ur
         print(f"Failed to write metadata: {e}")
 
 
-def download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=None, youtube_url=None):
-    source = youtube_url if youtube_url else f"ytsearch1:{track_title} {artists} audio"
+def download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=None, source_url=None):
+    source = source_url if source_url else f"ytsearch1:{track_title} {artists} audio"
     output_template = os.path.join(output_dir, f"%(title)s.%(ext)s")
 
     if track_id in CANCELLED_TRACKS:
@@ -122,8 +235,6 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         "quiet": True,
         "outtmpl": output_template,
         "progress_hooks": [yt_progress_hook],
-        "javascript_runtime": "deno",
-        "remote_components": ["ejs:github"],
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -156,14 +267,16 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         progress_store[track_id] = 95.0
 
         thumbnails = info.get('thumbnails', [])
-        cover_url = None
+        dl_cover = None
         if thumbnails:
-            jpegs = [t for t in thumbnails if '.jpg' in t.get('url', '') or '.jpeg' in t.get('url', '')]
+            jpegs = [t for t in thumbnails if '.jpg' in t.get('url', '') or '.jpeg' in t.get('url', '') or '.png' in t.get('url', '')]
             if jpegs:
-                cover_url = jpegs[-1].get('url')
+                dl_cover = jpegs[-1].get('url')
 
-        if not cover_url:
-            cover_url = info.get('thumbnail')
+        if not dl_cover:
+            dl_cover = info.get('thumbnail')
+
+        cover_url = cover_url or dl_cover if source_url else dl_cover or cover_url
 
         print(f"Applying metadata to {final_path} with cover: {cover_url}")
         apply_metadata(final_path, track_title, artists, album, release_date, cover_url)
@@ -178,11 +291,11 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
 
 def _resolve_audio_stream(source):
     ydl_opts = {
-        "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
+        "format": "bestaudio/best",
         "noplaylist": True,
         "quiet": True,
         "skip_download": True,
-        "socket_timeout": 15,
+        "socket_timeout": 30,
     }
     try:
         with YoutubeDL(ydl_opts) as ydl:
@@ -205,6 +318,13 @@ def _resolve_audio_stream(source):
             content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
             audio_url = fmt["url"]
             break
+    if not audio_url:
+        for fmt in reversed(formats):
+            if fmt.get("url"):
+                ext = fmt.get("ext", "webm")
+                content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
+                audio_url = fmt["url"]
+                break
     if not audio_url:
         audio_url = info.get("url", "")
 

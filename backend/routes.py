@@ -18,7 +18,7 @@ from spotifydown_api import (
 )
 
 from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
-from utils import get_yt_info, get_playlist_client, download_track_logic, _resolve_audio_stream, _proxy_audio_stream
+from utils import get_yt_info, get_playlist_client, download_track_logic, _resolve_audio_stream, _proxy_audio_stream, detect_url_service, scrape_external_data
 
 routes = Blueprint("routes", __name__)
 
@@ -27,48 +27,34 @@ routes = Blueprint("routes", __name__)
 def scrape_playlist():
     try:
         data = request.get_json()
-        spotify_url = data.get("playlistUrl", "").strip()
+        input_url = data.get("playlistUrl", "").strip()
+        service = data.get("service", "auto")
 
-        if not spotify_url:
+        if not input_url:
             return jsonify({"event": "error", "data": {"message": "No URL provided"}}), 400
 
-        url_type, item_id = detect_spotify_url_type(spotify_url)
+        if service == "auto":
+            detected_service, url_type, item_id = detect_url_service(input_url)
+            service = detected_service
+        else:
+            _, url_type, item_id = detect_url_service(input_url)
 
-        if url_type == "unknown" or not item_id:
-            return (
-                jsonify({"event": "error", "data": {"message": "Invalid Spotify URL"}}),
-                400,
-            )
+        if not service:
+            return jsonify({"event": "error", "data": {"message": "Unsupported URL — please use Spotify, YouTube, or SoundCloud."}}), 400
 
-        client = get_playlist_client()
+        if not url_type or not item_id:
+            return jsonify({"event": "error", "data": {"message": "Could not parse URL"}}), 400
+
         tracks: list[dict] = []
 
-        if url_type == "track":
-            api = SpotifyEmbedAPI()
-            track = api.get_track(item_id)
+        if service == "spotify":
+            client = get_playlist_client()
 
-            yt_cover, yt_url = get_yt_info(track.title, track.artists)
-
-            tracks.append({
-                "id": track.spotify_id,
-                "title": track.title,
-                "artists": track.artists,
-                "album": track.album or "",
-                "cover": yt_cover or track.cover_url or "",
-                "releaseDate": track.release_date or "",
-                "downloadLink": "",
-                "youtubeUrl": yt_url,
-            })
-            playlist_name = f"{track.title} - {track.artists}"
-        else:
-            metadata = client.get_playlist_metadata(item_id)
-            playlist_name = f"{metadata.name} - {metadata.owner or 'Unknown'}"
-
-            raw_tracks = list(client.iter_playlist_tracks(item_id))
-
-            def process_track(track):
+            if url_type == "track":
+                api = SpotifyEmbedAPI()
+                track = api.get_track(item_id)
                 yt_cover, yt_url = get_yt_info(track.title, track.artists)
-                return {
+                tracks.append({
                     "id": track.spotify_id,
                     "title": track.title,
                     "artists": track.artists,
@@ -76,13 +62,35 @@ def scrape_playlist():
                     "cover": yt_cover or track.cover_url or "",
                     "releaseDate": track.release_date or "",
                     "downloadLink": "",
-                    "youtubeUrl": yt_url,
-                }
+                    "sourceUrl": yt_url,
+                })
+                playlist_name = f"{track.title} - {track.artists}"
+            else:
+                metadata = client.get_playlist_metadata(item_id)
+                playlist_name = f"{metadata.name} - {metadata.owner or 'Unknown'}"
+                raw_tracks = list(client.iter_playlist_tracks(item_id))
 
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                tracks = list(executor.map(process_track, raw_tracks))
+                def process_track(track):
+                    yt_cover, yt_url = get_yt_info(track.title, track.artists)
+                    return {
+                        "id": track.spotify_id,
+                        "title": track.title,
+                        "artists": track.artists,
+                        "album": track.album or "",
+                        "cover": yt_cover or track.cover_url or "",
+                        "releaseDate": track.release_date or "",
+                        "downloadLink": "",
+                        "sourceUrl": yt_url,
+                    }
 
-            gc.collect()
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    tracks = list(executor.map(process_track, raw_tracks))
+
+                gc.collect()
+        elif service in ("youtube", "soundcloud"):
+            playlist_name, tracks = scrape_external_data(input_url, service, url_type)
+        else:
+            return jsonify({"event": "error", "data": {"message": f"Unsupported service: {service}"}}), 400
 
         gc.collect()
 
@@ -177,14 +185,14 @@ def resolve_youtube_url():
 
 @routes.route("/api/stream", methods=["GET"])
 def stream_track_get():
-    youtube_url = request.args.get("youtube_url", "").strip()
+    source_url = request.args.get("source_url", "").strip()
     title = request.args.get("title", "").strip()
     artists = request.args.get("artists", "").strip()
 
-    if not youtube_url and not (title or artists):
-        return jsonify({"error": "Provide youtube_url or title+artists"}), 400
+    if not source_url and not (title or artists):
+        return jsonify({"error": "Provide source_url or title+artists"}), 400
 
-    source = youtube_url if youtube_url else f"ytsearch1:{title} {artists} audio"
+    source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
 
     audio_url, content_type, err = _resolve_audio_stream(source)
     if err:
@@ -197,14 +205,14 @@ def stream_track_get():
 @routes.route("/api/stream-track", methods=["POST"])
 def stream_track():
     data = request.get_json()
-    youtube_url = (data or {}).get("youtubeUrl", "").strip()
+    source_url = (data or {}).get("sourceUrl", "").strip()
     title = (data or {}).get("title", "").strip()
     artists = (data or {}).get("artists", "").strip()
 
-    if not youtube_url and not (title or artists):
-        return jsonify({"error": "Provide youtubeUrl or title+artists"}), 400
+    if not source_url and not (title or artists):
+        return jsonify({"error": "Provide sourceUrl or title+artists"}), 400
 
-    source = youtube_url if youtube_url else f"ytsearch1:{title} {artists} audio"
+    source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
 
     audio_url, content_type, err = _resolve_audio_stream(source)
     if err:
@@ -228,7 +236,7 @@ def download_track():
         album = data.get("album", "")
         release_date = data.get("releaseDate", "")
         cover_url = data.get("cover", "")
-        youtube_url = data.get("youtubeUrl", "").strip() or None
+        source_url = data.get("sourceUrl", "").strip() or None
 
         temp_dir = tempfile.mkdtemp()
 
@@ -236,7 +244,7 @@ def download_track():
         def remove_file(response):
             return response
 
-        final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, temp_dir, youtube_url=youtube_url)
+        final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, temp_dir, source_url=source_url)
 
         if not final_path or not os.path.exists(final_path):
             progress_store[track_id] = -1.0
@@ -297,12 +305,12 @@ def process_playlist_job(job_id, tracks, playlist_name):
                 album = track.get("album", "")
                 release_date = track.get("releaseDate", "")
                 cover_url = track.get("cover", "")
-                youtube_url = track.get("youtubeUrl", "").strip() or None
+                source_url = track.get("sourceUrl", "").strip() or None
 
                 if job_id in CANCELLED_PLAYLIST_JOBS:
                     return
 
-                final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=job_id, youtube_url=youtube_url)
+                final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=job_id, source_url=source_url)
 
                 if final_path and os.path.exists(final_path):
                     user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
