@@ -10,7 +10,7 @@ from mutagen.id3 import APIC, ID3
 from mutagen.mp3 import MP3
 from flask import Response, stream_with_context
 
-from spotifydown_api import PlaylistClient
+from spotify_client import PlaylistClient
 from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
 
 

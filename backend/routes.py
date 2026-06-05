@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Blueprint, jsonify, request, send_file, after_this_request
 
-from spotifydown_api import (
+from spotify_client import (
     SpotifyDownAPIError,
     SpotifyEmbedAPI,
     detect_spotify_url_type,
