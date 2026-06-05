@@ -879,8 +879,12 @@ export default function SpotifyDownloaderApp() {
             boxShadow: `0 0 20px ${t.glowRgba}`,
           },
           success: {
+            style: {
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+              boxShadow: "0 0 20px rgba(16, 185, 129, 0.15)",
+            },
             iconTheme: {
-              primary: t.primary,
+              primary: "#10b981",
               secondary: "#09090b",
             },
           },
