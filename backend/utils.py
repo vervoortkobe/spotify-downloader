@@ -21,7 +21,6 @@ def get_yt_info(track_title, artists):
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
-            "extract_flat": True
         }
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(search_query, download=False)
@@ -276,7 +275,12 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         if not dl_cover:
             dl_cover = info.get('thumbnail')
 
-        cover_url = cover_url or dl_cover if source_url else dl_cover or cover_url
+        if not dl_cover:
+            vid = info.get('id')
+            if vid:
+                dl_cover = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+
+        cover_url = (cover_url or dl_cover) if source_url else (dl_cover or cover_url)
 
         print(f"Applying metadata to {final_path} with cover: {cover_url}")
         apply_metadata(final_path, track_title, artists, album, release_date, cover_url)
