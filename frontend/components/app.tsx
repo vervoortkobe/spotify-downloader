@@ -1069,8 +1069,13 @@ export default function SpotifyDownloaderApp() {
                   placeholder="https://open.spotify.com/playlist/..."
                   value={playlistLink}
                   onChange={(e) => {
-                    setPlaylistLink(e.target.value)
-                    if (selectedService === "auto") setShowServiceDropdown(false)
+                    const val = e.target.value
+                    setPlaylistLink(val)
+                    setShowServiceDropdown(false)
+                    const detected = detectServiceFromUrl(val)
+                    if (detected && selectedService !== "auto" && detected !== selectedService) {
+                      setSelectedService("auto")
+                    }
                   }}
                   onKeyDown={(e) => e.key === "Enter" && !isProcessing && handleProcess()}
                   className="w-full flex-1 border-none bg-transparent px-3 py-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-0 md:text-base"
