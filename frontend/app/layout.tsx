@@ -15,8 +15,17 @@ const geistMono = localFont({
 })
 
 export const metadata: Metadata = {
-  title: "Spotify Downloader",
-  description: "Download your Spotify playlists and tracks.",
+  title: "Spotifull Playlist Downloader",
+  description: "Download playlists and tracks from Spotify, YouTube, and SoundCloud.",
+  openGraph: {
+    images: [
+      {
+        url: "https://spotdl.vervoortkobe.be.eu.org/favicon.svg",
+        width: 64,
+        height: 64,
+      },
+    ],
+  },
 }
 
 export default function RootLayout({
