@@ -1,0 +1,31 @@
+name: spotifull_app
+description: "Spotifull - Download & stream playlists from Spotify, YouTube, SoundCloud"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  firebase_core: any
+  firebase_auth: any
+  cloud_firestore: any
+  google_sign_in: any
+  provider: ^6.1.5
+  http: ^1.3.0
+  audioplayers: any
+  path_provider: ^2.1.5
+  cached_network_image: ^3.4.1
+  flutter_secure_storage: any
+  share_plus: ^10.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
