@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  firebase_core: any
+  firebase_core: ^4.11.0
   firebase_auth: any
   cloud_firestore: any
   google_sign_in: any
@@ -20,7 +20,7 @@ dependencies:
   path_provider: ^2.1.5
   cached_network_image: ^3.4.1
   flutter_secure_storage: any
-  share_plus: ^10.1.4
+  share_plus: ^13.1.0
 
 dev_dependencies:
   flutter_test:

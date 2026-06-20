@@ -41,11 +41,11 @@ class TrackTile extends StatelessWidget {
                   width: 48,
                   height: 48,
                   fit: BoxFit.cover,
-                  placeholder: (_, __) => Container(
+                  placeholder: (_, _) => Container(
                     color: Color(0xFF1a1a2e),
                     child: Icon(Icons.music_note, color: Colors.grey[600]),
                   ),
-                  errorWidget: (_, __, ___) => Container(
+                  errorWidget: (_, _, _) => Container(
                     color: Color(0xFF1a1a2e),
                     child: Icon(Icons.music_note, color: Colors.grey[600]),
                   ),
@@ -69,10 +69,7 @@ class TrackTile extends StatelessWidget {
         ),
         subtitle: Text(
           track.artists,
-          style: TextStyle(
-            color: Color(0xFFa1a1aa),
-            fontSize: 12,
-          ),
+          style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -101,7 +98,9 @@ class TrackTile extends StatelessWidget {
             if (onPlay != null)
               IconButton(
                 icon: Icon(
-                  isSelected ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                  isSelected
+                      ? Icons.pause_circle_filled
+                      : Icons.play_circle_filled,
                   color: isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa),
                   size: 28,
                 ),

@@ -13,8 +13,8 @@ class AuthService {
   Future<UserModel?> signInWithGoogle() async {
     try {
       await GoogleSignIn.instance.initialize();
-      final GoogleSignInAccount? googleUser = await GoogleSignIn.instance.authenticate();
-      if (googleUser == null) return null;
+      final GoogleSignInAccount googleUser = await GoogleSignIn.instance
+          .authenticate();
 
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
@@ -38,7 +38,10 @@ class AuthService {
         isAdmin: false,
         isApproved: false,
       );
-      await _firestore.collection('users').doc(user.uid).set(newUser.toFirestore());
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(newUser.toFirestore());
       return newUser;
     } catch (e) {
       print('Sign in failed: $e');
@@ -58,10 +61,16 @@ class AuthService {
   }
 
   Future<void> updateSpotifyUrl(String uid, String url) async {
-    await _firestore.collection('users').doc(uid).update({'spotifyProfileUrl': url});
+    await _firestore.collection('users').doc(uid).update({
+      'spotifyProfileUrl': url,
+    });
   }
 
-  Future<void> updateListeningStatus(String uid, String? trackId, String? jamSessionId) async {
+  Future<void> updateListeningStatus(
+    String uid,
+    String? trackId,
+    String? jamSessionId,
+  ) async {
     await _firestore.collection('users').doc(uid).update({
       'currentListeningTo': trackId,
       'currentJamSession': jamSessionId,
@@ -70,7 +79,9 @@ class AuthService {
 
   Future<List<UserModel>> getAllUsers() async {
     final snap = await _firestore.collection('users').get();
-    return snap.docs.map((d) => UserModel.fromFirestore(d.data(), d.id)).toList();
+    return snap.docs
+        .map((d) => UserModel.fromFirestore(d.data(), d.id))
+        .toList();
   }
 
   Future<void> approveUser(String uid) async {
@@ -82,7 +93,8 @@ class AuthService {
   }
 
   Future<int> getActiveUserCount() async {
-    final snap = await _firestore.collection('users')
+    final snap = await _firestore
+        .collection('users')
         .where('currentListeningTo', isNull: false)
         .get();
     return snap.docs.length;

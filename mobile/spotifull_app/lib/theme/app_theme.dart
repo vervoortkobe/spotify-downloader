@@ -32,7 +32,7 @@ class SpotifullTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: muted.withOpacity(0.3)),
+          borderSide: BorderSide(color: muted.withValues(alpha: 0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -40,13 +40,15 @@ class SpotifullTheme {
         ),
         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         labelStyle: TextStyle(color: muted),
-        hintStyle: TextStyle(color: muted.withOpacity(0.5)),
+        hintStyle: TextStyle(color: muted.withValues(alpha: 0.5)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
           foregroundColor: Colors.black,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           padding: EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
@@ -54,14 +56,18 @@ class SpotifullTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: primary,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: primary,
           side: BorderSide(color: primary),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           padding: EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
       ),
@@ -72,17 +78,61 @@ class SpotifullTheme {
         margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       ),
       textTheme: TextTheme(
-        displayLarge: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: text),
-        displayMedium: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: text),
-        headlineLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: text),
-        headlineMedium: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: text),
-        titleLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: text),
-        titleMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: text),
-        bodyLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: text),
-        bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: text),
-        bodySmall: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: muted),
-        labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: text),
-        labelSmall: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: muted),
+        displayLarge: TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
+          color: text,
+        ),
+        displayMedium: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: text,
+        ),
+        headlineLarge: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w600,
+          color: text,
+        ),
+        headlineMedium: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: text,
+        ),
+        titleLarge: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: text,
+        ),
+        titleMedium: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: text,
+        ),
+        bodyLarge: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.normal,
+          color: text,
+        ),
+        bodyMedium: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.normal,
+          color: text,
+        ),
+        bodySmall: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.normal,
+          color: muted,
+        ),
+        labelLarge: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: text,
+        ),
+        labelSmall: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: muted,
+        ),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: surface,
@@ -90,14 +140,21 @@ class SpotifullTheme {
         unselectedItemColor: muted,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
-        selectedLabelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        selectedLabelStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
         unselectedLabelStyle: TextStyle(fontSize: 12),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: text),
+        titleTextStyle: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: text,
+        ),
         iconTheme: IconThemeData(color: text),
       ),
       snackBarTheme: SnackBarThemeData(
@@ -105,14 +162,14 @@ class SpotifullTheme {
         contentTextStyle: TextStyle(color: text, fontSize: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: primary.withOpacity(0.5)),
+          side: BorderSide(color: primary.withValues(alpha: 0.5)),
         ),
         behavior: SnackBarBehavior.floating,
       ),
       dividerTheme: DividerThemeData(color: card, thickness: 1),
       chipTheme: ChipThemeData(
         backgroundColor: card,
-        selectedColor: primary.withOpacity(0.3),
+        selectedColor: primary.withValues(alpha: 0.3),
         labelStyle: TextStyle(color: text, fontSize: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
@@ -131,8 +188,9 @@ class SpotifullTheme {
           return muted;
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return primary.withOpacity(0.5);
-          return muted.withOpacity(0.3);
+          if (states.contains(WidgetState.selected))
+            return primary.withValues(alpha: 0.5);
+          return muted.withValues(alpha: 0.3);
         }),
       ),
     );
