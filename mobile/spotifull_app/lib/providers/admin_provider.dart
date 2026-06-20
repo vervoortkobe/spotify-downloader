@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:spotifull_app/models/user_model.dart';
 import 'package:spotifull_app/services/auth_service.dart';
@@ -20,7 +21,7 @@ class AdminProvider extends ChangeNotifier {
       _users = await _authService.getAllUsers();
       _activeUserCount = await _authService.getActiveUserCount();
     } catch (e) {
-      print('Failed to load users: $e');
+      debugPrint('Failed to load users: $e');
     }
     _isLoading = false;
     notifyListeners();

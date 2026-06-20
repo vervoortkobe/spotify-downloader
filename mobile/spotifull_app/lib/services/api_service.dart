@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/track_model.dart';
 import '../models/playlist_model.dart';
@@ -31,7 +32,7 @@ class ApiService {
         source: service == 'auto' ? 'spotify' : service,
       );
     } catch (e) {
-      print('Scrape failed: $e');
+      debugPrint('Scrape failed: $e');
       return null;
     }
   }
@@ -47,7 +48,7 @@ class ApiService {
       // Returns a redirect URL or stream URL
       return response.body;
     } catch (e) {
-      print('Stream failed: $e');
+      debugPrint('Stream failed: $e');
       return null;
     }
   }
@@ -66,7 +67,7 @@ class ApiService {
       if (response.statusCode != 200) return null;
       return response.bodyBytes;
     } catch (e) {
-      print('Download failed: $e');
+      debugPrint('Download failed: $e');
       return null;
     }
   }

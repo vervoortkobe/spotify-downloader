@@ -252,6 +252,7 @@ class _ImportSheetState extends State<_ImportSheet> {
                       setState(() => _loading = false);
                       if (playlist != null) {
                         await prov.savePlaylist(auth.user!.uid, playlist);
+                        if (!context.mounted) return;
                         Navigator.pop(context);
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(

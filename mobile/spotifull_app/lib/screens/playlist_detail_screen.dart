@@ -4,7 +4,6 @@ import 'package:spotifull_app/models/playlist_model.dart';
 import 'package:spotifull_app/models/track_model.dart';
 import 'package:spotifull_app/providers/player_provider.dart';
 import 'package:spotifull_app/providers/auth_provider.dart';
-import 'package:spotifull_app/providers/playlist_provider.dart';
 import 'package:spotifull_app/widgets/track_tile.dart';
 import 'package:spotifull_app/screens/player_screen.dart';
 
@@ -72,7 +71,6 @@ class PlaylistDetailScreen extends StatelessWidget {
   void _sharePlaylist(BuildContext context) async {
     final auth = context.read<AuthProvider>();
     if (auth.user == null) return;
-    final prov = context.read<PlaylistProvider>();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Share feature coming soon')),
     );
