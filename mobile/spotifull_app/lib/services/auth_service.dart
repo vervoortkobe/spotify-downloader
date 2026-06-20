@@ -13,7 +13,12 @@ class AuthService {
 
   Future<UserModel?> signInWithGoogle() async {
     try {
-      await GoogleSignIn.instance.initialize();
+      // Android client ID from google-services.json OAuth client (client_type: 3)
+      const String serverClientId =
+          '393890062277-asirar78ga330bfu96rog9e3hfdbqm9u.apps.googleusercontent.com';
+      await GoogleSignIn.instance.initialize(
+        serverClientId: serverClientId,
+      );
       final GoogleSignInAccount googleUser = await GoogleSignIn.instance
           .authenticate();
 

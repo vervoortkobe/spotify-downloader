@@ -1,4 +1,4 @@
-package com.scooby.spotifull
+package com.example.spotifull
 
 import io.flutter.embedding.android.FlutterActivity
 
