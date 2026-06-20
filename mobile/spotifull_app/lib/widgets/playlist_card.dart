@@ -40,8 +40,8 @@ class PlaylistCard extends StatelessWidget {
                       width: 56,
                       height: 56,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => _placeholder(),
-                      errorWidget: (_, __, ___) => _placeholder(),
+                      placeholder: (_, _) => _placeholder(),
+                      errorWidget: (_, _, _) => _placeholder(),
                     )
                   : _placeholder(),
             ),
@@ -63,18 +63,19 @@ class PlaylistCard extends StatelessWidget {
                   SizedBox(height: 4),
                   Text(
                     '${playlist.tracks.length} tracks • ${playlist.source}${playlist.isCustom ? ' • Custom' : ''}',
-                    style: TextStyle(
-                      color: Color(0xFFa1a1aa),
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
                   ),
                 ],
               ),
             ),
-            if (trailing != null) trailing!,
+            ?trailing,
             if (showDelete)
               IconButton(
-                icon: Icon(Icons.delete_outline, color: Color(0xFFef4444), size: 20),
+                icon: Icon(
+                  Icons.delete_outline,
+                  color: Color(0xFFef4444),
+                  size: 20,
+                ),
                 onPressed: onDelete,
               ),
           ],
