@@ -188,8 +188,9 @@ class SpotifullTheme {
           return muted;
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected))
+          if (states.contains(WidgetState.selected)) {
             return primary.withValues(alpha: 0.5);
+          }
           return muted.withValues(alpha: 0.3);
         }),
       ),
