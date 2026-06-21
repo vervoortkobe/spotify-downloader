@@ -1,29 +1,27 @@
 import 'package:flutter/foundation.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
   Future<UserModel?> signInWithGoogle() async {
     try {
-      // Android client ID from google-services.json OAuth client (client_type: 3)
-      const String serverClientId =
-          '393890062277-asirar78ga330bfu96rog9e3hfdbqm9u.apps.googleusercontent.com';
-      await GoogleSignIn.instance.initialize(
-        serverClientId: serverClientId,
-      );
-      final GoogleSignInAccount googleUser = await GoogleSignIn.instance
-          .authenticate();
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return null;
 
-      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
       final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
@@ -31,9 +29,13 @@ class AuthService {
       final user = userCredential.user;
       if (user == null) return null;
 
-      final doc = await _firestore.collection('users').doc(user.uid).get();
-      if (doc.exists) {
-        return UserModel.fromFirestore(doc.data()!, user.uid);
+      try {
+        final doc = await _firestore.collection('users').doc(user.uid).get();
+        if (doc.exists) {
+          return UserModel.fromFirestore(doc.data()!, user.uid);
+        }
+      } on FirebaseException catch (e) {
+        if (e.code != 'permission-denied') rethrow;
       }
 
       final newUser = UserModel(
@@ -44,10 +46,14 @@ class AuthService {
         isAdmin: false,
         isApproved: false,
       );
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .set(newUser.toFirestore());
+      try {
+        await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .set(newUser.toFirestore());
+      } on FirebaseException catch (e) {
+        if (e.code != 'permission-denied') rethrow;
+      }
       return newUser;
     } catch (e) {
       debugPrint('Sign in failed: $e');
@@ -56,7 +62,7 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    await GoogleSignIn.instance.signOut();
+    await _googleSignIn.signOut();
     await _auth.signOut();
   }
 
