@@ -20,10 +20,17 @@ class AuthProvider extends ChangeNotifier {
 
   AuthProvider() {
     _authService.authStateChanges.listen((firebaseUser) async {
-      if (firebaseUser != null) {
-        _user = await _authService.getUserData(firebaseUser.uid);
-      } else {
-        _user = null;
+      try {
+        if (firebaseUser != null) {
+          final userData = await _authService.getUserData(firebaseUser.uid);
+          if (userData != null) {
+            _user = userData;
+          }
+        } else {
+          _user = null;
+        }
+      } catch (e) {
+        debugPrint('Auth state listener error: $e');
       }
       _isLoading = false;
       notifyListeners();
