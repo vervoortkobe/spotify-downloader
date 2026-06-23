@@ -159,7 +159,7 @@ def resolve_youtube_url():
             "skip_download": True,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["tv_embedded", "web", "mweb"],
+                    "player_client": ["web", "mweb"],
                     "formats": ["missing_pot"]
                 }
             },
@@ -204,6 +204,8 @@ def stream_track_get():
     source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
 
     audio_url, content_type, err = _resolve_audio_stream(source)
+    if err and source_url and (title or artists):
+        audio_url, content_type, err = _resolve_audio_stream(f"ytsearch1:{title} {artists} audio")
     if err:
         return jsonify({"error": err}), 404
 
@@ -224,6 +226,8 @@ def stream_track():
     source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
 
     audio_url, content_type, err = _resolve_audio_stream(source)
+    if err and source_url and (title or artists):
+        audio_url, content_type, err = _resolve_audio_stream(f"ytsearch1:{title} {artists} audio")
     if err:
         return jsonify({"error": err}), 404
 

@@ -121,6 +121,7 @@ export default function SpotifyDownloaderApp() {
   const [urlMeta, setUrlMeta] = useState<
     Record<string, { title: string; channel: string; thumbnail: string; duration: number } | null>
   >({})
+  const getTrackArtwork = (trackId: string, cover: string) => cover || urlMeta[trackId]?.thumbnail || ""
 
   // Service selector state
   const [selectedService, setSelectedService] = useState<string>("auto")
@@ -464,10 +465,9 @@ export default function SpotifyDownloaderApp() {
       const params = new URLSearchParams()
       if (sourceUrl) {
         params.set("source_url", sourceUrl)
-      } else {
-        params.set("title", track.title)
-        params.set("artists", track.artists)
       }
+      params.set("title", track.title)
+      params.set("artists", track.artists)
       const streamUrl = `${LOCAL_API}/api/stream?${params.toString()}`
 
       if (!audioRef.current) {
@@ -1247,10 +1247,10 @@ export default function SpotifyDownloaderApp() {
                         </span>
                       </div>
 
-                      {(urlMeta[track.id]?.thumbnail || track.cover) ? (
+                      {getTrackArtwork(track.id, track.cover) ? (
                         <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl shadow-md transition-transform duration-200 group-hover:translate-x-1 md:h-14 md:w-14">
                           <Image
-                            src={urlMeta[track.id]?.thumbnail || track.cover}
+                            src={getTrackArtwork(track.id, track.cover)}
                             alt=""
                             fill
                             className="object-cover"
@@ -1371,9 +1371,9 @@ export default function SpotifyDownloaderApp() {
               {selectedTrack ? (
                 <div className="flex flex-col items-center rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 p-5 text-center shadow-2xl shadow-black/30 backdrop-blur-xl duration-300 animate-in fade-in zoom-in-95 md:p-8">
                   <div className="group relative mb-8 aspect-square w-full overflow-hidden rounded-2xl shadow-2xl">
-                    {(urlMeta[selectedTrack.id]?.thumbnail || selectedTrack.cover) ? (
+                    {getTrackArtwork(selectedTrack.id, selectedTrack.cover) ? (
                       <Image
-                        src={urlMeta[selectedTrack.id]?.thumbnail || selectedTrack.cover}
+                        src={getTrackArtwork(selectedTrack.id, selectedTrack.cover)}
                         alt=""
                         fill
                         className="object-cover transition-transform duration-700 group-hover:scale-105"
@@ -1602,9 +1602,9 @@ export default function SpotifyDownloaderApp() {
                                 rel="noopener noreferrer"
                                 className="group/embed relative block aspect-video w-full overflow-hidden rounded-lg border border-[var(--clr-border)]"
                               >
-                                {(urlMeta[selectedTrack.id]?.thumbnail || selectedTrack.cover) ? (
+                                {getTrackArtwork(selectedTrack.id, selectedTrack.cover) ? (
                                   <Image
-                                    src={urlMeta[selectedTrack.id]?.thumbnail || selectedTrack.cover}
+                                    src={getTrackArtwork(selectedTrack.id, selectedTrack.cover)}
                                     alt=""
                                     fill
                                     className="object-cover transition-transform duration-300 group-hover/embed:scale-105"
