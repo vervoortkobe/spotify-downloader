@@ -35,6 +35,8 @@ def scrape_playlist():
         if not input_url:
             return jsonify({"event": "error", "data": {"message": "No URL provided"}}), 400
 
+        print(f"[Scrape] Fetching playlist URL: {input_url}", flush=True)
+
         if service == "auto":
             detected_service, url_type, item_id = detect_url_service(input_url)
             service = detected_service
@@ -95,6 +97,8 @@ def scrape_playlist():
             return jsonify({"event": "error", "data": {"message": f"Unsupported service: {service}"}}), 400
 
         gc.collect()
+
+        print(f"[Scrape] Fetched \"{playlist_name}\" with {len(tracks)} tracks", flush=True)
 
         return jsonify({
             "event": "complete",
@@ -194,21 +198,11 @@ def resolve_youtube_url():
 
 def _resolve_with_fallbacks(source):
     """Try multiple yt-dlp configurations to get a working audio URL."""
-    from utils import _youtube_extractor_args
-
-    base = _youtube_extractor_args()
-
     strategies = [
-        # Strategy 1: web + web_embedded with missing_pot (current default)
+        # Strategy 1: web + web_embedded with missing_pot (default)
         {},
-        # Strategy 2: web + web_embedded WITHOUT missing_pot
-        {"extractor_args": {"youtube": {"player_client": base["youtube"]["player_client"], "formats": []}}},
-        # Strategy 3: mweb only — least affected by SABR/DRM
+        # Strategy 2: mweb only — fallback for SABR/DRM experiments
         {"extractor_args": {"youtube": {"player_client": ["mweb"], "formats": ["missing_pot"]}}},
-        # Strategy 4: mweb only, no missing_pot
-        {"extractor_args": {"youtube": {"player_client": ["mweb"], "formats": []}}},
-        # Strategy 5: default yt-dlp clients with player_skip
-        {"extractor_args": {"youtube": {"player_client": ["web", "tv", "android"], "formats": ["missing_pot"], "player_skip": ["webpage"]}}},
     ]
 
     for extra_opts in strategies:
@@ -223,6 +217,8 @@ def stream_track_get():
 
     if not source_url:
         return jsonify({"error": "Provide source_url"}), 400
+
+    print(f"[Stream] Audio preview for: {source_url}", flush=True)
 
     audio_url, content_type, upstream_headers, err = _resolve_with_fallbacks(source_url)
     if err:
