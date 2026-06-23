@@ -121,7 +121,8 @@ export default function SpotifyDownloaderApp() {
   const [urlMeta, setUrlMeta] = useState<
     Record<string, { title: string; channel: string; thumbnail: string; duration: number } | null>
   >({})
-  const getTrackArtwork = (trackId: string, cover: string) => cover || urlMeta[trackId]?.thumbnail || ""
+  const getTrackArtwork = (trackId: string, cover: string) =>
+    cover || urlMeta[trackId]?.thumbnail || ""
 
   // Service selector state
   const [selectedService, setSelectedService] = useState<string>("auto")
@@ -150,7 +151,8 @@ export default function SpotifyDownloaderApp() {
   }
 
   const detectedService = detectServiceFromUrl(playlistLink)
-  const effectiveService = selectedService === "auto" ? (detectedService || "spotify") : selectedService
+  const effectiveService =
+    selectedService === "auto" ? detectedService || "spotify" : selectedService
 
   const serviceTheme: Record<
     string,
@@ -273,7 +275,8 @@ export default function SpotifyDownloaderApp() {
   const [streamDuration, setStreamDuration] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  const progressBarClassName = "h-3 bg-[var(--clr-progressBg)] [&>div]:bg-[var(--clr-progressBar)] rounded-full"
+  const progressBarClassName =
+    "h-3 bg-[var(--clr-progressBg)] [&>div]:bg-[var(--clr-progressBar)] rounded-full"
   const allTracksSelected = tracks.length > 0 && selectedTrackIds.length === tracks.length
   const selectedDownloadTracks = tracks.filter((track) => selectedTrackIds.includes(track.id))
 
@@ -795,7 +798,7 @@ export default function SpotifyDownloaderApp() {
     setDownloadProgress(0)
     setSongsDownloaded(0)
     setTotalSongs(0)
-    setStatusMessage("Fetching playlist data...")
+    setStatusMessage("Fetching playlist data... This might take a while.")
     setTracks([])
     setSelectedTrack(null)
 
@@ -838,29 +841,31 @@ export default function SpotifyDownloaderApp() {
 
   return (
     <div
-      className={`min-h-dvh bg-[#07110b] font-sans text-zinc-50 selection:bg-[var(--clr-primaryBg)]/40 ${tracks.length === 0 ? "h-dvh overflow-hidden" : ""}`}
-      style={{
-        "--clr-primary": t.primary,
-        "--clr-primaryLight": t.primaryLight,
-        "--clr-primaryDark": t.primaryDark,
-        "--clr-primaryBg": t.primaryBg,
-        "--clr-primaryBgLight": t.primaryBgLight,
-        "--clr-primaryText": t.primaryText,
-        "--clr-primaryTextLight": t.primaryTextLight,
-        "--clr-primaryTextMuted": t.primaryTextMuted,
-        "--clr-border": t.border,
-        "--clr-borderLight": t.borderLight,
-        "--clr-borderSubtle": t.borderSubtle,
-        "--clr-bgCard": t.bgCard,
-        "--clr-bgCardLight": t.bgCardLight,
-        "--clr-bgCardLighter": t.bgCardLighter,
-        "--clr-glowRgba": t.glowRgba,
-        "--clr-progressBg": t.progressBg,
-        "--clr-progressBar": t.progressBar,
-        "--clr-shadowRgba": t.shadowRgba,
-        "--clr-gradient1": t.gradient1,
-        "--clr-gradient2": t.gradient2,
-      } as React.CSSProperties}
+      className={`selection:bg-[var(--clr-primaryBg)]/40 min-h-dvh bg-[#07110b] font-sans text-zinc-50 ${tracks.length === 0 ? "h-dvh overflow-hidden" : ""}`}
+      style={
+        {
+          "--clr-primary": t.primary,
+          "--clr-primaryLight": t.primaryLight,
+          "--clr-primaryDark": t.primaryDark,
+          "--clr-primaryBg": t.primaryBg,
+          "--clr-primaryBgLight": t.primaryBgLight,
+          "--clr-primaryText": t.primaryText,
+          "--clr-primaryTextLight": t.primaryTextLight,
+          "--clr-primaryTextMuted": t.primaryTextMuted,
+          "--clr-border": t.border,
+          "--clr-borderLight": t.borderLight,
+          "--clr-borderSubtle": t.borderSubtle,
+          "--clr-bgCard": t.bgCard,
+          "--clr-bgCardLight": t.bgCardLight,
+          "--clr-bgCardLighter": t.bgCardLighter,
+          "--clr-glowRgba": t.glowRgba,
+          "--clr-progressBg": t.progressBg,
+          "--clr-progressBar": t.progressBar,
+          "--clr-shadowRgba": t.shadowRgba,
+          "--clr-gradient1": t.gradient1,
+          "--clr-gradient2": t.gradient2,
+        } as React.CSSProperties
+      }
     >
       {/* Background Gradient */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
@@ -901,7 +906,10 @@ export default function SpotifyDownloaderApp() {
         }}
       />
 
-      <main className="relative z-10 mx-auto flex min-h-dvh max-w-[1200px] flex-col px-3 py-4 md:px-6 md:py-16" data-service={effectiveService}>
+      <main
+        className="relative z-10 mx-auto flex min-h-dvh max-w-[1200px] flex-col px-3 py-4 md:px-6 md:py-16"
+        data-service={effectiveService}
+      >
         {/* Top Header Bar */}
         <div className="mb-4 flex w-full shrink-0 items-center justify-end gap-2 md:mb-12">
           {backendOnline === null ? (
@@ -923,7 +931,7 @@ export default function SpotifyDownloaderApp() {
           <div className="group relative">
             <button
               type="button"
-              className="rounded-full border border-[var(--clr-borderLight)] bg-[var(--clr-primaryBgLight)]/70 px-3 py-1 text-xs font-medium text-[var(--clr-primaryTextLight)] shadow-lg shadow-black/20 transition-colors hover:bg-[var(--clr-primaryBg)]/80"
+              className="bg-[var(--clr-primaryBgLight)]/70 hover:bg-[var(--clr-primaryBg)]/80 rounded-full border border-[var(--clr-borderLight)] px-3 py-1 text-xs font-medium text-[var(--clr-primaryTextLight)] shadow-lg shadow-black/20 transition-colors"
               aria-label="Version information"
             >
               v2.2.0
@@ -931,7 +939,7 @@ export default function SpotifyDownloaderApp() {
             <div className="pointer-events-none absolute right-0 top-full z-40 mt-3 w-[min(22rem,calc(100vw-1.5rem))] translate-y-1 rounded-2xl border border-[var(--clr-borderLight)] bg-[#020604]/40 p-4 text-sm text-zinc-200 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
               <div className="space-y-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--clr-primaryTextMuted)]/90">
+                  <p className="text-[var(--clr-primaryTextMuted)]/90 text-xs font-semibold uppercase tracking-[0.2em]">
                     Version Roadmap
                   </p>
                   <div className="mt-2 space-y-3">
@@ -1018,7 +1026,9 @@ export default function SpotifyDownloaderApp() {
           </div>
 
           <div className="group relative z-30 w-full max-w-2xl">
-            <div className={`absolute -inset-0.5 rounded-[2rem] ${serviceTheme[effectiveService]?.glow || "bg-[var(--clr-primaryBgLight)]"} opacity-0 blur transition duration-500 group-hover:opacity-100`}></div>
+            <div
+              className={`absolute -inset-0.5 rounded-[2rem] ${serviceTheme[effectiveService]?.glow || "bg-[var(--clr-primaryBgLight)]"} opacity-0 blur transition duration-500 group-hover:opacity-100`}
+            ></div>
             <div className="relative flex flex-col items-center rounded-3xl border border-[var(--clr-borderLight)] bg-[#0a1410]/95 p-2 shadow-2xl shadow-black/30 backdrop-blur-xl sm:flex-row">
               <div className="flex w-full items-center py-1 pl-2 pr-2">
                 <div className="relative shrink-0" ref={serviceDropdownRef}>
@@ -1101,7 +1111,8 @@ export default function SpotifyDownloaderApp() {
                 className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-6 py-3.5 font-semibold transition-all duration-300 active:scale-95 disabled:opacity-70 disabled:hover:scale-100 sm:w-auto md:px-8 md:py-4 md:hover:scale-105 ${
                   backendOnline === false
                     ? "cursor-not-allowed border border-red-900/50 bg-red-900/30 text-red-300"
-                    : serviceTheme[effectiveService]?.btn || "border border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBg)]/80 text-[var(--clr-primaryText)] shadow-[0_0_20px_var(--clr-glowRgba)] hover:bg-[var(--clr-primaryDark)]/85"
+                    : serviceTheme[effectiveService]?.btn ||
+                      "bg-[var(--clr-primaryBg)]/80 hover:bg-[var(--clr-primaryDark)]/85 border border-[var(--clr-primaryDark)] text-[var(--clr-primaryText)] shadow-[0_0_20px_var(--clr-glowRgba)]"
                 }`}
               >
                 {isProcessing ? (
@@ -1122,7 +1133,7 @@ export default function SpotifyDownloaderApp() {
           </div>
 
           {/* Progress Indicator */}
-            {(isProcessing || (downloadProgress > 0 && tracks.length === 0)) && (
+          {(isProcessing || (downloadProgress > 0 && tracks.length === 0)) && (
             <div className="relative z-0 mt-8 w-full max-w-2xl rounded-2xl border border-[var(--clr-borderSubtle)] bg-[#0a1410]/70 p-4 backdrop-blur-md md:p-6">
               <div className="mb-3 flex justify-between text-sm font-medium text-zinc-400">
                 <span>{statusMessage}</span>
@@ -1160,7 +1171,7 @@ export default function SpotifyDownloaderApp() {
                         disabled={isDownloadingAll}
                         className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-all duration-200 disabled:opacity-50 ${
                           allTracksSelected
-                            ? "border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBgLight)]/80 text-[var(--clr-primaryTextLight)]"
+                            ? "bg-[var(--clr-primaryBgLight)]/80 border-[var(--clr-primaryDark)] text-[var(--clr-primaryTextLight)]"
                             : "border-[var(--clr-border)] bg-transparent text-zinc-500 hover:border-[var(--clr-primaryDark)] hover:text-[var(--clr-primaryTextLight)]"
                         }`}
                         aria-label={allTracksSelected ? "Deselect all songs" : "Select all songs"}
@@ -1184,7 +1195,7 @@ export default function SpotifyDownloaderApp() {
                       className={`flex w-full items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold transition-all duration-300 hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 sm:w-auto ${
                         isDownloadingAll
                           ? "border-red-900/70 bg-red-950/70 text-red-200 shadow-[0_0_20px_rgba(127,29,29,0.2)] hover:border-red-700/80 hover:bg-red-900/80"
-                          : "border-[var(--clr-borderLight)] bg-[var(--clr-primaryBgLight)]/70 text-[var(--clr-primaryTextLight)] shadow-[0_0_20px_var(--clr-shadowRgba)] hover:border-[var(--clr-primaryDark)] hover:bg-[var(--clr-primaryBg)]/80"
+                          : "bg-[var(--clr-primaryBgLight)]/70 hover:bg-[var(--clr-primaryBg)]/80 border-[var(--clr-borderLight)] text-[var(--clr-primaryTextLight)] shadow-[0_0_20px_var(--clr-shadowRgba)] hover:border-[var(--clr-primaryDark)]"
                       }`}
                     >
                       {isDownloadingAll ? (
@@ -1215,7 +1226,7 @@ export default function SpotifyDownloaderApp() {
                     <div
                       key={track.id}
                       onClick={() => setSelectedTrack(track)}
-                      className={`group relative flex cursor-pointer items-center gap-3 rounded-2xl border border-transparent p-3 transition-all duration-200 md:gap-4 md:p-4 ${selectedTrack?.id === track.id ? "border-[var(--clr-border)] bg-[var(--clr-primaryBgLight)]/45 shadow-[0_0_15px_var(--clr-shadowRgba)]" : "hover:border-[var(--clr-borderSubtle)] hover:bg-[#0d1913]"}`}
+                      className={`group relative flex cursor-pointer items-center gap-3 rounded-2xl border border-transparent p-3 transition-all duration-200 md:gap-4 md:p-4 ${selectedTrack?.id === track.id ? "bg-[var(--clr-primaryBgLight)]/45 border-[var(--clr-border)] shadow-[0_0_15px_var(--clr-shadowRgba)]" : "hover:border-[var(--clr-borderSubtle)] hover:bg-[#0d1913]"}`}
                     >
                       <div className="ml-auto flex shrink-0 items-center">
                         <div
@@ -1228,7 +1239,7 @@ export default function SpotifyDownloaderApp() {
                             }}
                             className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-all duration-200 ${
                               selectedTrackIds.includes(track.id)
-                                ? "border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBgLight)]/80 text-[var(--clr-primaryTextLight)]"
+                                ? "bg-[var(--clr-primaryBgLight)]/80 border-[var(--clr-primaryDark)] text-[var(--clr-primaryTextLight)]"
                                 : "border-[var(--clr-border)] bg-zinc-900/70 text-zinc-500 hover:border-[var(--clr-primaryDark)] hover:text-[var(--clr-primaryTextLight)]"
                             }`}
                             aria-label={
@@ -1318,7 +1329,7 @@ export default function SpotifyDownloaderApp() {
                                     e.stopPropagation()
                                     downloadTrack(track)
                                   }}
-                                  className="flex shrink-0 transform items-center justify-center rounded-xl border border-[var(--clr-primaryBg)] bg-[var(--clr-primaryBgLight)]/30 p-2.5 text-[var(--clr-primaryTextMuted)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-110 hover:border-[var(--clr-primaryDark)] hover:bg-[var(--clr-primaryBgLight)]/45 hover:text-[var(--clr-primaryTextLight)] hover:shadow-[0_0_15px_var(--clr-glowRgba)] active:scale-90"
+                                  className="bg-[var(--clr-primaryBgLight)]/30 hover:bg-[var(--clr-primaryBgLight)]/45 flex shrink-0 transform items-center justify-center rounded-xl border border-[var(--clr-primaryBg)] p-2.5 text-[var(--clr-primaryTextMuted)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-110 hover:border-[var(--clr-primaryDark)] hover:text-[var(--clr-primaryTextLight)] hover:shadow-[0_0_15px_var(--clr-glowRgba)] active:scale-90"
                                   aria-label="Download track"
                                 >
                                   <Download className="h-5 w-5" />
@@ -1343,7 +1354,7 @@ export default function SpotifyDownloaderApp() {
                               e.stopPropagation()
                               downloadTrack(track)
                             }}
-                            className="flex transform items-center justify-center rounded-xl border border-[var(--clr-primaryBg)] bg-[var(--clr-primaryBgLight)]/30 p-2.5 text-[var(--clr-primaryTextMuted)] opacity-100 transition-all duration-300 hover:-translate-y-0.5 hover:scale-110 hover:border-[var(--clr-primaryDark)] hover:bg-[var(--clr-primaryBgLight)]/45 hover:text-[var(--clr-primaryTextLight)] hover:shadow-[0_0_15px_var(--clr-glowRgba)] focus:opacity-100 active:scale-90"
+                            className="bg-[var(--clr-primaryBgLight)]/30 hover:bg-[var(--clr-primaryBgLight)]/45 flex transform items-center justify-center rounded-xl border border-[var(--clr-primaryBg)] p-2.5 text-[var(--clr-primaryTextMuted)] opacity-100 transition-all duration-300 hover:-translate-y-0.5 hover:scale-110 hover:border-[var(--clr-primaryDark)] hover:text-[var(--clr-primaryTextLight)] hover:shadow-[0_0_15px_var(--clr-glowRgba)] focus:opacity-100 active:scale-90"
                             aria-label="Download track"
                           >
                             <Download className="h-5 w-5" />
@@ -1351,7 +1362,7 @@ export default function SpotifyDownloaderApp() {
                         )}
                       </div>
                       {trackProgress[track.id] !== undefined && trackProgress[track.id] !== -1 ? (
-                        <div className="absolute inset-x-3 bottom-0 h-px overflow-hidden rounded-full bg-[var(--clr-primaryBgLight)]/70 md:inset-x-4">
+                        <div className="bg-[var(--clr-primaryBgLight)]/70 absolute inset-x-3 bottom-0 h-px overflow-hidden rounded-full md:inset-x-4">
                           <div
                             className="h-full bg-[var(--clr-primary)] shadow-[0_0_12px_var(--clr-glowRgba)] transition-[width] duration-300"
                             style={{
@@ -1390,18 +1401,18 @@ export default function SpotifyDownloaderApp() {
                   <h3 className="mb-2 px-2 text-2xl font-bold leading-tight text-white">
                     {selectedTrack.title}
                   </h3>
-                  <p className={`text-base font-medium ${selectedTrack.album ? 'mb-0.5' : 'mb-8'} text-zinc-400`}>
+                  <p
+                    className={`text-base font-medium ${selectedTrack.album ? "mb-0.5" : "mb-8"} text-zinc-400`}
+                  >
                     {selectedTrack.artists}
                   </p>
                   {selectedTrack.album && (
-                    <p className="mb-8 text-sm font-medium text-zinc-500">
-                      {selectedTrack.album}
-                    </p>
+                    <p className="mb-8 text-sm font-medium text-zinc-500">{selectedTrack.album}</p>
                   )}
 
                   <div className="w-full space-y-3">
                     {/* Stream / Preview Player */}
-                    <div className="w-full space-y-3 rounded-2xl border border-[var(--clr-border)] bg-[var(--clr-primaryBgLight)]/20 p-4">
+                    <div className="bg-[var(--clr-primaryBgLight)]/20 w-full space-y-3 rounded-2xl border border-[var(--clr-border)] p-4">
                       <div className="flex items-center gap-3">
                         <button
                           id={`stream-btn-${selectedTrack.id}`}
@@ -1409,8 +1420,8 @@ export default function SpotifyDownloaderApp() {
                           disabled={isLoadingStream && streamingTrackId !== selectedTrack.id}
                           className={`flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${
                             streamingTrackId === selectedTrack.id
-                              ? "border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBg)]/70 text-[var(--clr-primaryTextLight)] hover:bg-[var(--clr-primaryDark)]/80"
-                              : "border-[var(--clr-border)] bg-[var(--clr-primaryBgLight)]/20 text-zinc-300 hover:bg-zinc-800/80 hover:text-white"
+                              ? "bg-[var(--clr-primaryBg)]/70 hover:bg-[var(--clr-primaryDark)]/80 border-[var(--clr-primaryDark)] text-[var(--clr-primaryTextLight)]"
+                              : "bg-[var(--clr-primaryBgLight)]/20 border-[var(--clr-border)] text-zinc-300 hover:bg-zinc-800/80 hover:text-white"
                           }`}
                           aria-label={
                             streamingTrackId === selectedTrack.id && isPlaying
@@ -1502,7 +1513,7 @@ export default function SpotifyDownloaderApp() {
                           {!isEditingUrl ? (
                             <button
                               onClick={() => startEditingUrl(selectedTrack)}
-                              className="rounded-lg p-1.5 text-zinc-500 transition-all duration-200 hover:bg-[var(--clr-primaryBgLight)]/40 hover:text-[var(--clr-primaryLight)]"
+                              className="hover:bg-[var(--clr-primaryBgLight)]/40 rounded-lg p-1.5 text-zinc-500 transition-all duration-200 hover:text-[var(--clr-primaryLight)]"
                               title="Edit source URL"
                               aria-label="Edit source URL"
                             >
@@ -1532,13 +1543,13 @@ export default function SpotifyDownloaderApp() {
                               if (e.key === "Enter") saveUrl(selectedTrack)
                               if (e.key === "Escape") cancelEditingUrl()
                             }}
-                            className="w-full rounded-xl border border-[var(--clr-border)] bg-zinc-900/80 px-3 py-2 text-xs text-zinc-200 outline-none transition-all placeholder:text-zinc-600 focus:border-[var(--clr-primaryDark)] focus:ring-1 focus:ring-[var(--clr-primaryBg)]/50"
+                            className="focus:ring-[var(--clr-primaryBg)]/50 w-full rounded-xl border border-[var(--clr-border)] bg-zinc-900/80 px-3 py-2 text-xs text-zinc-200 outline-none transition-all placeholder:text-zinc-600 focus:border-[var(--clr-primaryDark)] focus:ring-1"
                             autoFocus
                           />
                           <button
                             onClick={() => saveUrl(selectedTrack)}
                             disabled={isResolvingUrl}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBg)]/70 py-2 text-xs font-semibold text-[var(--clr-primaryTextLight)] transition-all duration-200 hover:scale-[1.02] hover:bg-[var(--clr-primaryDark)]/80 disabled:opacity-60"
+                            className="bg-[var(--clr-primaryBg)]/70 hover:bg-[var(--clr-primaryDark)]/80 flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--clr-primaryDark)] py-2 text-xs font-semibold text-[var(--clr-primaryTextLight)] transition-all duration-200 hover:scale-[1.02] disabled:opacity-60"
                           >
                             {isResolvingUrl ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1647,7 +1658,6 @@ export default function SpotifyDownloaderApp() {
                         </>
                       )}
                     </button>
-
                   </div>
                 </div>
               ) : (

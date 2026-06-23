@@ -201,7 +201,7 @@ def stream_track_get():
     if not source_url and not (title or artists):
         return jsonify({"error": "Provide source_url or title+artists"}), 400
 
-    source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
+    source = f"ytsearch1:{title} {artists} audio" if (title or artists) else source_url
 
     audio_url, content_type, upstream_headers, err = _resolve_audio_stream(source)
     if err and source_url and (title or artists):
@@ -223,7 +223,7 @@ def stream_track():
     if not source_url and not (title or artists):
         return jsonify({"error": "Provide sourceUrl or title+artists"}), 400
 
-    source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
+    source = f"ytsearch1:{title} {artists} audio" if (title or artists) else source_url
 
     audio_url, content_type, upstream_headers, err = _resolve_audio_stream(source)
     if err and source_url and (title or artists):
