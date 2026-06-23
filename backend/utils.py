@@ -22,6 +22,7 @@ def get_yt_info(track_title, artists):
             "noplaylist": True,
             "skip_download": True,
             "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+            "remote_components": ["ejs:github"],
         }
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(search_query, download=False)
@@ -90,6 +91,7 @@ def scrape_external_data(url, service, url_type):
         "skip_download": True,
         "extract_flat": is_flat,
         "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+        "remote_components": ["ejs:github"],
     }
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -244,6 +246,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
             }
         ],
         "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+        "remote_components": ["ejs:github"],
     }
     try:
         with YoutubeDL(ydl_opts) as ydl:
@@ -304,6 +307,7 @@ def _resolve_audio_stream(source):
         "skip_download": True,
         "socket_timeout": 30,
         "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+        "remote_components": ["ejs:github"],
     }
     try:
         with YoutubeDL(ydl_opts) as ydl:
