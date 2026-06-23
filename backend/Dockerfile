@@ -19,6 +19,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip yt-dlp && \
     pip install --no-cache-dir -r requirements.txt
 
+# Configure yt-dlp to use remote EJS components for JS challenge solving
+# and pre-download the solver so it's cached at build time
+RUN mkdir -p ~/.yt-dlp && \
+    echo "--remote-components ejs:github" > ~/.yt-dlp/config && \
+    deno --version
+
 # Copy the rest of the application code
 COPY . .
 

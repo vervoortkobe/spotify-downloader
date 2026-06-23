@@ -157,6 +157,7 @@ def resolve_youtube_url():
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
+            "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
         }
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
