@@ -795,7 +795,7 @@ export default function SpotifyDownloaderApp() {
     setDownloadProgress(0)
     setSongsDownloaded(0)
     setTotalSongs(0)
-    setStatusMessage("Fetching data...")
+    setStatusMessage("Fetching playlist data...")
     setTracks([])
     setSelectedTrack(null)
 

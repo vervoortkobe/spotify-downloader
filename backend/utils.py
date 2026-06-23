@@ -332,10 +332,10 @@ def _resolve_audio_stream(source):
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(source, download=False)
     except Exception as e:
-        return None, None, f"Failed to resolve source: {e}"
+        return None, None, None, f"Failed to resolve source: {e}"
 
     if not info:
-        return None, None, "Could not resolve source"
+        return None, None, None, "Could not resolve source"
 
     if "entries" in info and info["entries"]:
         info = info["entries"][0]
@@ -360,12 +360,31 @@ def _resolve_audio_stream(source):
         audio_url = info.get("url", "")
 
     if not audio_url:
-        return None, None, "No streamable audio URL found"
+        return None, None, None, "No streamable audio URL found"
 
-    return audio_url, content_type, None
+    request_headers = {}
+    format_headers = {}
+    if isinstance(info, dict):
+        top_headers = info.get("http_headers", {})
+        if isinstance(top_headers, dict):
+            request_headers.update(top_headers)
+
+    selected_format = None
+    for fmt in reversed(formats):
+        if fmt.get("url") == audio_url:
+            selected_format = fmt
+            break
+    if isinstance(selected_format, dict):
+        fmt_headers = selected_format.get("http_headers", {})
+        if isinstance(fmt_headers, dict):
+            format_headers.update(fmt_headers)
+
+    request_headers.update(format_headers)
+
+    return audio_url, content_type, request_headers or None, None
 
 
-def _proxy_audio_stream(audio_url, content_type, range_header=None):
+def _proxy_audio_stream(audio_url, content_type, range_header=None, upstream_headers=None):
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -374,6 +393,8 @@ def _proxy_audio_stream(audio_url, content_type, range_header=None):
         ),
         "Accept": "*/*",
     }
+    if upstream_headers:
+        headers.update(upstream_headers)
     if range_header:
         headers["Range"] = range_header
 
