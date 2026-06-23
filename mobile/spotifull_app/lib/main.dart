@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
 import 'services/firebase_service.dart' as fb;
+import 'services/notification_service.dart';
 import 'providers/auth_provider.dart';
 import 'providers/playlist_provider.dart';
 import 'providers/player_provider.dart';
@@ -12,6 +13,7 @@ import 'screens/splash_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await fb.FirebaseService.initialize();
+  await NotificationService().initialize();
   runApp(const SpotifullApp());
 }
 

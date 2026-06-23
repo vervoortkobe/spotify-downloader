@@ -5,8 +5,7 @@ import '../models/track_model.dart';
 import '../models/playlist_model.dart';
 
 class ApiService {
-  // Change this to your backend URL
-  static const String _baseUrl = 'http://10.0.2.2:5000/api'; // Android emulator
+  static const String _baseUrl = 'https://spotdl.vervoortkobe.be.eu.org/api';
 
   static Future<PlaylistModel?> scrapePlaylist(String url, {String service = 'auto'}) async {
     try {
@@ -37,6 +36,24 @@ class ApiService {
     }
   }
 
+  static Future<List<Map<String, dynamic>>?> scrapeUserPlaylists(String profileUrl) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/scrape-user-playlists'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'profileUrl': profileUrl}),
+      );
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (data['error'] != null) return null;
+      final playlists = data['playlists'] as List<dynamic>;
+      return playlists.cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('Scrape user playlists failed: $e');
+      return null;
+    }
+  }
+
   static Future<String?> streamTrack(String sourceUrl) async {
     try {
       final response = await http.post(
@@ -45,7 +62,6 @@ class ApiService {
         body: jsonEncode({'sourceUrl': sourceUrl}),
       );
       if (response.statusCode != 200) return null;
-      // Returns a redirect URL or stream URL
       return response.body;
     } catch (e) {
       debugPrint('Stream failed: $e');

@@ -12,6 +12,7 @@ class PlaylistModel {
   final bool isCustom;
   final bool isUsersOwn;
   final DateTime createdAt;
+  DateTime? lastTrackSync;
 
   PlaylistModel({
     required this.id,
@@ -25,6 +26,7 @@ class PlaylistModel {
     this.isCustom = false,
     this.isUsersOwn = false,
     DateTime? createdAt,
+    this.lastTrackSync,
   }) : createdAt = createdAt ?? DateTime.now();
 
   factory PlaylistModel.fromJson(Map<String, dynamic> json, String docId) => PlaylistModel(
@@ -42,6 +44,7 @@ class PlaylistModel {
     isCustom: json['isCustom'] as bool? ?? false,
     isUsersOwn: json['isUsersOwn'] as bool? ?? false,
     createdAt: (json['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
+    lastTrackSync: (json['lastTrackSync'] as dynamic)?.toDate(),
   );
 
   Map<String, dynamic> toFirestore() => {
@@ -54,6 +57,7 @@ class PlaylistModel {
     'isCustom': isCustom,
     'isUsersOwn': isUsersOwn,
     'createdAt': createdAt,
+    'lastTrackSync': lastTrackSync,
   };
 
   // For custom playlists, tracks are stored as a subcollection or embedded

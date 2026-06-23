@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:spotifull_app/models/playlist_model.dart';
 import 'package:spotifull_app/providers/auth_provider.dart';
 import 'package:spotifull_app/providers/playlist_provider.dart';
+import 'package:spotifull_app/services/api_service.dart';
 import 'package:spotifull_app/widgets/playlist_card.dart';
 import 'package:spotifull_app/screens/playlist_detail_screen.dart';
 import 'package:spotifull_app/screens/admin_screen.dart';
 import 'package:spotifull_app/screens/jam_screen.dart';
-import 'package:spotifull_app/screens/splash_screen.dart';
+import 'package:spotifull_app/screens/login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,12 +21,49 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = context.read<AuthProvider>();
+      final playlistProv = context.read<PlaylistProvider>();
       if (auth.user != null) {
-        context.read<PlaylistProvider>().loadPlaylists(auth.user!.uid);
+        await playlistProv.loadPlaylists(auth.user!.uid);
+        if (auth.needsSpotifySync && mounted) {
+          await _syncSpotifyPlaylists(auth, playlistProv);
+        }
       }
     });
+  }
+
+  Future<void> _syncSpotifyPlaylists(AuthProvider auth, PlaylistProvider playlistProv) async {
+    final profileUrl = auth.user!.spotifyProfileUrl;
+    if (profileUrl.isEmpty) return;
+
+    final playlists = await ApiService.scrapeUserPlaylists(profileUrl);
+    if (!mounted || playlists == null) return;
+
+    for (final p in playlists) {
+      final existingIds = playlistProv.playlists.map((pl) => pl.id).toSet();
+      final playlistId = p['id'] as String;
+      final playlistUrl = 'https://open.spotify.com/playlist/$playlistId';
+
+      if (!existingIds.contains(playlistUrl.hashCode.toString())) {
+        final scraped = await ApiService.scrapePlaylist(playlistUrl);
+        if (scraped != null) {
+          final enriched = PlaylistModel(
+            id: scraped.id,
+            name: scraped.name,
+            owner: p['owner'] as String? ?? '',
+            coverUrl: scraped.tracks.isNotEmpty ? scraped.tracks.first.cover : '',
+            tracks: scraped.tracks,
+            creatorUid: auth.user!.uid,
+            source: 'spotify',
+            isUsersOwn: true,
+          );
+          await playlistProv.savePlaylist(auth.user!.uid, enriched);
+        }
+      }
+    }
+
+    await auth.updateSpotifyProfileUrl(auth.user!.spotifyProfileUrl);
   }
 
   void _importPlaylist() {
@@ -78,12 +117,36 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: Icon(Icons.logout, color: const Color(0xFFa1a1aa)),
             onPressed: () async {
-              await auth.signOut();
-              if (context.mounted) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SplashScreen()),
-                );
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF0f1d17),
+                  title: const Text('Sign Out',
+                      style: TextStyle(color: Colors.white)),
+                  content: const Text('Are you sure?',
+                      style: TextStyle(color: Color(0xFFa1a1aa))),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel',
+                          style: TextStyle(color: Color(0xFFa1a1aa))),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Sign Out',
+                          style: TextStyle(color: Color(0xFF10b981))),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true) {
+                await auth.signOut();
+                if (context.mounted) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  );
+                }
               }
             },
           ),

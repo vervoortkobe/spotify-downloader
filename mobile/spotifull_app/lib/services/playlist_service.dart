@@ -70,4 +70,25 @@ class PlaylistService {
         .doc(track.id)
         .set(track.toJson());
   }
+
+  Future<void> updatePlaylistTracks(
+    String uid,
+    String playlistId,
+    List<TrackModel> tracks,
+  ) async {
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('playlists')
+        .doc(playlistId)
+        .update({
+      'lastTrackSync': DateTime.now(),
+    });
+  }
+
+  Future<void> updateLastSpotifySync(String uid) async {
+    await _firestore.collection('users').doc(uid).update({
+      'lastSpotifySync': DateTime.now(),
+    });
+  }
 }

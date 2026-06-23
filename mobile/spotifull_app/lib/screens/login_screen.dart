@@ -11,6 +11,25 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+
+    // Already logged in — redirect
+    if (!auth.isLoading && auth.isLoggedIn) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        if (!auth.isApproved) {
+          Navigator.pushReplacement(
+              context, MaterialPageRoute(builder: (_) => const ApprovalScreen()));
+        } else if (auth.isAdmin) {
+          Navigator.pushReplacement(
+              context, MaterialPageRoute(builder: (_) => const AdminScreen()));
+        } else {
+          Navigator.pushReplacement(
+              context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+        }
+      });
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF07110b),
       body: Stack(

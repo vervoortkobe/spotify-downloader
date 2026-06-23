@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:spotifull_app/models/track_model.dart';
+import 'package:spotifull_app/services/notification_service.dart';
 
 class PlayerProvider extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
@@ -10,6 +12,7 @@ class PlayerProvider extends ChangeNotifier {
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Timer? _notifTimer;
 
   TrackModel? get currentTrack => _currentTrack;
   List<TrackModel> get queue => _queue;
@@ -19,6 +22,11 @@ class PlayerProvider extends ChangeNotifier {
   AudioPlayer get player => _player;
 
   PlayerProvider() {
+    final notif = NotificationService();
+    notif.onPlayPause = togglePlayPause;
+    notif.onNext = next;
+    notif.onPrevious = previous;
+
     _player.onPositionChanged.listen((pos) {
       _position = pos;
       notifyListeners();
@@ -30,7 +38,27 @@ class PlayerProvider extends ChangeNotifier {
     _player.onPlayerStateChanged.listen((state) {
       _isPlaying = state == PlayerState.playing;
       notifyListeners();
+      _scheduleNotifUpdates();
     });
+  }
+
+  void _scheduleNotifUpdates() {
+    _notifTimer?.cancel();
+    if (!_isPlaying || _currentTrack == null) return;
+
+    _notifTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _updateNotification();
+    });
+  }
+
+  void _updateNotification() {
+    if (_currentTrack == null) return;
+    NotificationService().showPlaybackNotification(
+      track: _currentTrack!,
+      isPlaying: _isPlaying,
+      position: _position,
+      duration: _duration,
+    );
   }
 
   Future<void> play(TrackModel track, {List<TrackModel>? queue}) async {
@@ -44,7 +72,6 @@ class PlayerProvider extends ChangeNotifier {
     _currentTrack = track;
     notifyListeners();
 
-    // Try streaming from our backend first, fallback to direct URL
     final source = track.sourceUrl.isNotEmpty ? track.sourceUrl : null;
     if (source != null) {
       await _player.play(UrlSource(source));
@@ -57,6 +84,7 @@ class PlayerProvider extends ChangeNotifier {
     } else {
       await _player.resume();
     }
+    _updateNotification();
   }
 
   Future<void> seekTo(Duration position) async {
@@ -87,6 +115,8 @@ class PlayerProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _notifTimer?.cancel();
+    NotificationService().cancelPlaybackNotification();
     _player.dispose();
     super.dispose();
   }

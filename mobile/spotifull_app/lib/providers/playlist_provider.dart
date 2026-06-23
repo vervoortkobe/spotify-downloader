@@ -76,6 +76,16 @@ class PlaylistProvider extends ChangeNotifier {
     await _playlistService.addTrackToPlaylist(uid, playlistId, track);
   }
 
+  Future<void> syncPlaylistTracks(String uid, String playlistId, List<TrackModel> tracks) async {
+    await _playlistService.updatePlaylistTracks(uid, playlistId, tracks);
+    final idx = _playlists.indexWhere((p) => p.id == playlistId);
+    if (idx >= 0) {
+      _playlists[idx].tracks = tracks;
+      _playlists[idx].lastTrackSync = DateTime.now();
+      notifyListeners();
+    }
+  }
+
   void setCurrentPlaylist(PlaylistModel? playlist) {
     _currentPlaylist = playlist;
     notifyListeners();
