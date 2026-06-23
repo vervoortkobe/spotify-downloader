@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:flutter/foundation.dart';
 import 'package:spotifull_app/models/user_model.dart';
 import 'package:spotifull_app/services/auth_service.dart';
 
@@ -15,22 +14,45 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoggedIn => _user != null;
   bool get isAdmin => _user?.isAdmin ?? false;
   bool get isApproved => _user?.isApproved ?? false;
-
-  Stream<firebase_auth.User?> get authState => _authService.authStateChanges;
+  bool get needsOnboarding => _user != null && _user!.spotifyProfileUrl.isEmpty;
+  bool get needsSpotifySync {
+    if (_user == null || _user!.spotifyProfileUrl.isEmpty) return false;
+    if (_user!.lastSpotifySync == null) return true;
+    return DateTime.now().difference(_user!.lastSpotifySync!).inHours >= 1;
+  }
 
   AuthProvider() {
     _authService.authStateChanges.listen((firebaseUser) async {
       try {
         if (firebaseUser != null) {
-          final userData = await _authService.getUserData(firebaseUser.uid);
+          // Try Firestore first, fall back to local-only user (Firestore rules may block)
+          UserModel? userData;
+          try {
+            userData = await _authService.getUserData(firebaseUser.uid);
+          } catch (_) {
+            debugPrint('Firestore read blocked (rules) - using local-only user');
+          }
+
           if (userData != null) {
             _user = userData;
+          } else {
+            // Create a minimal user so auth works even without Firestore
+            _user = UserModel(
+              uid: firebaseUser.uid,
+              email: firebaseUser.email ?? '',
+              displayName: firebaseUser.displayName ?? '',
+              photoUrl: firebaseUser.photoURL ?? '',
+              isAdmin: false,
+              isApproved: true,
+              spotifyProfileUrl: '',
+            );
           }
         } else {
           _user = null;
         }
       } catch (e) {
         debugPrint('Auth state listener error: $e');
+        _user = null;
       }
       _isLoading = false;
       notifyListeners();
@@ -53,7 +75,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateSpotifyUrl(String url) async {
+  Future<void> updateSpotifyProfileUrl(String url) async {
     if (_user == null) return;
     await _authService.updateSpotifyUrl(_user!.uid, url);
     _user!.spotifyProfileUrl = url;

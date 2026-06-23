@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import gc
 import os
+import re
+import requests
 import tempfile
 import shutil
 import uuid
@@ -394,6 +396,65 @@ def health_check():
     response = jsonify({"online": True})
     print("[Health Check] Responding to health check: online=True", flush=True)
     return response
+
+
+@routes.route("/api/scrape-user-playlists", methods=["POST"])
+def scrape_user_playlists():
+    try:
+        data = request.get_json()
+        profile_url = data.get("profileUrl", "").strip()
+
+        if not profile_url:
+            return jsonify({"error": "No profile URL provided"}), 400
+
+        pattern = r"https://open\.spotify\.com/(?:intl-[a-zA-Z]+/)?user/([a-zA-Z0-9]+)"
+        match = re.match(pattern, profile_url)
+        if not match:
+            return jsonify({"error": "Invalid Spotify user profile URL"}), 400
+
+        user_id = match.group(1)
+
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        })
+
+        playlists_url = f"https://open.spotify.com/user/{user_id}/playlists"
+        response = session.get(playlists_url, timeout=30)
+
+        if response.status_code != 200:
+            return jsonify({"error": "User not found or no public playlists"}), 404
+
+        playlist_ids = set(re.findall(r'/playlist/([a-zA-Z0-9]+)', response.text))
+
+        if not playlist_ids:
+            return jsonify({"playlists": []})
+
+        api = SpotifyEmbedAPI()
+        results = []
+        for pid in playlist_ids:
+            try:
+                metadata = api.get_playlist_metadata(pid)
+                results.append({
+                    "id": pid,
+                    "name": metadata.name,
+                    "owner": metadata.owner or "",
+                    "trackCount": metadata.track_count or 0,
+                })
+            except Exception:
+                continue
+
+        return jsonify({"playlists": results})
+
+    except requests.RequestException:
+        return jsonify({"error": "Failed to fetch user playlists"}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @routes.route("/")

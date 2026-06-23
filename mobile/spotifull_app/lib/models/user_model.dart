@@ -9,6 +9,7 @@ class UserModel {
   final DateTime createdAt;
   String? currentListeningTo;
   String? currentJamSession;
+  DateTime? lastSpotifySync;
 
   UserModel({
     required this.uid,
@@ -21,6 +22,7 @@ class UserModel {
     DateTime? createdAt,
     this.currentListeningTo,
     this.currentJamSession,
+    this.lastSpotifySync,
   }) : createdAt = createdAt ?? DateTime.now();
 
   factory UserModel.fromFirestore(Map<String, dynamic> data, String uid) => UserModel(
@@ -34,6 +36,7 @@ class UserModel {
     createdAt: (data['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
     currentListeningTo: data['currentListeningTo'] as String?,
     currentJamSession: data['currentJamSession'] as String?,
+    lastSpotifySync: (data['lastSpotifySync'] as dynamic)?.toDate(),
   );
 
   Map<String, dynamic> toFirestore() => {
@@ -46,5 +49,6 @@ class UserModel {
     'createdAt': createdAt,
     'currentListeningTo': currentListeningTo,
     'currentJamSession': currentJamSession,
+    'lastSpotifySync': lastSpotifySync,
   };
 }
