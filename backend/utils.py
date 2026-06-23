@@ -14,6 +14,44 @@ from spotify_client import PlaylistClient
 from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
 
 
+def _youtube_extractor_args():
+    return {
+        "youtube": {
+            "player_client": ["web", "mweb"],
+            "formats": ["missing_pot"],
+        }
+    }
+
+
+def _best_thumbnail_url(thumbnails, fallback=""):
+    if not isinstance(thumbnails, list):
+        return fallback or ""
+
+    best_url = ""
+    best_score = -1
+
+    for thumb in thumbnails:
+        if not isinstance(thumb, dict):
+            continue
+
+        url = thumb.get("url", "")
+        if not url:
+            continue
+
+        width = thumb.get("width") or 0
+        height = thumb.get("height") or 0
+        try:
+            score = int(width) * int(height)
+        except (TypeError, ValueError):
+            score = 0
+
+        if score >= best_score:
+            best_score = score
+            best_url = url
+
+    return best_url or fallback or ""
+
+
 def get_yt_info(track_title, artists):
     try:
         search_query = f"ytsearch1:{track_title} {artists} audio"
@@ -21,12 +59,7 @@ def get_yt_info(track_title, artists):
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["tv_embedded", "web", "mweb"],
-                    "formats": ["missing_pot"]
-                }
-            },
+            "extractor_args": _youtube_extractor_args(),
             "remote_components": ["ejs:github"],
         }
         with YoutubeDL(ydl_opts) as ydl:
@@ -37,14 +70,7 @@ def get_yt_info(track_title, artists):
             video_id = info.get('id', '')
             video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
 
-            thumbnail = ""
-            thumbnails = info.get('thumbnails', [])
-            if thumbnails:
-                valid_images = [t for t in thumbnails if any(ext in t.get('url', '').lower() for ext in ['.jpg', '.jpeg', '.png', '.webp'])]
-                if valid_images:
-                    thumbnail = valid_images[-1].get('url')
-            if not thumbnail:
-                thumbnail = info.get('thumbnail') or ""
+            thumbnail = _best_thumbnail_url(info.get("thumbnails", []), info.get("thumbnail") or "")
 
             return thumbnail, video_url
     except Exception as e:
@@ -95,12 +121,7 @@ def scrape_external_data(url, service, url_type):
         "quiet": True,
         "skip_download": True,
         "extract_flat": is_flat,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["tv_embedded", "web", "mweb"],
-                "formats": ["missing_pot"]
-            }
-        },
+        "extractor_args": _youtube_extractor_args(),
         "remote_components": ["ejs:github"],
     }
     with YoutubeDL(ydl_opts) as ydl:
@@ -126,7 +147,7 @@ def scrape_external_data(url, service, url_type):
                     if uploader and slug:
                         entry_url = f"https://soundcloud.com/{uploader}/{slug}"
 
-            thumbnail = entry.get("thumbnail", "")
+            thumbnail = _best_thumbnail_url(entry.get("thumbnails", []), entry.get("thumbnail", ""))
             if not thumbnail and service == "youtube" and vid:
                 thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
             if not thumbnail and service == "soundcloud":
@@ -147,11 +168,7 @@ def scrape_external_data(url, service, url_type):
         playlist_name = info.get("title", f"{service.title()} Playlist")
     else:
         vid = info.get("id", "")
-        thumbnail = info.get("thumbnail", "")
-        thumbnails = info.get("thumbnails", [])
-        if thumbnails:
-            jpegs = [t for t in thumbnails if ".jpg" in t.get("url", "") or ".jpeg" in t.get("url", "")]
-            thumbnail = (jpegs[-1].get("url") if jpegs else thumbnails[-1].get("url")) or thumbnail
+        thumbnail = _best_thumbnail_url(info.get("thumbnails", []), info.get("thumbnail", ""))
         if not thumbnail and service == "youtube" and vid:
             thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
 
@@ -249,18 +266,13 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         "outtmpl": output_template,
         "progress_hooks": [yt_progress_hook],
         "postprocessors": [
-            {
+        {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
                 "preferredquality": "192",
             }
         ],
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["tv_embedded", "web", "mweb"],
-                "formats": ["missing_pot"]
-            }
-        },
+        "extractor_args": _youtube_extractor_args(),
         "remote_components": ["ejs:github"],
     }
     try:
@@ -286,15 +298,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     if os.path.exists(final_path):
         progress_store[track_id] = 95.0
 
-        thumbnails = info.get('thumbnails', [])
-        dl_cover = None
-        if thumbnails:
-            jpegs = [t for t in thumbnails if '.jpg' in t.get('url', '') or '.jpeg' in t.get('url', '') or '.png' in t.get('url', '')]
-            if jpegs:
-                dl_cover = jpegs[-1].get('url')
-
-        if not dl_cover:
-            dl_cover = info.get('thumbnail')
+        dl_cover = _best_thumbnail_url(info.get("thumbnails", []), info.get("thumbnail", ""))
 
         if not dl_cover:
             vid = info.get('id')
@@ -321,12 +325,7 @@ def _resolve_audio_stream(source):
         "quiet": True,
         "skip_download": True,
         "socket_timeout": 30,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["tv_embedded", "web", "mweb"],
-                "formats": ["missing_pot"]
-            }
-        },
+        "extractor_args": _youtube_extractor_args(),
         "remote_components": ["ejs:github"],
     }
     try:
