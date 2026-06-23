@@ -17,7 +17,8 @@ from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _p
 def _youtube_extractor_args():
     return {
         "youtube": {
-            "player_client": ["web", "android"],
+            "player_client": ["web", "tv", "android"],
+            "formats": ["missing_pot"],
         }
     }
 
@@ -317,7 +318,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     return final_path
 
 
-def _resolve_audio_stream(source):
+def _resolve_audio_stream(source, extra_opts=None):
     ydl_opts = {
         "format": "bestaudio/best",
         "noplaylist": True,
@@ -327,6 +328,8 @@ def _resolve_audio_stream(source):
         "extractor_args": _youtube_extractor_args(),
         "remote_components": ["ejs:github"],
     }
+    if extra_opts:
+        ydl_opts.update(extra_opts)
     try:
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(source, download=False)

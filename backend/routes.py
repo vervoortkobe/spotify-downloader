@@ -192,20 +192,35 @@ def resolve_youtube_url():
         return jsonify({"error": str(e)}), 500
 
 
+def _resolve_with_fallbacks(source):
+    """Try multiple yt-dlp configurations to get a working audio URL."""
+    strategies = [
+        # Strategy 1: default (web, tv, android + missing_pot)
+        {},
+        # Strategy 2: force web client only
+        {"extractor_args": {"youtube": {"player_client": ["web"]}}},
+        # Strategy 3: web + mweb
+        {"extractor_args": {"youtube": {"player_client": ["web", "mweb"]}}},
+        # Strategy 4: tv + android
+        {"extractor_args": {"youtube": {"player_client": ["tv", "android"]}}},
+        # Strategy 5: android only
+        {"extractor_args": {"youtube": {"player_client": ["android"]}}},
+    ]
+    
+    for extra_opts in strategies:
+        audio_url, content_type, upstream_headers, err = _resolve_audio_stream(source, extra_opts)
+        if not err and audio_url:
+            return audio_url, content_type, upstream_headers, None
+    return None, None, None, "All extraction strategies failed"
+
 @routes.route("/api/stream", methods=["GET"])
 def stream_track_get():
     source_url = request.args.get("source_url", "").strip()
-    title = request.args.get("title", "").strip()
-    artists = request.args.get("artists", "").strip()
 
-    if not source_url and not (title or artists):
-        return jsonify({"error": "Provide source_url or title+artists"}), 400
+    if not source_url:
+        return jsonify({"error": "Provide source_url"}), 400
 
-    source = f"ytsearch1:{title} {artists} audio" if (title or artists) else source_url
-
-    audio_url, content_type, upstream_headers, err = _resolve_audio_stream(source)
-    if err and source_url and (title or artists):
-        audio_url, content_type, upstream_headers, err = _resolve_audio_stream(f"ytsearch1:{title} {artists} audio")
+    audio_url, content_type, upstream_headers, err = _resolve_with_fallbacks(source_url)
     if err:
         return jsonify({"error": err}), 404
 
@@ -225,9 +240,9 @@ def stream_track():
 
     source = f"ytsearch1:{title} {artists} audio" if (title or artists) else source_url
 
-    audio_url, content_type, upstream_headers, err = _resolve_audio_stream(source)
+    audio_url, content_type, upstream_headers, err = _resolve_with_fallbacks(source)
     if err and source_url and (title or artists):
-        audio_url, content_type, upstream_headers, err = _resolve_audio_stream(f"ytsearch1:{title} {artists} audio")
+        audio_url, content_type, upstream_headers, err = _resolve_with_fallbacks(f"ytsearch1:{title} {artists} audio")
     if err:
         return jsonify({"error": err}), 404
 
