@@ -21,7 +21,7 @@ def get_yt_info(track_title, artists):
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
-            "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+            "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
             "remote_components": ["ejs:github"],
         }
         with YoutubeDL(ydl_opts) as ydl:
@@ -35,9 +35,9 @@ def get_yt_info(track_title, artists):
             thumbnail = ""
             thumbnails = info.get('thumbnails', [])
             if thumbnails:
-                jpegs = [t for t in thumbnails if '.jpg' in t.get('url', '') or '.jpeg' in t.get('url', '')]
-                if jpegs:
-                    thumbnail = jpegs[-1].get('url')
+                valid_images = [t for t in thumbnails if any(ext in t.get('url', '').lower() for ext in ['.jpg', '.jpeg', '.png', '.webp'])]
+                if valid_images:
+                    thumbnail = valid_images[-1].get('url')
             if not thumbnail:
                 thumbnail = info.get('thumbnail') or ""
 
@@ -90,7 +90,7 @@ def scrape_external_data(url, service, url_type):
         "quiet": True,
         "skip_download": True,
         "extract_flat": is_flat,
-        "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+        "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
         "remote_components": ["ejs:github"],
     }
     with YoutubeDL(ydl_opts) as ydl:
@@ -245,7 +245,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
                 "preferredquality": "192",
             }
         ],
-        "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+        "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
         "remote_components": ["ejs:github"],
     }
     try:
@@ -306,7 +306,7 @@ def _resolve_audio_stream(source):
         "quiet": True,
         "skip_download": True,
         "socket_timeout": 30,
-        "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+        "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
         "remote_components": ["ejs:github"],
     }
     try:
@@ -348,7 +348,11 @@ def _resolve_audio_stream(source):
 
 def _proxy_audio_stream(audio_url, content_type, range_header=None):
     headers = {
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
         "Accept": "*/*",
     }
     if range_header:
