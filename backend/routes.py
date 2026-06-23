@@ -194,19 +194,23 @@ def resolve_youtube_url():
 
 def _resolve_with_fallbacks(source):
     """Try multiple yt-dlp configurations to get a working audio URL."""
+    from utils import _youtube_extractor_args
+
+    base = _youtube_extractor_args()
+
     strategies = [
-        # Strategy 1: default (web, tv, android + missing_pot)
+        # Strategy 1: web + web_embedded with missing_pot (current default)
         {},
-        # Strategy 2: force web client only
-        {"extractor_args": {"youtube": {"player_client": ["web"]}}},
-        # Strategy 3: web + mweb
-        {"extractor_args": {"youtube": {"player_client": ["web", "mweb"]}}},
-        # Strategy 4: tv + android
-        {"extractor_args": {"youtube": {"player_client": ["tv", "android"]}}},
-        # Strategy 5: android only
-        {"extractor_args": {"youtube": {"player_client": ["android"]}}},
+        # Strategy 2: web + web_embedded WITHOUT missing_pot
+        {"extractor_args": {"youtube": {"player_client": base["youtube"]["player_client"], "formats": []}}},
+        # Strategy 3: mweb only — least affected by SABR/DRM
+        {"extractor_args": {"youtube": {"player_client": ["mweb"], "formats": ["missing_pot"]}}},
+        # Strategy 4: mweb only, no missing_pot
+        {"extractor_args": {"youtube": {"player_client": ["mweb"], "formats": []}}},
+        # Strategy 5: default yt-dlp clients with player_skip
+        {"extractor_args": {"youtube": {"player_client": ["web", "tv", "android"], "formats": ["missing_pot"], "player_skip": ["webpage"]}}},
     ]
-    
+
     for extra_opts in strategies:
         audio_url, content_type, upstream_headers, err = _resolve_audio_stream(source, extra_opts)
         if not err and audio_url:
