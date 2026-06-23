@@ -203,14 +203,14 @@ def stream_track_get():
 
     source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
 
-    audio_url, content_type, err = _resolve_audio_stream(source)
+    audio_url, content_type, upstream_headers, err = _resolve_audio_stream(source)
     if err and source_url and (title or artists):
-        audio_url, content_type, err = _resolve_audio_stream(f"ytsearch1:{title} {artists} audio")
+        audio_url, content_type, upstream_headers, err = _resolve_audio_stream(f"ytsearch1:{title} {artists} audio")
     if err:
         return jsonify({"error": err}), 404
 
     range_header = request.headers.get("Range", None)
-    return _proxy_audio_stream(audio_url, content_type, range_header)
+    return _proxy_audio_stream(audio_url, content_type, range_header, upstream_headers)
 
 
 @routes.route("/api/stream-track", methods=["POST"])
@@ -225,14 +225,14 @@ def stream_track():
 
     source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
 
-    audio_url, content_type, err = _resolve_audio_stream(source)
+    audio_url, content_type, upstream_headers, err = _resolve_audio_stream(source)
     if err and source_url and (title or artists):
-        audio_url, content_type, err = _resolve_audio_stream(f"ytsearch1:{title} {artists} audio")
+        audio_url, content_type, upstream_headers, err = _resolve_audio_stream(f"ytsearch1:{title} {artists} audio")
     if err:
         return jsonify({"error": err}), 404
 
     range_header = request.headers.get("Range", None)
-    return _proxy_audio_stream(audio_url, content_type, range_header)
+    return _proxy_audio_stream(audio_url, content_type, range_header, upstream_headers)
 
 
 @routes.route("/api/download-track", methods=["POST"])
