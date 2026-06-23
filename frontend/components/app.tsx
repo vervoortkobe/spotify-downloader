@@ -48,7 +48,7 @@ const getApiUrl = () => {
   }
 }
 
-let LOCAL_API = getApiUrl()
+let API_URL = getApiUrl()
 
 export default function SpotifyDownloaderApp() {
   const [playlistLink, setPlaylistLink] = useState("")
@@ -60,14 +60,14 @@ export default function SpotifyDownloaderApp() {
   }, [])
 
   useEffect(() => {
-    LOCAL_API = getApiUrl()
+    API_URL = getApiUrl()
 
     const checkHealth = async () => {
-      console.log(`[Health Check] Polling backend health at ${LOCAL_API}/api/health...`)
+      console.log(`[Health Check] Polling backend health at ${API_URL}/api/health...`)
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 4000)
-        const res = await fetch(`${LOCAL_API}/api/health`, { signal: controller.signal })
+        const res = await fetch(`${API_URL}/api/health`, { signal: controller.signal })
         clearTimeout(timeoutId)
         if (res.ok) {
           const data = await res.json()
@@ -358,7 +358,7 @@ export default function SpotifyDownloaderApp() {
     activeAbortController?.abort()
 
     try {
-      await fetch(`${LOCAL_API}/api/cancel-track/${trackId}`, { method: "POST" })
+      await fetch(`${API_URL}/api/cancel-track/${trackId}`, { method: "POST" })
     } catch (e) {
       console.error("Failed to notify backend about track cancellation", e)
     }
@@ -404,7 +404,7 @@ export default function SpotifyDownloaderApp() {
     }
     setIsResolvingUrl(true)
     try {
-      const res = await fetch(`${LOCAL_API}/api/resolve-youtube-url`, {
+      const res = await fetch(`${API_URL}/api/resolve-youtube-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ youtubeUrl: url }),
@@ -471,7 +471,7 @@ export default function SpotifyDownloaderApp() {
       }
       params.set("title", track.title)
       params.set("artists", track.artists)
-      const streamUrl = `${LOCAL_API}/api/stream?${params.toString()}`
+      const streamUrl = `${API_URL}/api/stream?${params.toString()}`
 
       if (!audioRef.current) {
         audioRef.current = new Audio()
@@ -529,7 +529,7 @@ export default function SpotifyDownloaderApp() {
       if (!activePlaylistJobId) {
         return
       }
-      await fetch(`${LOCAL_API}/api/cancel-playlist/${activePlaylistJobId}`, { method: "POST" })
+      await fetch(`${API_URL}/api/cancel-playlist/${activePlaylistJobId}`, { method: "POST" })
       toast.success("Playlist download cancelled", { id: "download-toast" })
     } catch (e) {
       console.error("Failed to notify backend about playlist cancellation", e)
@@ -548,7 +548,7 @@ export default function SpotifyDownloaderApp() {
       clearTrackProgressInterval()
       trackProgressIntervalRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`${LOCAL_API}/api/progress/${track.id}`)
+          const res = await fetch(`${API_URL}/api/progress/${track.id}`)
           if (res.ok) {
             const data = await res.json()
             setTrackProgress((prev) => ({ ...prev, [track.id]: data.progress || 0 }))
@@ -557,7 +557,7 @@ export default function SpotifyDownloaderApp() {
       }, 500)
 
       const sourceUrl = urlOverrides[track.id] || track.sourceUrl || ""
-      const response = await fetch(`${LOCAL_API}/api/download-track`, {
+      const response = await fetch(`${API_URL}/api/download-track`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...track, sourceUrl }),
@@ -594,7 +594,7 @@ export default function SpotifyDownloaderApp() {
       clearTrackProgressInterval()
 
       if (err.name === "AbortError") {
-        fetch(`${LOCAL_API}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
+        fetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
         toast.error(`Cancelled ${track.title}`)
         setTrackProgress((prev) => {
           const newState = { ...prev }
@@ -644,7 +644,7 @@ export default function SpotifyDownloaderApp() {
       clearPlaylistProgressInterval()
       playlistProgressIntervalRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`${LOCAL_API}/api/progress/all`)
+          const res = await fetch(`${API_URL}/api/progress/all`)
           if (res.ok) {
             const data = await res.json()
             setTrackProgress((prev) => {
@@ -661,7 +661,7 @@ export default function SpotifyDownloaderApp() {
         } catch (e) {}
       }, 1000)
 
-      const res = await fetch(`${LOCAL_API}/api/download-playlist-zip`, {
+      const res = await fetch(`${API_URL}/api/download-playlist-zip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -689,9 +689,7 @@ export default function SpotifyDownloaderApp() {
       setActivePlaylistJobId(job_id)
 
       if (playlistCancelRequestedRef.current) {
-        await fetch(`${LOCAL_API}/api/cancel-playlist/${job_id}`, { method: "POST" }).catch(
-          () => {}
-        )
+        await fetch(`${API_URL}/api/cancel-playlist/${job_id}`, { method: "POST" }).catch(() => {})
         setTrackProgress({})
         setPlaylistDownloadProgress(0)
         toast.success("Playlist download cancelled", { id: "download-toast" })
@@ -709,7 +707,7 @@ export default function SpotifyDownloaderApp() {
         }
 
         try {
-          const statusRes = await fetch(`${LOCAL_API}/api/job-status/${job_id}`, {
+          const statusRes = await fetch(`${API_URL}/api/job-status/${job_id}`, {
             signal: playlistStatusAbortRef.current?.signal,
           })
           if (!statusRes.ok) continue
@@ -746,7 +744,7 @@ export default function SpotifyDownloaderApp() {
       if (success) {
         setPlaylistDownloadProgress(100)
         toast.loading("Finalizing ZIP file...", { id: "download-toast" })
-        const downloadUrl = `${LOCAL_API}/api/download-job/${job_id}`
+        const downloadUrl = `${API_URL}/api/download-job/${job_id}`
 
         const a = document.createElement("a")
         a.href = downloadUrl
@@ -798,12 +796,12 @@ export default function SpotifyDownloaderApp() {
     setDownloadProgress(0)
     setSongsDownloaded(0)
     setTotalSongs(0)
-    setStatusMessage("Fetching playlist data... This might take a while.")
+    setStatusMessage("Fetching playlist data...")
     setTracks([])
     setSelectedTrack(null)
 
     try {
-      const response = await fetch(`${LOCAL_API}/api/scrape-playlist`, {
+      const response = await fetch(`${API_URL}/api/scrape-playlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playlistUrl: playlistLink, service: effectiveService }),
@@ -1136,7 +1134,10 @@ export default function SpotifyDownloaderApp() {
           {(isProcessing || (downloadProgress > 0 && tracks.length === 0)) && (
             <div className="relative z-0 mt-8 w-full max-w-2xl rounded-2xl border border-[var(--clr-borderSubtle)] bg-[#0a1410]/70 p-4 backdrop-blur-md md:p-6">
               <div className="mb-3 flex justify-between text-sm font-medium text-zinc-400">
-                <span>{statusMessage}</span>
+                <div className="flex flex-col gap-0.5">
+                  <span>{statusMessage}</span>
+                  <span className="text-xs text-zinc-500/70 italic">This might take a while</span>
+                </div>
                 {totalSongs > 0 && (
                   <span className="text-zinc-300">
                     {songsDownloaded} / {totalSongs}

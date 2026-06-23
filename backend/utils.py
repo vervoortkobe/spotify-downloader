@@ -17,8 +17,7 @@ from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _p
 def _youtube_extractor_args():
     return {
         "youtube": {
-            "player_client": ["web", "mweb"],
-            "formats": ["missing_pot"],
+            "player_client": ["web", "android"],
         }
     }
 
@@ -392,6 +391,8 @@ def _proxy_audio_stream(audio_url, content_type, range_header=None, upstream_hea
             "Chrome/120.0.0.0 Safari/537.36"
         ),
         "Accept": "*/*",
+        "Referer": "https://www.youtube.com/",
+        "Origin": "https://www.youtube.com",
     }
     if upstream_headers:
         headers.update(upstream_headers)
