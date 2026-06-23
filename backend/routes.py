@@ -157,7 +157,12 @@ def resolve_youtube_url():
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
-            "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["tv_embedded", "web", "mweb"],
+                    "formats": ["missing_pot"]
+                }
+            },
             "remote_components": ["ejs:github"],
         }
         with YoutubeDL(ydl_opts) as ydl:

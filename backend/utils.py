@@ -21,7 +21,12 @@ def get_yt_info(track_title, artists):
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
-            "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["tv_embedded", "web", "mweb"],
+                    "formats": ["missing_pot"]
+                }
+            },
             "remote_components": ["ejs:github"],
         }
         with YoutubeDL(ydl_opts) as ydl:
@@ -90,7 +95,12 @@ def scrape_external_data(url, service, url_type):
         "quiet": True,
         "skip_download": True,
         "extract_flat": is_flat,
-        "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["tv_embedded", "web", "mweb"],
+                "formats": ["missing_pot"]
+            }
+        },
         "remote_components": ["ejs:github"],
     }
     with YoutubeDL(ydl_opts) as ydl:
@@ -245,7 +255,12 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
                 "preferredquality": "192",
             }
         ],
-        "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["tv_embedded", "web", "mweb"],
+                "formats": ["missing_pot"]
+            }
+        },
         "remote_components": ["ejs:github"],
     }
     try:
@@ -306,7 +321,12 @@ def _resolve_audio_stream(source):
         "quiet": True,
         "skip_download": True,
         "socket_timeout": 30,
-        "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["tv_embedded", "web", "mweb"],
+                "formats": ["missing_pot"]
+            }
+        },
         "remote_components": ["ejs:github"],
     }
     try:
