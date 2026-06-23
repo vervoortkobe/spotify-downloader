@@ -17,7 +17,7 @@ from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _p
 def _youtube_extractor_args():
     return {
         "youtube": {
-            "player_client": ["web", "tv", "android"],
+            "player_client": ["web", "web_embedded"],
             "formats": ["missing_pot"],
         }
     }

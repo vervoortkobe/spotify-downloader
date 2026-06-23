@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:spotifull_app/models/track_model.dart';
+import 'package:spotifull_app/services/api_service.dart';
 import 'package:spotifull_app/services/notification_service.dart';
 
 class PlayerProvider extends ChangeNotifier {
@@ -72,7 +73,9 @@ class PlayerProvider extends ChangeNotifier {
     _currentTrack = track;
     notifyListeners();
 
-    final source = track.sourceUrl.isNotEmpty ? track.sourceUrl : null;
+    final source = track.sourceUrl.isNotEmpty
+        ? ApiService.streamTrackUrl(track.sourceUrl)
+        : null;
     if (source != null) {
       await _player.play(UrlSource(source));
     }

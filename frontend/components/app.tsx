@@ -465,13 +465,9 @@ export default function SpotifyDownloaderApp() {
 
     try {
       const sourceUrl = urlOverrides[track.id] || track.sourceUrl || ""
-      const params = new URLSearchParams()
-      if (sourceUrl) {
-        params.set("source_url", sourceUrl)
-      }
-      params.set("title", track.title)
-      params.set("artists", track.artists)
-      const streamUrl = `${API_URL}/api/stream?${params.toString()}`
+      const streamUrl = sourceUrl
+        ? `${API_URL}/api/stream?source_url=${encodeURIComponent(sourceUrl)}`
+        : `${API_URL}/api/stream`
 
       if (!audioRef.current) {
         audioRef.current = new Audio()

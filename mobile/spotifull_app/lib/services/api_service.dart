@@ -54,19 +54,8 @@ class ApiService {
     }
   }
 
-  static Future<String?> streamTrack(String sourceUrl) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/stream-track'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'sourceUrl': sourceUrl}),
-      );
-      if (response.statusCode != 200) return null;
-      return response.body;
-    } catch (e) {
-      debugPrint('Stream failed: $e');
-      return null;
-    }
+  static String streamTrackUrl(String sourceUrl) {
+    return '$_baseUrl/stream?source_url=${Uri.encodeComponent(sourceUrl)}';
   }
 
   static Future<List<int>?> downloadTrack(TrackModel track, {String? sourceUrlOverride}) async {
