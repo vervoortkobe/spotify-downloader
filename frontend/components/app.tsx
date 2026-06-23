@@ -1602,9 +1602,9 @@ export default function SpotifyDownloaderApp() {
                                 rel="noopener noreferrer"
                                 className="group/embed relative block aspect-video w-full overflow-hidden rounded-lg border border-[var(--clr-border)]"
                               >
-                                {selectedTrack.cover ? (
+                                {(urlMeta[selectedTrack.id]?.thumbnail || selectedTrack.cover) ? (
                                   <Image
-                                    src={selectedTrack.cover}
+                                    src={urlMeta[selectedTrack.id]?.thumbnail || selectedTrack.cover}
                                     alt=""
                                     fill
                                     className="object-cover transition-transform duration-300 group-hover/embed:scale-105"

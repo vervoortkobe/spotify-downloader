@@ -61,7 +61,7 @@ def scrape_playlist():
                     "title": track.title,
                     "artists": track.artists,
                     "album": track.album or "",
-                    "cover": yt_cover or track.cover_url or "",
+                    "cover": track.cover_url or yt_cover or "",
                     "releaseDate": track.release_date or "",
                     "downloadLink": "",
                     "sourceUrl": yt_url,
@@ -79,7 +79,7 @@ def scrape_playlist():
                         "title": track.title,
                         "artists": track.artists,
                         "album": track.album or "",
-                        "cover": yt_cover or track.cover_url or "",
+                        "cover": track.cover_url or yt_cover or "",
                         "releaseDate": track.release_date or "",
                         "downloadLink": "",
                         "sourceUrl": yt_url,
@@ -157,7 +157,7 @@ def resolve_youtube_url():
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
-            "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+            "extractor_args": {"youtube": {"player_client": ["ios", "web", "mweb"]}},
             "remote_components": ["ejs:github"],
         }
         with YoutubeDL(ydl_opts) as ydl:
@@ -169,8 +169,8 @@ def resolve_youtube_url():
         thumbnails = info.get("thumbnails", [])
         thumbnail = ""
         if thumbnails:
-            jpegs = [t for t in thumbnails if ".jpg" in t.get("url", "") or ".jpeg" in t.get("url", "")]
-            thumbnail = (jpegs[-1].get("url") if jpegs else thumbnails[-1].get("url")) or ""
+            valid_images = [t for t in thumbnails if any(ext in t.get("url", "").lower() for ext in [".jpg", ".jpeg", ".png", ".webp"])]
+            thumbnail = (valid_images[-1].get("url") if valid_images else thumbnails[-1].get("url")) or ""
         if not thumbnail:
             thumbnail = info.get("thumbnail", "")
 
