@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
+import 'package:spotifull_app/models/playlist_model.dart';
 import 'package:spotifull_app/providers/auth_provider.dart';
 import 'package:spotifull_app/providers/playlist_provider.dart';
 import 'package:spotifull_app/services/api_service.dart';
@@ -41,9 +42,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (playlists != null && playlists.isNotEmpty) {
       for (final p in playlists) {
         final playlistUrl = 'https://open.spotify.com/playlist/${p['id']}';
+
+        if (playlistProv.hasPlaylistWithUrl(playlistUrl)) continue;
+
         final scraped = await ApiService.scrapePlaylist(playlistUrl);
         if (scraped != null && auth.user != null) {
-          await playlistProv.savePlaylist(auth.user!.uid, scraped);
+          final enriched = PlaylistModel(
+            id: scraped.id,
+            name: scraped.name,
+            owner: p['owner'] as String? ?? '',
+            coverUrl: scraped.tracks.isNotEmpty ? scraped.tracks.first.cover : '',
+            tracks: scraped.tracks,
+            creatorUid: auth.user!.uid,
+            source: 'spotify',
+            spotifyUrl: playlistUrl,
+            isUsersOwn: true,
+          );
+          await playlistProv.savePlaylist(auth.user!.uid, enriched);
         }
       }
       await auth.updateSpotifyProfileUrl(url);

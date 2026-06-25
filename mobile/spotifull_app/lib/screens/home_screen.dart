@@ -41,11 +41,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted || playlists == null) return;
 
     for (final p in playlists) {
-      final existingIds = playlistProv.playlists.map((pl) => pl.id).toSet();
       final playlistId = p['id'] as String;
       final playlistUrl = 'https://open.spotify.com/playlist/$playlistId';
 
-      if (!existingIds.contains(playlistUrl.hashCode.toString())) {
+      if (!playlistProv.hasPlaylistWithUrl(playlistUrl)) {
         final scraped = await ApiService.scrapePlaylist(playlistUrl);
         if (scraped != null) {
           final enriched = PlaylistModel(
@@ -56,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
             tracks: scraped.tracks,
             creatorUid: auth.user!.uid,
             source: 'spotify',
+            spotifyUrl: playlistUrl,
             isUsersOwn: true,
           );
           await playlistProv.savePlaylist(auth.user!.uid, enriched);
@@ -219,8 +219,33 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (_) => PlaylistDetailScreen(playlist: p),
             ),
           ),
-          onDelete: () =>
-              prov.deletePlaylist(prov.playlists.first.creatorUid, p.id),
+          onDelete: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: const Color(0xFF0f1d17),
+                    title: const Text('Delete Playlist',
+                        style: TextStyle(color: Colors.white)),
+                    content: Text('Delete "${p.name}"?',
+                        style: TextStyle(color: const Color(0xFFa1a1aa))),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel',
+                            style: TextStyle(color: Color(0xFFa1a1aa))),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Delete',
+                            style: TextStyle(color: Color(0xFFef4444))),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true && context.mounted) {
+                  await prov.deletePlaylist(p.creatorUid, p.id);
+                }
+              },
           showDelete: true,
         );
       },
@@ -301,13 +326,26 @@ class _ImportSheetState extends State<_ImportSheet> {
             child: ElevatedButton(
               onPressed: _loading
                   ? null
-                  : () async {
-                      if (_urlController.text.isEmpty) return;
+                    : () async {
+                      final url = _urlController.text.trim();
+                      if (url.isEmpty) return;
                       setState(() => _loading = true);
                       final auth = context.read<AuthProvider>();
                       final prov = context.read<PlaylistProvider>();
+
+                      if (prov.hasPlaylistWithUrl(url)) {
+                        if (!context.mounted) return;
+                        setState(() => _loading = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Playlist already in your library'),
+                          ),
+                        );
+                        return;
+                      }
+
                       final playlist = await prov.importFromUrl(
-                        _urlController.text,
+                        url,
                         service: _service,
                         creatorUid: auth.user?.uid,
                       );

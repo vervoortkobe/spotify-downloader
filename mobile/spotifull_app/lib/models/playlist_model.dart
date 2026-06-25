@@ -7,6 +7,7 @@ class PlaylistModel {
   final String coverUrl;
   List<TrackModel> tracks;
   final String source;
+  final String spotifyUrl;
   final String creatorUid;
   final List<String> sharedWith;
   final bool isCustom;
@@ -21,6 +22,7 @@ class PlaylistModel {
     this.coverUrl = '',
     this.tracks = const [],
     this.source = 'spotify',
+    this.spotifyUrl = '',
     required this.creatorUid,
     this.sharedWith = const [],
     this.isCustom = false,
@@ -38,6 +40,7 @@ class PlaylistModel {
         ?.map((t) => TrackModel.fromJson(t as Map<String, dynamic>))
         .toList() ?? [],
     source: json['source'] as String? ?? 'spotify',
+    spotifyUrl: json['spotifyUrl'] as String? ?? '',
     creatorUid: json['creatorUid'] as String? ?? '',
     sharedWith: (json['sharedWith'] as List<dynamic>?)
         ?.map((e) => e as String).toList() ?? [],
@@ -51,7 +54,9 @@ class PlaylistModel {
     'name': name,
     'owner': owner,
     'coverUrl': coverUrl,
+    'tracks': tracks.map((t) => t.toJson()).toList(),
     'source': source,
+    'spotifyUrl': spotifyUrl,
     'creatorUid': creatorUid,
     'sharedWith': sharedWith,
     'isCustom': isCustom,
@@ -59,7 +64,4 @@ class PlaylistModel {
     'createdAt': createdAt,
     'lastTrackSync': lastTrackSync,
   };
-
-  // For custom playlists, tracks are stored as a subcollection or embedded
-  // We keep the full list in memory after loading
 }
