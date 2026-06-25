@@ -43,9 +43,9 @@ class PlaylistService {
   }
 
   Future<void> savePlaylist(String uid, PlaylistModel playlist) async {
-    final docRef = _firestore.collection('users').doc(uid).collection('playlists').doc();
+    final docRef = _firestore.collection('users').doc(uid).collection('playlists').doc(playlist.id);
     await docRef.set(playlist.toFirestore());
-    await _saveTracksToCache(uid, docRef.id, playlist.tracks);
+    await _saveTracksToCache(uid, playlist.id, playlist.tracks);
   }
 
   Future<List<PlaylistModel>> getUserPlaylists(String uid) async {

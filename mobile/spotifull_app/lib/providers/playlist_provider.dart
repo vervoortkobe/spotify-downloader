@@ -56,18 +56,21 @@ class PlaylistProvider extends ChangeNotifier {
       'isUsersOwn': p.isUsersOwn,
       'trackCount': p.tracks.length,
     }).toList();
-    await prefs.setString('cached_playlists', jsonEncode(data));
+    await prefs.setString('cached_playlists_v2', jsonEncode(data));
   }
 
   Future<void> _loadCachedPlaylists() async {
     final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getString('cached_playlists');
+    // Clear stale cache from old doc() scheme
+    await prefs.remove('cached_playlists');
+    final cached = prefs.getString('cached_playlists_v2');
     if (cached == null) return;
     final data = jsonDecode(cached) as List<dynamic>;
     _playlists = data.map((d) {
       final m = d as Map<String, dynamic>;
+      final id = m['id'] as String? ?? '';
       return PlaylistModel(
-        id: m['id'] as String? ?? '',
+        id: id,
         name: m['name'] as String? ?? '',
         owner: m['owner'] as String? ?? '',
         coverUrl: m['coverUrl'] as String? ?? '',
@@ -78,6 +81,7 @@ class PlaylistProvider extends ChangeNotifier {
         isUsersOwn: m['isUsersOwn'] as bool? ?? false,
       );
     }).toList();
+    _playlists.removeWhere((p) => p.id.isEmpty);
   }
 
   bool hasPlaylistWithUrl(String spotifyUrl) {
