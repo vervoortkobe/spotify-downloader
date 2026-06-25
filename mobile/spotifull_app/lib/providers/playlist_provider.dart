@@ -50,6 +50,7 @@ class PlaylistProvider extends ChangeNotifier {
       'owner': p.owner,
       'coverUrl': p.coverUrl,
       'source': p.source,
+      'spotifyUrl': p.spotifyUrl,
       'creatorUid': p.creatorUid,
       'isCustom': p.isCustom,
       'isUsersOwn': p.isUsersOwn,
@@ -71,11 +72,16 @@ class PlaylistProvider extends ChangeNotifier {
         owner: m['owner'] as String? ?? '',
         coverUrl: m['coverUrl'] as String? ?? '',
         source: m['source'] as String? ?? 'spotify',
+        spotifyUrl: m['spotifyUrl'] as String? ?? '',
         creatorUid: m['creatorUid'] as String? ?? '',
         isCustom: m['isCustom'] as bool? ?? false,
         isUsersOwn: m['isUsersOwn'] as bool? ?? false,
       );
     }).toList();
+  }
+
+  bool hasPlaylistWithUrl(String spotifyUrl) {
+    return _playlists.any((p) => p.spotifyUrl == spotifyUrl);
   }
 
   Future<PlaylistModel?> importFromUrl(String url, {String service = 'auto', String? creatorUid}) async {

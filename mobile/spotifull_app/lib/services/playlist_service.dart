@@ -1,22 +1,51 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/playlist_model.dart';
 import '../models/track_model.dart';
 
 class PlaylistService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  Future<File> _cacheFile(String uid, String playlistId) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final cacheDir = Directory('${dir.path}/playlist_cache');
+    if (!await cacheDir.exists()) await cacheDir.create(recursive: true);
+    return File('${cacheDir.path}/${uid}_$playlistId.json');
+  }
+
+  Future<void> _saveTracksToCache(String uid, String playlistId, List<TrackModel> tracks) async {
+    try {
+      final file = await _cacheFile(uid, playlistId);
+      await file.writeAsString(jsonEncode(tracks.map((t) => t.toJson()).toList()));
+    } catch (e) {
+      debugPrint('Track cache write failed: $e');
+    }
+  }
+
+  Future<List<TrackModel>> _loadTracksFromCache(String uid, String playlistId) async {
+    try {
+      final file = await _cacheFile(uid, playlistId);
+      if (!await file.exists()) return [];
+      final data = jsonDecode(await file.readAsString()) as List<dynamic>;
+      return data.map((t) => TrackModel.fromJson(t as Map<String, dynamic>)).toList();
+    } catch (e) {
+      debugPrint('Track cache read failed: $e');
+      return [];
+    }
+  }
+
+  Future<void> _deleteCache(String uid, String playlistId) async {
+    final file = await _cacheFile(uid, playlistId);
+    if (await file.exists()) await file.delete();
+  }
+
   Future<void> savePlaylist(String uid, PlaylistModel playlist) async {
     final docRef = _firestore.collection('users').doc(uid).collection('playlists').doc();
     await docRef.set(playlist.toFirestore());
-    // Store tracks as subcollection for custom playlists
-    if (playlist.isCustom && playlist.tracks.isNotEmpty) {
-      final batch = _firestore.batch();
-      for (final track in playlist.tracks) {
-        final trackRef = docRef.collection('tracks').doc(track.id);
-        batch.set(trackRef, track.toJson());
-      }
-      await batch.commit();
-    }
+    await _saveTracksToCache(uid, docRef.id, playlist.tracks);
   }
 
   Future<List<PlaylistModel>> getUserPlaylists(String uid) async {
@@ -30,12 +59,12 @@ class PlaylistService {
     final playlists = <PlaylistModel>[];
     for (final doc in snap.docs) {
       final p = PlaylistModel.fromJson(doc.data(), doc.id);
-      // Load tracks for custom playlists
-      if (p.isCustom) {
-        final trackSnap = await doc.reference.collection('tracks').get();
-        p.tracks = trackSnap.docs
-            .map((t) => TrackModel.fromJson(t.data()))
-            .toList();
+      // Load tracks from cache first, then Firestore (which has them embedded now)
+      if (p.tracks.isEmpty) {
+        final cached = await _loadTracksFromCache(uid, doc.id);
+        if (cached.isNotEmpty) {
+          p.tracks = cached;
+        }
       }
       playlists.add(p);
     }
@@ -44,6 +73,7 @@ class PlaylistService {
 
   Future<void> deletePlaylist(String uid, String playlistId) async {
     await _firestore.collection('users').doc(uid).collection('playlists').doc(playlistId).delete();
+    await _deleteCache(uid, playlistId);
   }
 
   Future<void> sharePlaylist(String uid, String playlistId, String friendUid) async {
@@ -82,8 +112,10 @@ class PlaylistService {
         .collection('playlists')
         .doc(playlistId)
         .update({
+      'tracks': tracks.map((t) => t.toJson()).toList(),
       'lastTrackSync': DateTime.now(),
     });
+    await _saveTracksToCache(uid, playlistId, tracks);
   }
 
   Future<void> updateLastSpotifySync(String uid) async {

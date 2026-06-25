@@ -32,6 +32,7 @@ class ApiService {
         tracks: tracks,
         creatorUid: '',
         source: service == 'auto' ? 'spotify' : service,
+        spotifyUrl: url,
       );
     } catch (e) {
       debugPrint('Scrape failed: $e');

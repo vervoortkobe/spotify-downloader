@@ -13,6 +13,7 @@ class NotificationService {
   void Function()? onPlayPause;
   void Function()? onNext;
   void Function()? onPrevious;
+  void Function()? onNotificationTap;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -52,6 +53,9 @@ class NotificationService {
         break;
       case 'previous':
         onPrevious?.call();
+        break;
+      default:
+        onNotificationTap?.call();
         break;
     }
   }
