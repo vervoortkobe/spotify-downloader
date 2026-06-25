@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotifull_app/models/user_model.dart';
 import 'package:spotifull_app/services/auth_service.dart';
 
@@ -22,21 +24,29 @@ class AuthProvider extends ChangeNotifier {
   }
 
   AuthProvider() {
+    _init();
+  }
+
+  Future<void> _init() async {
+    // Load cached user immediately for fast startup
+    await _loadCachedUser();
+    _isLoading = false;
+    notifyListeners();
+
+    // Listen for Firebase auth changes (overwrites cache with fresh data)
     _authService.authStateChanges.listen((firebaseUser) async {
       try {
         if (firebaseUser != null) {
-          // Try Firestore first, fall back to local-only user (Firestore rules may block)
           UserModel? userData;
           try {
             userData = await _authService.getUserData(firebaseUser.uid);
           } catch (_) {
-            debugPrint('Firestore read blocked (rules) - using local-only user');
+            debugPrint('Firestore read blocked (rules) - keeping cached user');
           }
 
           if (userData != null) {
             _user = userData;
-          } else {
-            // Create a minimal user so auth works even without Firestore
+          } else if (_user == null || _user!.uid != firebaseUser.uid) {
             _user = UserModel(
               uid: firebaseUser.uid,
               email: firebaseUser.email ?? '',
@@ -52,11 +62,57 @@ class AuthProvider extends ChangeNotifier {
         }
       } catch (e) {
         debugPrint('Auth state listener error: $e');
-        _user = null;
       }
+      await _saveCachedUser();
       _isLoading = false;
       notifyListeners();
     });
+  }
+
+  Future<void> _saveCachedUser() async {
+    if (_user == null) {
+      await SharedPreferences.getInstance()
+          .then((p) => p.remove('cached_user'));
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('cached_user', jsonEncode({
+      'uid': _user!.uid,
+      'email': _user!.email,
+      'displayName': _user!.displayName,
+      'photoUrl': _user!.photoUrl,
+      'spotifyProfileUrl': _user!.spotifyProfileUrl,
+      'isAdmin': _user!.isAdmin,
+      'isApproved': _user!.isApproved,
+      'createdAt': _user!.createdAt.toIso8601String(),
+      'lastSpotifySync': _user!.lastSpotifySync?.toIso8601String(),
+    }));
+  }
+
+  Future<void> _loadCachedUser() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('cached_user');
+      if (cached == null) return;
+      final data = jsonDecode(cached) as Map<String, dynamic>;
+      _user = UserModel(
+        uid: data['uid'] as String? ?? '',
+        email: data['email'] as String? ?? '',
+        displayName: data['displayName'] as String? ?? '',
+        photoUrl: data['photoUrl'] as String? ?? '',
+        spotifyProfileUrl: data['spotifyProfileUrl'] as String? ?? '',
+        isAdmin: data['isAdmin'] as bool? ?? false,
+        isApproved: data['isApproved'] as bool? ?? false,
+        createdAt: data['createdAt'] != null
+            ? DateTime.parse(data['createdAt'] as String)
+            : DateTime.now(),
+        lastSpotifySync: data['lastSpotifySync'] != null
+            ? DateTime.parse(data['lastSpotifySync'] as String)
+            : null,
+      );
+    } catch (e) {
+      debugPrint('Failed to load cached user: $e');
+    }
   }
 
   Future<bool> signInWithGoogle() async {
@@ -64,6 +120,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
     final user = await _authService.signInWithGoogle();
     _user = user;
+    if (user != null) await _saveCachedUser();
     _isSigningIn = false;
     notifyListeners();
     return user != null;
@@ -72,6 +129,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     await _authService.signOut();
     _user = null;
+    await _saveCachedUser();
     notifyListeners();
   }
 
@@ -79,6 +137,7 @@ class AuthProvider extends ChangeNotifier {
     if (_user == null) return;
     await _authService.updateSpotifyUrl(_user!.uid, url);
     _user!.spotifyProfileUrl = url;
+    await _saveCachedUser();
     notifyListeners();
   }
 

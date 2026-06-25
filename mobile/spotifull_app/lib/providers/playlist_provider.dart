@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotifull_app/models/playlist_model.dart';
 import 'package:spotifull_app/models/track_model.dart';
 import 'package:spotifull_app/services/api_service.dart';
@@ -18,18 +20,62 @@ class PlaylistProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  Future<void> loadPlaylists(String uid) async {
-    _isLoading = true;
+  Future<void> loadPlaylists(String uid, {bool forceRefresh = false}) async {
+    if (!forceRefresh) {
+      try {
+        await _loadCachedPlaylists();
+        if (_playlists.isNotEmpty) return;  // Show cache immediately
+      } catch (_) {}
+    }
+
+    _isLoading = _playlists.isEmpty;
     notifyListeners();
     try {
       _playlists = await _playlistService.getUserPlaylists(uid);
       _sharedPlaylists = await _playlistService.getSharedPlaylists(uid);
       _error = null;
+      await _saveCachedPlaylists();
     } catch (e) {
       _error = 'Failed to load playlists';
     }
     _isLoading = false;
     notifyListeners();
+  }
+
+  Future<void> _saveCachedPlaylists() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = _playlists.map((p) => {
+      'id': p.id,
+      'name': p.name,
+      'owner': p.owner,
+      'coverUrl': p.coverUrl,
+      'source': p.source,
+      'creatorUid': p.creatorUid,
+      'isCustom': p.isCustom,
+      'isUsersOwn': p.isUsersOwn,
+      'trackCount': p.tracks.length,
+    }).toList();
+    await prefs.setString('cached_playlists', jsonEncode(data));
+  }
+
+  Future<void> _loadCachedPlaylists() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('cached_playlists');
+    if (cached == null) return;
+    final data = jsonDecode(cached) as List<dynamic>;
+    _playlists = data.map((d) {
+      final m = d as Map<String, dynamic>;
+      return PlaylistModel(
+        id: m['id'] as String? ?? '',
+        name: m['name'] as String? ?? '',
+        owner: m['owner'] as String? ?? '',
+        coverUrl: m['coverUrl'] as String? ?? '',
+        source: m['source'] as String? ?? 'spotify',
+        creatorUid: m['creatorUid'] as String? ?? '',
+        isCustom: m['isCustom'] as bool? ?? false,
+        isUsersOwn: m['isUsersOwn'] as bool? ?? false,
+      );
+    }).toList();
   }
 
   Future<PlaylistModel?> importFromUrl(String url, {String service = 'auto', String? creatorUid}) async {
@@ -59,12 +105,14 @@ class PlaylistProvider extends ChangeNotifier {
   Future<void> savePlaylist(String uid, PlaylistModel playlist) async {
     await _playlistService.savePlaylist(uid, playlist);
     _playlists.insert(0, playlist);
+    await _saveCachedPlaylists();
     notifyListeners();
   }
 
   Future<void> deletePlaylist(String uid, String playlistId) async {
     await _playlistService.deletePlaylist(uid, playlistId);
     _playlists.removeWhere((p) => p.id == playlistId);
+    await _saveCachedPlaylists();
     notifyListeners();
   }
 
@@ -82,6 +130,7 @@ class PlaylistProvider extends ChangeNotifier {
     if (idx >= 0) {
       _playlists[idx].tracks = tracks;
       _playlists[idx].lastTrackSync = DateTime.now();
+      await _saveCachedPlaylists();
       notifyListeners();
     }
   }
