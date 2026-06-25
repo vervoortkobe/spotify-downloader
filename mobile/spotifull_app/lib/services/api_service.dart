@@ -7,7 +7,10 @@ import '../models/playlist_model.dart';
 class ApiService {
   static const String _baseUrl = 'https://spotdl.vervoortkobe.be.eu.org/api';
 
-  static Future<PlaylistModel?> scrapePlaylist(String url, {String service = 'auto'}) async {
+  static Future<PlaylistModel?> scrapePlaylist(
+    String url, {
+    String service = 'auto',
+  }) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/scrape-playlist'),
@@ -36,7 +39,9 @@ class ApiService {
     }
   }
 
-  static Future<List<Map<String, dynamic>>?> scrapeUserPlaylists(String profileUrl) async {
+  static Future<List<Map<String, dynamic>>?> scrapeUserPlaylists(
+    String profileUrl,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/scrape-user-playlists'),
@@ -58,16 +63,16 @@ class ApiService {
     return '$_baseUrl/stream?source_url=${Uri.encodeComponent(sourceUrl)}';
   }
 
-  static Future<List<int>?> downloadTrack(TrackModel track, {String? sourceUrlOverride}) async {
+  static Future<List<int>?> downloadTrack(
+    TrackModel track, {
+    String? sourceUrlOverride,
+  }) async {
     try {
       final sourceUrl = sourceUrlOverride ?? track.sourceUrl;
       final response = await http.post(
         Uri.parse('$_baseUrl/download-track'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          ...track.toJson(),
-          'sourceUrl': sourceUrl,
-        }),
+        body: jsonEncode({...track.toJson(), 'sourceUrl': sourceUrl}),
       );
       if (response.statusCode != 200) return null;
       return response.bodyBytes;

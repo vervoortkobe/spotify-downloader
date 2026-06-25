@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:spotifull_app/providers/auth_provider.dart';
 import 'package:spotifull_app/screens/home_screen.dart';
@@ -19,19 +20,29 @@ class SplashScreen extends StatelessWidget {
         if (!context.mounted) return;
         if (!auth.isLoggedIn) {
           Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
         } else if (!auth.isApproved) {
           Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (_) => const ApprovalScreen()));
+            context,
+            MaterialPageRoute(builder: (_) => const ApprovalScreen()),
+          );
         } else if (auth.needsOnboarding) {
           Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+            context,
+            MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+          );
         } else if (auth.isAdmin) {
           Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (_) => const AdminScreen()));
+            context,
+            MaterialPageRoute(builder: (_) => const AdminScreen()),
+          );
         } else {
           Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+            context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
         }
       });
     }
@@ -42,14 +53,17 @@ class SplashScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.library_music, color: const Color(0xFF10b981), size: 72),
+            SvgPicture.asset('assets/icon.svg', width: 80, height: 80),
             const SizedBox(height: 24),
-            Text('Spotifull', style: TextStyle(
-              color: Colors.white,
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              letterSpacing: -0.5,
-            )),
+            Text(
+              'Spotifull',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -0.5,
+              ),
+            ),
             const SizedBox(height: 32),
             const CircularProgressIndicator(color: Color(0xFF10b981)),
           ],
