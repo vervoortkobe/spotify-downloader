@@ -105,6 +105,7 @@ export default function SpotifyDownloaderApp() {
   const [activeAbortController, setActiveAbortController] = useState<AbortController | null>(null)
   const [isDownloadingAll, setIsDownloadingAll] = useState(false)
   const [activePlaylistJobId, setActivePlaylistJobId] = useState<string | null>(null)
+  const [scrapeProgress, setScrapeProgress] = useState<{ total: number; completed: number } | null>(null)
   const [playlistDownloadProgress, setPlaylistDownloadProgress] = useState(0)
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({})
   const trackProgressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -787,21 +788,40 @@ export default function SpotifyDownloaderApp() {
       return
     }
 
+    const progressJobId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
     setIsProcessing(true)
     setFetchedService(effectiveService)
     setDownloadProgress(0)
     setSongsDownloaded(0)
     setTotalSongs(0)
-    setStatusMessage("Fetching playlist data...")
+    setScrapeProgress(null)
+    setStatusMessage("Fetching playlist/track data...")
     setTracks([])
     setSelectedTrack(null)
+
+    // Poll scrape progress
+    const progressInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/scrape-progress/${progressJobId}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.total > 0) {
+            setScrapeProgress({ total: data.total, completed: data.completed })
+            setStatusMessage(`Fetching track ${data.completed} / ${data.total}...`)
+          }
+        }
+      } catch {}
+    }, 500)
 
     try {
       const response = await fetch(`${API_URL}/api/scrape-playlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistUrl: playlistLink, service: effectiveService }),
+        body: JSON.stringify({ playlistUrl: playlistLink, service: effectiveService, progressJobId }),
       })
+
+      clearInterval(progressInterval)
 
       if (!response.ok) throw new Error("Failed to process playlist")
 
@@ -814,6 +834,7 @@ export default function SpotifyDownloaderApp() {
         setTotalSongs(processedTracks.length)
         setSongsDownloaded(processedTracks.length)
         setDownloadProgress(100)
+        setScrapeProgress({ total: processedTracks.length, completed: processedTracks.length })
         setStatusMessage(`Found ${processedTracks.length} tracks`)
 
         if (processedTracks.length > 0) {
@@ -825,6 +846,7 @@ export default function SpotifyDownloaderApp() {
         throw new Error(result.data?.message || "Processing failed")
       }
     } catch (error) {
+      clearInterval(progressInterval)
       console.error("Error:", error)
       toast.error(error instanceof Error ? error.message : "Failed to process")
       setStatusMessage("Error - try again")
@@ -925,7 +947,7 @@ export default function SpotifyDownloaderApp() {
           <div className="group relative">
             <button
               type="button"
-              className="bg-[var(--clr-primaryBgLight)]/70 hover:bg-[var(--clr-primaryBg)]/80 rounded-full border border-[var(--clr-borderLight)] px-3 py-1 text-xs font-medium text-[var(--clr-primaryTextLight)] shadow-lg shadow-black/20 transition-colors"
+              className="flex cursor-default items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100"
               aria-label="Version information"
             >
               v2.2.0
@@ -1134,13 +1156,23 @@ export default function SpotifyDownloaderApp() {
                   <span>{statusMessage}</span>
                   <span className="text-xs text-zinc-500/70 italic">This might take a while</span>
                 </div>
-                {totalSongs > 0 && (
+                {scrapeProgress && (
+                  <span className="text-zinc-300">
+                    {scrapeProgress.completed} / {scrapeProgress.total}
+                  </span>
+                )}
+                {!isProcessing && totalSongs > 0 && !scrapeProgress && (
                   <span className="text-zinc-300">
                     {songsDownloaded} / {totalSongs}
                   </span>
                 )}
               </div>
-              {isProcessing ? (
+              {isProcessing && scrapeProgress ? (
+                <Progress
+                  value={(scrapeProgress.completed / scrapeProgress.total) * 100}
+                  className={progressBarClassName}
+                />
+              ) : isProcessing ? (
                 <div className="h-3 overflow-hidden rounded-full bg-[var(--clr-progressBg)]">
                   <div className="h-full w-full animate-pulse rounded-full bg-[var(--clr-progressBar)]" />
                 </div>
