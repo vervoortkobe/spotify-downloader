@@ -33,6 +33,9 @@ def scrape_playlist():
         service = data.get("service", "auto")
         progress_job_id = data.get("progressJobId")
 
+        if progress_job_id:
+            scrape_job_progress[progress_job_id] = {'total': 0, 'completed': 0, 'status': 'scraping'}
+
         if not input_url:
             return jsonify({"event": "error", "data": {"message": "No URL provided"}}), 400
 
