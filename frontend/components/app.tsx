@@ -800,59 +800,69 @@ export default function SpotifyDownloaderApp() {
     setTracks([])
     setSelectedTrack(null)
 
-    // Poll scrape progress
-    const progressInterval = setInterval(async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/scrape-progress/${progressJobId}`)
-        if (res.ok) {
-          const data = await res.json()
-          if (data.total > 0) {
-            setScrapeProgress({ total: data.total, completed: data.completed })
-            setStatusMessage(`Fetching track ${data.completed} / ${data.total}...`)
-          }
-        }
-      } catch {}
-    }, 500)
-
     try {
-      const response = await fetch(`${API_URL}/api/scrape-playlist`, {
+      const startRes = await fetch(`${API_URL}/api/scrape-playlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playlistUrl: playlistLink, service: effectiveService, progressJobId }),
       })
-
-      clearInterval(progressInterval)
-
-      if (!response.ok) throw new Error("Failed to process playlist")
-
-      const result = await response.json()
-
-      if (result.event === "complete") {
-        setPlaylistName(result.data.playlistName || "Playlist")
-        const processedTracks: Track[] = result.data.tracks || []
-        setTracks(processedTracks)
-        setTotalSongs(processedTracks.length)
-        setSongsDownloaded(processedTracks.length)
-        setDownloadProgress(100)
-        setScrapeProgress({ total: processedTracks.length, completed: processedTracks.length })
-        setStatusMessage(`Found ${processedTracks.length} tracks`)
-
-        if (processedTracks.length > 0) {
-          setSelectedTrack(processedTracks[0])
-        }
-
-        toast.success(`Loaded ${processedTracks.length} tracks!`)
-      } else if (result.event === "error") {
-        throw new Error(result.data?.message || "Processing failed")
-      }
+      if (!startRes.ok) throw new Error("Failed to start scrape")
     } catch (error) {
-      clearInterval(progressInterval)
       console.error("Error:", error)
       toast.error(error instanceof Error ? error.message : "Failed to process")
       setStatusMessage("Error - try again")
-    } finally {
       setIsProcessing(false)
+      return
     }
+
+    // Poll scrape progress + fetch result when done
+    const progressInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/scrape-progress/${progressJobId}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.total > 0) {
+          setScrapeProgress({ total: data.total, completed: data.completed })
+          setStatusMessage(`Fetching track ${data.completed} / ${data.total}...`)
+        }
+
+        if (data.status === 'complete') {
+          clearInterval(progressInterval)
+          const resultRes = await fetch(`${API_URL}/api/scrape-result/${progressJobId}`)
+          if (!resultRes.ok) throw new Error("Failed to fetch scrape result")
+          const resultData = await resultRes.json()
+
+          setPlaylistName(resultData.playlistName || "Playlist")
+          const processedTracks: Track[] = resultData.tracks || []
+          setTracks(processedTracks)
+          setTotalSongs(processedTracks.length)
+          setSongsDownloaded(processedTracks.length)
+          setDownloadProgress(100)
+          setScrapeProgress({ total: processedTracks.length, completed: processedTracks.length })
+          setStatusMessage(`Found ${processedTracks.length} tracks`)
+
+          if (processedTracks.length > 0) {
+            setSelectedTrack(processedTracks[0])
+          }
+
+          toast.success(`Loaded ${processedTracks.length} tracks!`)
+          setIsProcessing(false)
+        } else if (data.status === 'error') {
+          clearInterval(progressInterval)
+          const errorResult = await fetch(`${API_URL}/api/scrape-result/${progressJobId}`).catch(() => null)
+          const errMsg = errorResult?.ok ? (await errorResult.json()).error : "Scraping failed"
+          toast.error(errMsg)
+          setStatusMessage("Error - try again")
+          setIsProcessing(false)
+        }
+      } catch (error) {
+        clearInterval(progressInterval)
+        console.error("Error:", error)
+        toast.error("Failed to process")
+        setStatusMessage("Error - try again")
+        setIsProcessing(false)
+      }
+    }, 500)
   }
 
   return (
@@ -1151,10 +1161,15 @@ export default function SpotifyDownloaderApp() {
           {/* Progress Indicator */}
           {(isProcessing || (downloadProgress > 0 && tracks.length === 0)) && (
             <div className="relative z-0 mt-8 w-full max-w-2xl rounded-2xl border border-[var(--clr-borderSubtle)] bg-[#0a1410]/70 p-4 backdrop-blur-md md:p-6">
-              <div className="mb-3 flex justify-between text-sm font-medium text-zinc-400">
-                <div className="flex flex-col gap-0.5">
-                  <span>{statusMessage}</span>
-                  <span className="text-xs text-zinc-500/70 italic">This might take a while</span>
+              <div className="mb-3 flex items-center justify-between text-sm font-medium text-zinc-400">
+                <div className="flex items-center gap-3">
+                  {isProcessing && (!scrapeProgress || scrapeProgress.total === 0) && (
+                    <Loader2 className="h-5 w-5 animate-spin text-[var(--clr-primary)]" />
+                  )}
+                  <div className="flex flex-col gap-0.5">
+                    <span>{statusMessage}</span>
+                    <span className="text-xs text-zinc-500/70 italic">This might take a while</span>
+                  </div>
                 </div>
                 {scrapeProgress && (
                   <span className="text-zinc-300">

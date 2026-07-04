@@ -19,7 +19,7 @@ from spotify_client import (
     sanitize_filename,
 )
 
-from config import progress_store, scrape_job_progress, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
+from config import progress_store, scrape_job_progress, scrape_job_results, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
 from utils import get_yt_info, get_playlist_client, download_track_logic, _resolve_audio_stream, _proxy_audio_stream, detect_url_service, scrape_external_data
 
 routes = Blueprint("routes", __name__)
@@ -33,13 +33,32 @@ def scrape_playlist():
         service = data.get("service", "auto")
         progress_job_id = data.get("progressJobId")
 
-        if progress_job_id:
-            scrape_job_progress[progress_job_id] = {'total': 0, 'completed': 0, 'status': 'scraping'}
-
         if not input_url:
             return jsonify({"event": "error", "data": {"message": "No URL provided"}}), 400
 
-        print(f"[Scrape] Fetching playlist URL: {input_url}", flush=True)
+        if not progress_job_id:
+            progress_job_id = str(uuid.uuid4())
+
+        print(f"[Scrape] Starting background job {progress_job_id} for {input_url}", flush=True)
+
+        scrape_job_progress[progress_job_id] = {'total': 0, 'completed': 0, 'status': 'starting'}
+
+        thread = threading.Thread(target=_run_scrape_job, args=(input_url, service, progress_job_id))
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({"jobId": progress_job_id})
+
+    except Exception as e:
+        print(f"Scrape start error: {e}")
+        return jsonify({"event": "error", "data": {"message": str(e)}}), 500
+
+
+def _run_scrape_job(input_url, service, progress_job_id):
+    try:
+        from utils import scrape_external_data as _scrape_external
+
+        print(f"[Scrape] Background job {progress_job_id} started", flush=True)
 
         if service == "auto":
             detected_service, url_type, item_id = detect_url_service(input_url)
@@ -48,11 +67,16 @@ def scrape_playlist():
             _, url_type, item_id = detect_url_service(input_url)
 
         if not service:
-            return jsonify({"event": "error", "data": {"message": "Unsupported URL — please use Spotify, YouTube, or SoundCloud."}}), 400
+            scrape_job_progress[progress_job_id].update({'total': 0, 'completed': 0, 'status': 'error'})
+            scrape_job_results[progress_job_id] = {'error': 'Unsupported URL'}
+            return
 
         if not url_type or not item_id:
-            return jsonify({"event": "error", "data": {"message": "Could not parse URL"}}), 400
+            scrape_job_progress[progress_job_id].update({'total': 0, 'completed': 0, 'status': 'error'})
+            scrape_job_results[progress_job_id] = {'error': 'Could not parse URL'}
+            return
 
+        scrape_job_progress[progress_job_id].update({'status': 'scraping'})
         tracks: list[dict] = []
 
         if service == "spotify":
@@ -73,12 +97,12 @@ def scrape_playlist():
                     "sourceUrl": yt_url,
                 })
                 playlist_name = f"{track.title} - {track.artists}"
-                if progress_job_id:
-                    scrape_job_progress[progress_job_id] = {'total': 1, 'completed': 1, 'status': 'complete'}
             else:
                 metadata = client.get_playlist_metadata(item_id)
                 playlist_name = f"{metadata.name} - {metadata.owner or 'Unknown'}"
                 raw_tracks = list(client.iter_playlist_tracks(item_id))
+
+                scrape_job_progress[progress_job_id].update({'total': len(raw_tracks), 'completed': 0})
 
                 def process_track(track):
                     yt_cover, yt_url = get_yt_info(track.title, track.artists)
@@ -93,56 +117,57 @@ def scrape_playlist():
                         "sourceUrl": yt_url,
                     }
 
-                if progress_job_id:
-                    scrape_job_progress[progress_job_id] = {'total': len(raw_tracks), 'completed': 0, 'status': 'scraping'}
-                    progress_lock = threading.Lock()
+                progress_lock = threading.Lock()
 
-                    def process_track_with_progress(track):
-                        result = process_track(track)
-                        with progress_lock:
-                            p = scrape_job_progress.get(progress_job_id)
-                            if p:
-                                p['completed'] += 1
-                        return result
+                def process_track_with_progress(track):
+                    result = process_track(track)
+                    with progress_lock:
+                        p = scrape_job_progress.get(progress_job_id)
+                        if p:
+                            p['completed'] += 1
+                    return result
 
-                    with ThreadPoolExecutor(max_workers=5) as executor:
-                        tracks = list(executor.map(process_track_with_progress, raw_tracks))
-                else:
-                    with ThreadPoolExecutor(max_workers=5) as executor:
-                        tracks = list(executor.map(process_track, raw_tracks))
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    tracks = list(executor.map(process_track_with_progress, raw_tracks))
 
                 gc.collect()
         elif service in ("youtube", "soundcloud"):
-            playlist_name, tracks = scrape_external_data(input_url, service, url_type, progress_job_id)
+            playlist_name, tracks = _scrape_external(input_url, service, url_type, progress_job_id)
         else:
-            return jsonify({"event": "error", "data": {"message": f"Unsupported service: {service}"}}), 400
+            scrape_job_progress[progress_job_id].update({'status': 'error'})
+            scrape_job_results[progress_job_id] = {'error': f'Unsupported service: {service}'}
+            return
 
         gc.collect()
 
-        if progress_job_id and progress_job_id in scrape_job_progress:
-            scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'status': 'complete'})
+        print(f"[Scrape] Job {progress_job_id} fetched \"{playlist_name}\" with {len(tracks)} tracks", flush=True)
 
-        print(f"[Scrape] Fetched \"{playlist_name}\" with {len(tracks)} tracks", flush=True)
-
-        return jsonify({
-            "event": "complete",
-            "data": {
-                "playlistName": playlist_name,
-                "tracks": tracks,
-            },
-        })
+        scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'status': 'complete'})
+        scrape_job_results[progress_job_id] = {
+            'playlistName': playlist_name,
+            'tracks': tracks,
+        }
 
     except SpotifyDownAPIError as e:
-        if progress_job_id and progress_job_id in scrape_job_progress:
+        print(f"[Scrape] Job {progress_job_id} Spotify API error: {e}", flush=True)
+        if progress_job_id in scrape_job_progress:
             scrape_job_progress[progress_job_id]['status'] = 'error'
-        return jsonify({"event": "error", "data": {"message": f"Spotify API error: {e}"}}), 500
+        scrape_job_results[progress_job_id] = {'error': f'Spotify API error: {e}'}
     except Exception as e:
-        if progress_job_id and progress_job_id in scrape_job_progress:
-            scrape_job_progress[progress_job_id]['status'] = 'error'
-        print(f"Scrape error: {e}")
+        print(f"[Scrape] Job {progress_job_id} failed: {e}", flush=True)
         import traceback
         traceback.print_exc()
-        return jsonify({"event": "error", "data": {"message": f"Error: {e}"}}), 500
+        if progress_job_id in scrape_job_progress:
+            scrape_job_progress[progress_job_id]['status'] = 'error'
+        scrape_job_results[progress_job_id] = {'error': str(e)}
+
+
+@routes.route("/api/scrape-result/<job_id>", methods=["GET"])
+def get_scrape_result(job_id):
+    result = scrape_job_results.get(job_id)
+    if result is None:
+        return jsonify({"error": "Result not found"}), 404
+    return jsonify(result)
 
 
 @routes.route("/api/scrape-progress/<job_id>", methods=["GET"])
