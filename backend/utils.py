@@ -11,7 +11,7 @@ from mutagen.mp3 import MP3
 from flask import Response, stream_with_context
 
 from spotify_client import PlaylistClient
-from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
+from config import progress_store, scrape_job_progress, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
 
 
 def _youtube_extractor_args():
@@ -112,7 +112,7 @@ def detect_url_service(url):
     return None, None, None
 
 
-def scrape_external_data(url, service, url_type):
+def scrape_external_data(url, service, url_type, progress_job_id=None):
     """Scrape track/playlist data from YouTube or SoundCloud using yt-dlp.
     Returns (playlist_name, tracks_list).
     """
@@ -132,8 +132,10 @@ def scrape_external_data(url, service, url_type):
 
     if url_type == "playlist":
         entries = info.get("entries", [])
+        if progress_job_id:
+            scrape_job_progress[progress_job_id] = {'total': len(entries), 'completed': 0, 'status': 'scraping'}
         tracks = []
-        for entry in entries:
+        for i, entry in enumerate(entries):
             if not entry:
                 continue
             vid = entry.get("id", "")
@@ -165,6 +167,10 @@ def scrape_external_data(url, service, url_type):
                 "downloadLink": "",
                 "sourceUrl": entry_url,
             })
+            if progress_job_id and (i % 5 == 0 or i == len(entries) - 1):
+                p = scrape_job_progress.get(progress_job_id)
+                if p:
+                    p['completed'] = len(tracks)
         playlist_name = info.get("title", f"{service.title()} Playlist")
     else:
         vid = info.get("id", "")

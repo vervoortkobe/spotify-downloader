@@ -19,7 +19,7 @@ from spotify_client import (
     sanitize_filename,
 )
 
-from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
+from config import progress_store, scrape_job_progress, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
 from utils import get_yt_info, get_playlist_client, download_track_logic, _resolve_audio_stream, _proxy_audio_stream, detect_url_service, scrape_external_data
 
 routes = Blueprint("routes", __name__)
@@ -31,6 +31,7 @@ def scrape_playlist():
         data = request.get_json()
         input_url = data.get("playlistUrl", "").strip()
         service = data.get("service", "auto")
+        progress_job_id = data.get("progressJobId")
 
         if not input_url:
             return jsonify({"event": "error", "data": {"message": "No URL provided"}}), 400
@@ -69,6 +70,8 @@ def scrape_playlist():
                     "sourceUrl": yt_url,
                 })
                 playlist_name = f"{track.title} - {track.artists}"
+                if progress_job_id:
+                    scrape_job_progress[progress_job_id] = {'total': 1, 'completed': 1, 'status': 'complete'}
             else:
                 metadata = client.get_playlist_metadata(item_id)
                 playlist_name = f"{metadata.name} - {metadata.owner or 'Unknown'}"
@@ -87,16 +90,34 @@ def scrape_playlist():
                         "sourceUrl": yt_url,
                     }
 
-                with ThreadPoolExecutor(max_workers=5) as executor:
-                    tracks = list(executor.map(process_track, raw_tracks))
+                if progress_job_id:
+                    scrape_job_progress[progress_job_id] = {'total': len(raw_tracks), 'completed': 0, 'status': 'scraping'}
+                    progress_lock = threading.Lock()
+
+                    def process_track_with_progress(track):
+                        result = process_track(track)
+                        with progress_lock:
+                            p = scrape_job_progress.get(progress_job_id)
+                            if p:
+                                p['completed'] += 1
+                        return result
+
+                    with ThreadPoolExecutor(max_workers=5) as executor:
+                        tracks = list(executor.map(process_track_with_progress, raw_tracks))
+                else:
+                    with ThreadPoolExecutor(max_workers=5) as executor:
+                        tracks = list(executor.map(process_track, raw_tracks))
 
                 gc.collect()
         elif service in ("youtube", "soundcloud"):
-            playlist_name, tracks = scrape_external_data(input_url, service, url_type)
+            playlist_name, tracks = scrape_external_data(input_url, service, url_type, progress_job_id)
         else:
             return jsonify({"event": "error", "data": {"message": f"Unsupported service: {service}"}}), 400
 
         gc.collect()
+
+        if progress_job_id and progress_job_id in scrape_job_progress:
+            scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'status': 'complete'})
 
         print(f"[Scrape] Fetched \"{playlist_name}\" with {len(tracks)} tracks", flush=True)
 
@@ -109,12 +130,24 @@ def scrape_playlist():
         })
 
     except SpotifyDownAPIError as e:
+        if progress_job_id and progress_job_id in scrape_job_progress:
+            scrape_job_progress[progress_job_id]['status'] = 'error'
         return jsonify({"event": "error", "data": {"message": f"Spotify API error: {e}"}}), 500
     except Exception as e:
+        if progress_job_id and progress_job_id in scrape_job_progress:
+            scrape_job_progress[progress_job_id]['status'] = 'error'
         print(f"Scrape error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"event": "error", "data": {"message": f"Error: {e}"}}), 500
+
+
+@routes.route("/api/scrape-progress/<job_id>", methods=["GET"])
+def get_scrape_progress(job_id):
+    progress = scrape_job_progress.get(job_id)
+    if progress is None:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(progress)
 
 
 @routes.route("/api/cancel-track/<track_id>", methods=["POST"])
