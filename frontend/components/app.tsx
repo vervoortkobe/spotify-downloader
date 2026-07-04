@@ -1167,7 +1167,7 @@ export default function SpotifyDownloaderApp() {
                   </span>
                 )}
               </div>
-              {isProcessing && scrapeProgress ? (
+              {isProcessing && scrapeProgress && scrapeProgress.total > 0 ? (
                 <Progress
                   value={(scrapeProgress.completed / scrapeProgress.total) * 100}
                   className={progressBarClassName}
