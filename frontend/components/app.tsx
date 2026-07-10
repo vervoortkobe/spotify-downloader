@@ -104,6 +104,7 @@ export default function SpotifyDownloaderApp() {
   const [isDownloadingTrack, setIsDownloadingTrack] = useState<string | null>(null)
   const [activeAbortController, setActiveAbortController] = useState<AbortController | null>(null)
   const [isDownloadingAll, setIsDownloadingAll] = useState(false)
+  const [isDownloadingIndividually, setIsDownloadingIndividually] = useState(false)
   const [activePlaylistJobId, setActivePlaylistJobId] = useState<string | null>(null)
   const [scrapeProgress, setScrapeProgress] = useState<{ total: number; completed: number } | null>(null)
   const [playlistDownloadProgress, setPlaylistDownloadProgress] = useState(0)
@@ -614,6 +615,65 @@ export default function SpotifyDownloaderApp() {
       setIsDownloadingTrack(null)
       setActiveAbortController(null)
     }
+  }
+
+  const downloadAllIndividually = async () => {
+    if (selectedDownloadTracks.length === 0) {
+      toast.error("Select at least one song to download")
+      return
+    }
+    setIsDownloadingIndividually(true)
+    toast.loading(`Downloading ${selectedDownloadTracks.length} tracks individually...`, { id: "indiv-download" })
+    for (const track of selectedDownloadTracks) {
+      if (selectedTrackIds.includes(track.id)) {
+        try {
+          setIsDownloadingTrack(track.id)
+          setTrackProgress((prev) => ({ ...prev, [track.id]: 0 }))
+
+          const controller = new AbortController()
+          setActiveAbortController(controller)
+
+          const sourceUrl = urlOverrides[track.id] || track.sourceUrl || ""
+          const response = await fetch(`${API_URL}/api/download-track`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...track, sourceUrl }),
+          })
+
+          setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
+            throw new Error(errorData.message || "Download failed")
+          }
+
+          const blob = await response.blob()
+          const url = window.URL.createObjectURL(blob)
+          const a = document.createElement("a")
+          a.href = url
+          a.download = `${track.title} - ${track.artists}.mp3`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          window.URL.revokeObjectURL(url)
+        } catch (err: any) {
+          console.error(err)
+          toast.error(`Failed: ${track.title}`)
+        } finally {
+          setIsDownloadingTrack(null)
+          setActiveAbortController(null)
+          setTimeout(() => {
+            setTrackProgress((prev) => {
+              const newState = { ...prev }
+              delete newState[track.id]
+              return newState
+            })
+          }, 1500)
+        }
+      }
+    }
+    toast.success("All tracks downloaded", { id: "indiv-download" })
+    setIsDownloadingIndividually(false)
   }
 
   const downloadAll = async () => {
@@ -1233,6 +1293,18 @@ export default function SpotifyDownloaderApp() {
                     </div>
                   </div>
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <button
+                      onClick={downloadAllIndividually}
+                      disabled={isDownloadingIndividually || selectedDownloadTracks.length === 0}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--clr-borderLight)] bg-[var(--clr-primaryBgLight)]/70 px-5 py-3 text-sm font-semibold text-[var(--clr-primaryTextLight)] shadow-[0_0_20px_var(--clr-shadowRgba)] transition-all duration-300 hover:scale-[1.02] hover:border-[var(--clr-primaryDark)] hover:bg-[var(--clr-primaryBg)]/80 disabled:opacity-50 disabled:hover:scale-100 sm:w-auto"
+                    >
+                      {isDownloadingIndividually ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                      Individually
+                    </button>
                     <button
                       onClick={isDownloadingAll ? cancelPlaylistDownload : downloadAll}
                       disabled={!isDownloadingAll && selectedDownloadTracks.length === 0}
