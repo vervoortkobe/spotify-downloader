@@ -28,6 +28,9 @@ def create_app():
     from routes import routes
     app.register_blueprint(routes)
 
+    from proxy_manager import initialize_proxies
+    initialize_proxies()
+
     return app
 
 
