@@ -8,7 +8,7 @@ import tempfile
 import shutil
 import uuid
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Blueprint, jsonify, request, send_file, after_this_request
 
@@ -103,8 +103,13 @@ def _run_scrape_job(input_url, service, progress_job_id):
                 raw_tracks = list(client.iter_playlist_tracks(item_id))
 
                 scrape_job_progress[progress_job_id].update({'total': len(raw_tracks), 'completed': 0})
+                print(f"[Scrape] Job {progress_job_id} scraping {len(raw_tracks)} Spotify tracks", flush=True)
 
-                def process_track(track):
+                def process_track(track, index, total):
+                    print(
+                        f"[Scrape] Job {progress_job_id} track {index}/{total}: {track.title} - {track.artists}",
+                        flush=True,
+                    )
                     yt_cover, yt_url = get_yt_info(track.title, track.artists)
                     return {
                         "id": track.spotify_id,
@@ -118,17 +123,32 @@ def _run_scrape_job(input_url, service, progress_job_id):
                     }
 
                 progress_lock = threading.Lock()
+                completed_count = [0]
 
-                def process_track_with_progress(track):
-                    result = process_track(track)
+                def process_track_with_progress(track, index, total):
+                    result = process_track(track, index, total)
                     with progress_lock:
+                        completed_count[0] += 1
                         p = scrape_job_progress.get(progress_job_id)
                         if p:
-                            p['completed'] += 1
+                            p['completed'] = completed_count[0]
+                            p['current'] = index
+                            print(
+                                f"[Scrape] Job {progress_job_id} progress: {completed_count[0]}/{total} tracks scraped",
+                                flush=True,
+                            )
                     return result
 
                 with ThreadPoolExecutor(max_workers=5) as executor:
-                    tracks = list(executor.map(process_track_with_progress, raw_tracks))
+                    futures = {
+                        executor.submit(process_track_with_progress, track, index, len(raw_tracks)): index
+                        for index, track in enumerate(raw_tracks, start=1)
+                    }
+                    tracks_by_index = {}
+                    for future in as_completed(futures):
+                        index = futures[future]
+                        tracks_by_index[index] = future.result()
+                    tracks = [tracks_by_index[i] for i in range(1, len(raw_tracks) + 1)]
 
                 gc.collect()
         elif service in ("youtube", "soundcloud"):
@@ -142,7 +162,7 @@ def _run_scrape_job(input_url, service, progress_job_id):
 
         print(f"[Scrape] Job {progress_job_id} fetched \"{playlist_name}\" with {len(tracks)} tracks", flush=True)
 
-        scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'status': 'complete'})
+        scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'current': len(tracks), 'status': 'complete'})
         scrape_job_results[progress_job_id] = {
             'playlistName': playlist_name,
             'tracks': tracks,
@@ -366,7 +386,7 @@ def download_playlist_zip():
                 progress_store[tid] = 0.0
 
         job_id = str(uuid.uuid4())
-        JOB_STORE[job_id] = {"status": "processing", "progress": 0, "path": None, "error": None}
+        JOB_STORE[job_id] = {"status": "processing", "progress": 0, "path": None, "error": None, "currentTrack": 0, "totalTracks": len(tracks)}
 
         thread = threading.Thread(target=process_playlist_job, args=(job_id, tracks, playlist_name))
         thread.start()
@@ -383,8 +403,10 @@ def process_playlist_job(job_id, tracks, playlist_name):
     try:
         output_dir = os.path.join(temp_dir, sanitize_filename(playlist_name))
         os.makedirs(output_dir, exist_ok=True)
+        total_tracks = len(tracks)
+        print(f"[Playlist] Job {job_id} starting download of {total_tracks} tracks", flush=True)
 
-        def process_track_for_zip(track):
+        def process_track_for_zip(track, index, total):
             try:
                 track_id = track.get("id", "tmp_id")
                 track_title = track.get("title", "Unknown Title")
@@ -397,17 +419,41 @@ def process_playlist_job(job_id, tracks, playlist_name):
                 if job_id in CANCELLED_PLAYLIST_JOBS:
                     return
 
+                print(
+                    f"[Playlist] Job {job_id} downloading track {index}/{total}: {track_title} - {artists}",
+                    flush=True,
+                )
                 final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=job_id, source_url=source_url)
 
                 if final_path and os.path.exists(final_path):
                     user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
                     if not final_path == user_friendly_name:
                         shutil.move(final_path, user_friendly_name)
+                return track_title
             except Exception as track_e:
                 print(f"Error on track {track.get('title')}: {track_e}")
+                return track.get("title", "Unknown Title")
 
+        completed_tracks = [0]
+        progress_lock = threading.Lock()
         with ThreadPoolExecutor(max_workers=5) as executor:
-            list(executor.map(process_track_for_zip, tracks))
+            futures = {
+                executor.submit(process_track_for_zip, track, index, total_tracks): index
+                for index, track in enumerate(tracks, start=1)
+            }
+            for future in as_completed(futures):
+                _ = future.result()
+                with progress_lock:
+                    completed_tracks[0] += 1
+                    JOB_STORE[job_id].update({
+                        "progress": round((completed_tracks[0] / total_tracks) * 100, 2) if total_tracks else 100,
+                        "currentTrack": completed_tracks[0],
+                        "totalTracks": total_tracks,
+                    })
+                    print(
+                        f"[Playlist] Job {job_id} progress: {completed_tracks[0]}/{total_tracks} tracks complete",
+                        flush=True,
+                    )
 
         if job_id in CANCELLED_PLAYLIST_JOBS:
             JOB_STORE[job_id] = {"status": "cancelled", "message": "Playlist download cancelled"}

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import os
 import re
+from concurrent.futures import as_completed
 
 import requests
 from yt_dlp import YoutubeDL
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import APIC, ID3
 from mutagen.mp3 import MP3
-from flask import Response, stream_with_context
+from flask import Response, jsonify, stream_with_context
 
 from spotify_client import PlaylistClient
 from config import progress_store, scrape_job_progress, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
@@ -118,11 +119,20 @@ def _extract_info_with_proxy_fallback(source, base_opts, download=False):
     raise RuntimeError(_clean_ytdlp_error(last_error or RuntimeError("yt-dlp extraction failed")))
 
 
-def _requests_get_with_proxy_fallback(url, **kwargs):
+def _requests_get_with_proxy_fallback(url, retry_statuses=(403, 408, 425, 429, 500, 502, 503, 504), **kwargs):
     last_error = None
     for proxy in proxy_candidates():
         try:
-            return requests.get(url, proxies=None if proxy is None else {"http": proxy, "https": proxy}, **kwargs)
+            response = requests.get(url, proxies=None if proxy is None else {"http": proxy, "https": proxy}, **kwargs)
+            if response.status_code in retry_statuses:
+                print(
+                    f"[Proxy] Upstream returned {response.status_code} for {url}; retrying with another proxy",
+                    flush=True,
+                )
+                response.close()
+                last_error = RuntimeError(f"Upstream returned HTTP {response.status_code}")
+                continue
+            return response
         except Exception as exc:
             last_error = exc
             if proxy is not None and _proxy_transport_error(exc):
@@ -248,6 +258,10 @@ def scrape_external_data(url, service, url_type, progress_job_id=None):
                 p = scrape_job_progress.get(progress_job_id)
                 if p:
                     p['completed'] = len(tracks)
+                    print(
+                        f"[Scrape] Job {progress_job_id} progress: {p['completed']}/{p.get('total', len(entries))} tracks scraped",
+                        flush=True,
+                    )
         playlist_name = info.get("title", f"{service.title()} Playlist")
     else:
         vid = info.get("id", "")
@@ -501,7 +515,11 @@ def _proxy_audio_stream(audio_url, content_type, range_header=None, upstream_hea
     if range_header:
         headers["Range"] = range_header
 
-    upstream = _requests_get_with_proxy_fallback(audio_url, headers=headers, stream=True, timeout=30)
+    try:
+        upstream = _requests_get_with_proxy_fallback(audio_url, headers=headers, stream=True, timeout=30)
+    except Exception as exc:
+        print(f"[Stream] Audio fetch failed for {audio_url}: {exc}", flush=True)
+        return jsonify({"error": "Audio stream temporarily unavailable"}), 502
 
     status = upstream.status_code
     resp_headers = {
