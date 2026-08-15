@@ -20,7 +20,7 @@ from spotify_client import (
 )
 
 from config import progress_store, scrape_job_progress, scrape_job_results, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
-from utils import get_yt_info, get_playlist_client, download_track_logic, _resolve_audio_stream, _proxy_audio_stream, detect_url_service, scrape_external_data
+from utils import get_yt_info, get_playlist_client, download_track_logic, _resolve_audio_stream, _proxy_audio_stream, detect_url_service, scrape_external_data, _extract_info_with_proxy_fallback
 
 routes = Blueprint("routes", __name__)
 
@@ -217,7 +217,6 @@ def resolve_youtube_url():
         if not ("youtube.com" in youtube_url or "youtu.be" in youtube_url):
             return jsonify({"error": "Not a valid YouTube URL"}), 400
 
-        from yt_dlp import YoutubeDL
         ydl_opts = {
             "quiet": True,
             "noplaylist": True,
@@ -230,8 +229,7 @@ def resolve_youtube_url():
             },
             "remote_components": ["ejs:github"],
         }
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
+        info = _extract_info_with_proxy_fallback(youtube_url, ydl_opts, download=False)
 
         if not info:
             return jsonify({"error": "Could not resolve URL"}), 400
@@ -510,6 +508,8 @@ def scrape_user_playlists():
             ),
             "Accept-Language": "en-US,en;q=0.9",
         })
+        from proxy_manager import next_requests_proxies
+        session.proxies.update(next_requests_proxies() or {})
 
         playlists_url = f"https://open.spotify.com/user/{user_id}/playlists"
         response = session.get(playlists_url, timeout=30)

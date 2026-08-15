@@ -12,15 +12,64 @@ from flask import Response, stream_with_context
 
 from spotify_client import PlaylistClient
 from config import progress_store, scrape_job_progress, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
+from proxy_manager import build_ytdl_opts, proxy_candidates, report_dead_proxy
 
 
 def _youtube_extractor_args():
     return {
         "youtube": {
-            "player_client": ["web", "web_embedded"],
+            "player_client": ["android", "mweb", "web_embedded", "tv", "web_safari"],
+            "player_skip": ["configs"],
+            "webpage_client": "web_safari",
             "formats": ["missing_pot"],
         }
     }
+
+
+class _QuietYTDLPLogger:
+    def debug(self, *args, **kwargs):
+        pass
+
+    def info(self, *args, **kwargs):
+        pass
+
+    def warning(self, *args, **kwargs):
+        pass
+
+    def error(self, *args, **kwargs):
+        pass
+
+
+def _proxy_transport_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(
+        token in message
+        for token in (
+            "unable to connect to proxy",
+            "proxyerror",
+            "failed to establish a new connection",
+            "connection refused",
+            "connecttimeout",
+            "read timed out",
+            "timed out",
+            "connection reset",
+            "connection aborted",
+        )
+    )
+
+
+def _clean_ytdlp_error(exc: Exception) -> str:
+    message = str(exc)
+    lowered = message.lower()
+    if "sign in to confirm you're not a bot" in lowered or "sign in to confirm you’re not a bot" in lowered:
+        return "YouTube blocked anonymous access for this video on the available proxies."
+    if "http error 429" in lowered or "too many requests" in lowered:
+        return "YouTube rate-limited the current proxy pool."
+    if "requested format is not available" in lowered:
+        return "No streamable audio format is available for this video."
+    if "only images are available for download" in lowered:
+        return "YouTube only exposed image data for this video."
+    return message
 
 
 def _best_thumbnail_url(thumbnails, fallback=""):
@@ -52,27 +101,56 @@ def _best_thumbnail_url(thumbnails, fallback=""):
     return best_url or fallback or ""
 
 
+def _extract_info_with_proxy_fallback(source, base_opts, download=False):
+    last_error = None
+    for proxy in proxy_candidates():
+        ydl_opts = build_ytdl_opts(base_opts, proxy)
+        ydl_opts["no_warnings"] = True
+        ydl_opts["logger"] = _QuietYTDLPLogger()
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(source, download=download)
+        except Exception as exc:
+            last_error = exc
+            if proxy is not None and _proxy_transport_error(exc):
+                report_dead_proxy(proxy)
+            continue
+    raise RuntimeError(_clean_ytdlp_error(last_error or RuntimeError("yt-dlp extraction failed")))
+
+
+def _requests_get_with_proxy_fallback(url, **kwargs):
+    last_error = None
+    for proxy in proxy_candidates():
+        try:
+            return requests.get(url, proxies=None if proxy is None else {"http": proxy, "https": proxy}, **kwargs)
+        except Exception as exc:
+            last_error = exc
+            if proxy is not None and _proxy_transport_error(exc):
+                report_dead_proxy(proxy)
+            continue
+    raise RuntimeError(str(last_error or RuntimeError("request failed")))
+
+
 def get_yt_info(track_title, artists):
     try:
         search_query = f"ytsearch1:{track_title} {artists} audio"
-        ydl_opts = {
+        base_opts = {
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
             "extractor_args": _youtube_extractor_args(),
             "remote_components": ["ejs:github"],
         }
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(search_query, download=False)
-            if 'entries' in info and info['entries']:
-                info = info['entries'][0]
+        info = _extract_info_with_proxy_fallback(search_query, base_opts, download=False)
+        if 'entries' in info and info['entries']:
+            info = info['entries'][0]
 
-            video_id = info.get('id', '')
-            video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
+        video_id = info.get('id', '')
+        video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
 
-            thumbnail = _best_thumbnail_url(info.get("thumbnails", []), info.get("thumbnail") or "")
+        thumbnail = _best_thumbnail_url(info.get("thumbnails", []), info.get("thumbnail") or "")
 
-            return thumbnail, video_url
+        return thumbnail, video_url
     except Exception as e:
         print(f"YT info fetch failed for {track_title}: {e}")
         return "", ""
@@ -117,15 +195,14 @@ def scrape_external_data(url, service, url_type, progress_job_id=None):
     Returns (playlist_name, tracks_list).
     """
     is_flat = url_type == "playlist"
-    ydl_opts = {
+    base_opts = {
         "quiet": True,
         "skip_download": True,
         "extract_flat": is_flat,
         "extractor_args": _youtube_extractor_args(),
         "remote_components": ["ejs:github"],
     }
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    info = _extract_info_with_proxy_fallback(url, base_opts, download=False)
 
     if not info:
         raise ValueError(f"Could not fetch data from {url}")
@@ -205,10 +282,13 @@ def get_playlist_client():
 def download_cover(url):
     try:
         if not url: return None, None
-        response = requests.get(url, stream=True, timeout=10)
-        if response.status_code == 200:
-            content_type = response.headers.get("Content-Type", "image/jpeg")
-            return response.content, content_type
+        response = _requests_get_with_proxy_fallback(url, stream=True, timeout=10)
+        try:
+            if response.status_code == 200:
+                content_type = response.headers.get("Content-Type", "image/jpeg")
+                return response.content, content_type
+        finally:
+            response.close()
     except Exception:
         pass
     return None, None
@@ -265,7 +345,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         elif d['status'] == 'finished':
             progress_store[track_id] = 90.0
 
-    ydl_opts = {
+    base_opts = {
         "format": "bestaudio/best",
         "noplaylist": True,
         "quiet": True,
@@ -281,21 +361,35 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         "extractor_args": _youtube_extractor_args(),
         "remote_components": ["ejs:github"],
     }
+    info = None
+    final_path = None
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(source, download=True)
+        last_error = None
+        for proxy in proxy_candidates():
+            ydl_opts = build_ytdl_opts(base_opts, proxy)
+            ydl_opts["no_warnings"] = True
+            ydl_opts["logger"] = _QuietYTDLPLogger()
+            try:
+                with YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(source, download=True)
+                    if not info or ('entries' in info and not info['entries']):
+                        print(f"Track not found on YouTube: {track_title}")
+                        progress_store[track_id] = -1.0
+                        return None
 
-            if not info or ('entries' in info and not info['entries']):
-                print(f"Track not found on YouTube: {track_title}")
-                progress_store[track_id] = -1.0
-                return None
+                    if 'entries' in info and info['entries']:
+                        info = info['entries'][0]
 
-            if 'entries' in info and info['entries']:
-                info = info['entries'][0]
-
-            filepath = ydl.prepare_filename(info)
-            base, _ = os.path.splitext(filepath)
-            final_path = base + ".mp3"
+                    filepath = ydl.prepare_filename(info)
+                    base, _ = os.path.splitext(filepath)
+                    final_path = base + ".mp3"
+                    break
+            except Exception as exc:
+                last_error = exc
+                if proxy is not None and _proxy_transport_error(exc):
+                    report_dead_proxy(proxy)
+        if final_path is None:
+            raise RuntimeError(_clean_ytdlp_error(last_error or RuntimeError("yt-dlp download failed")))
     except Exception as e:
         print(f"YT Download failed for {track_title}: {e}")
         progress_store[track_id] = -1.0
@@ -325,7 +419,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
 
 
 def _resolve_audio_stream(source, extra_opts=None):
-    ydl_opts = {
+    base_opts = {
         "format": "bestaudio/best",
         "noplaylist": True,
         "quiet": True,
@@ -335,10 +429,9 @@ def _resolve_audio_stream(source, extra_opts=None):
         "remote_components": ["ejs:github"],
     }
     if extra_opts:
-        ydl_opts.update(extra_opts)
+        base_opts.update(extra_opts)
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(source, download=False)
+        info = _extract_info_with_proxy_fallback(source, base_opts, download=False)
     except Exception as e:
         return None, None, None, f"Failed to resolve source: {e}"
 
@@ -408,7 +501,7 @@ def _proxy_audio_stream(audio_url, content_type, range_header=None, upstream_hea
     if range_header:
         headers["Range"] = range_header
 
-    upstream = requests.get(audio_url, headers=headers, stream=True, timeout=30)
+    upstream = _requests_get_with_proxy_fallback(audio_url, headers=headers, stream=True, timeout=30)
 
     status = upstream.status_code
     resp_headers = {
