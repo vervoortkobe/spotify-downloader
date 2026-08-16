@@ -276,6 +276,8 @@ export default function SpotifyDownloaderApp() {
   const [streamProgress, setStreamProgress] = useState(0) // 0-1
   const [streamDuration, setStreamDuration] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const trackCancelRequestedRef = useRef<Set<string>>(new Set())
+  const streamStopRequestedRef = useRef(false)
 
   const progressBarClassName =
     "h-3 bg-[var(--clr-progressBg)] [&>div]:bg-[var(--clr-progressBar)] rounded-full"
@@ -356,8 +358,16 @@ export default function SpotifyDownloaderApp() {
 
   const cancelTrackDownload = async (trackId: string) => {
     if (isDownloadingTrack !== trackId) return
+    trackCancelRequestedRef.current.add(trackId)
     clearTrackProgressInterval()
     activeAbortController?.abort()
+    setTrackProgress((prev) => {
+      const newState = { ...prev }
+      delete newState[trackId]
+      return newState
+    })
+    setIsDownloadingTrack(null)
+    setActiveAbortController(null)
 
     try {
       await fetch(`${API_URL}/api/cancel-track/${trackId}`, { method: "POST" })
@@ -431,6 +441,7 @@ export default function SpotifyDownloaderApp() {
   // ---- Audio streaming ----
 
   const stopStream = () => {
+    streamStopRequestedRef.current = true
     const audio = audioRef.current
     if (audio) {
       audio.onerror = null
@@ -438,7 +449,7 @@ export default function SpotifyDownloaderApp() {
       audio.ontimeupdate = null
       audio.onended = null
       audio.pause()
-      audio.src = ""
+      audio.removeAttribute("src")
       audio.load()
     }
     setStreamingTrackId(null)
@@ -461,6 +472,7 @@ export default function SpotifyDownloaderApp() {
     }
 
     stopStream()
+    streamStopRequestedRef.current = false
 
     setStreamingTrackId(track.id)
     setIsLoadingStream(true)
@@ -477,26 +489,39 @@ export default function SpotifyDownloaderApp() {
       const audio = audioRef.current
       audio.src = streamUrl
       audio.onloadedmetadata = () => {
+        if (streamStopRequestedRef.current) return
         setStreamDuration(audio.duration || 0)
         setIsLoadingStream(false)
       }
       audio.ontimeupdate = () => {
+        if (streamStopRequestedRef.current) return
         if (audio.duration) setStreamProgress(audio.currentTime / audio.duration)
       }
       audio.onended = () => {
+        if (streamStopRequestedRef.current) return
         setIsPlaying(false)
         setStreamProgress(1)
       }
       audio.onerror = () => {
+        if (streamStopRequestedRef.current) return
         toast.error("Stream error")
         stopStream()
       }
-      await audio.play()
+      const playPromise = audio.play()
+      if (playPromise) {
+        await playPromise
+      }
       setIsPlaying(true)
     } catch (err: any) {
+      if (streamStopRequestedRef.current || err?.name === "AbortError") {
+        return
+      }
       toast.error(err.message || "Failed to stream track")
       stopStream()
     } finally {
+      if (streamStopRequestedRef.current) {
+        streamStopRequestedRef.current = false
+      }
       setIsLoadingStream(false)
     }
   }
@@ -536,11 +561,12 @@ export default function SpotifyDownloaderApp() {
   }
 
   const downloadTrack = async (track: Track) => {
+    const controller = new AbortController()
     try {
+      trackCancelRequestedRef.current.delete(track.id)
       setIsDownloadingTrack(track.id)
       setTrackProgress((prev) => ({ ...prev, [track.id]: 0 }))
 
-      const controller = new AbortController()
       setActiveAbortController(controller)
 
       clearTrackProgressInterval()
@@ -559,10 +585,13 @@ export default function SpotifyDownloaderApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...track, sourceUrl }),
+        signal: controller.signal,
       })
 
       clearTrackProgressInterval()
-      setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
+      if (controller.signal.aborted || trackCancelRequestedRef.current.has(track.id)) {
+        throw new DOMException("The operation was aborted.", "AbortError")
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -570,6 +599,10 @@ export default function SpotifyDownloaderApp() {
       }
 
       const blob = await response.blob()
+      if (controller.signal.aborted || trackCancelRequestedRef.current.has(track.id)) {
+        throw new DOMException("The operation was aborted.", "AbortError")
+      }
+      setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -591,7 +624,7 @@ export default function SpotifyDownloaderApp() {
     } catch (err: any) {
       clearTrackProgressInterval()
 
-      if (err.name === "AbortError") {
+      if (err.name === "AbortError" || trackCancelRequestedRef.current.has(track.id)) {
         fetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
         toast.error(`Cancelled ${track.title}`)
         setTrackProgress((prev) => {
@@ -599,6 +632,7 @@ export default function SpotifyDownloaderApp() {
           delete newState[track.id]
           return newState
         })
+        trackCancelRequestedRef.current.delete(track.id)
       } else {
         console.error(err)
         toast.error(err.message || "Download failed")
@@ -614,6 +648,7 @@ export default function SpotifyDownloaderApp() {
     } finally {
       setIsDownloadingTrack(null)
       setActiveAbortController(null)
+      trackCancelRequestedRef.current.delete(track.id)
     }
   }
 
@@ -626,11 +661,12 @@ export default function SpotifyDownloaderApp() {
     toast.loading(`Downloading ${selectedDownloadTracks.length} tracks individually...`, { id: "indiv-download" })
     for (const track of selectedDownloadTracks) {
       if (selectedTrackIds.includes(track.id)) {
+        const controller = new AbortController()
         try {
           setIsDownloadingTrack(track.id)
           setTrackProgress((prev) => ({ ...prev, [track.id]: 0 }))
 
-          const controller = new AbortController()
+          trackCancelRequestedRef.current.delete(track.id)
           setActiveAbortController(controller)
 
           const sourceUrl = urlOverrides[track.id] || track.sourceUrl || ""
@@ -638,9 +674,12 @@ export default function SpotifyDownloaderApp() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...track, sourceUrl }),
+            signal: controller.signal,
           })
 
-          setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
+          if (controller.signal.aborted || trackCancelRequestedRef.current.has(track.id)) {
+            throw new DOMException("The operation was aborted.", "AbortError")
+          }
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}))
@@ -648,6 +687,10 @@ export default function SpotifyDownloaderApp() {
           }
 
           const blob = await response.blob()
+          if (controller.signal.aborted || trackCancelRequestedRef.current.has(track.id)) {
+            throw new DOMException("The operation was aborted.", "AbortError")
+          }
+          setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
           const url = window.URL.createObjectURL(blob)
           const a = document.createElement("a")
           a.href = url
@@ -657,11 +700,31 @@ export default function SpotifyDownloaderApp() {
           document.body.removeChild(a)
           window.URL.revokeObjectURL(url)
         } catch (err: any) {
-          console.error(err)
-          toast.error(`Failed: ${track.title}`)
+          if (err.name === "AbortError" || trackCancelRequestedRef.current.has(track.id)) {
+            fetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
+            toast.error(`Cancelled ${track.title}`)
+            setTrackProgress((prev) => {
+              const newState = { ...prev }
+              delete newState[track.id]
+              return newState
+            })
+            trackCancelRequestedRef.current.delete(track.id)
+          } else {
+            console.error(err)
+            toast.error(`Failed: ${track.title}`)
+            setTrackProgress((prev) => ({ ...prev, [track.id]: -1 }))
+            setTimeout(() => {
+              setTrackProgress((prev) => {
+                const newState = { ...prev }
+                delete newState[track.id]
+                return newState
+              })
+            }, 5000)
+          }
         } finally {
           setIsDownloadingTrack(null)
           setActiveAbortController(null)
+          trackCancelRequestedRef.current.delete(track.id)
           setTimeout(() => {
             setTrackProgress((prev) => {
               const newState = { ...prev }
