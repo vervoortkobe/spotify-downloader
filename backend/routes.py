@@ -20,7 +20,7 @@ from spotify_client import (
 )
 
 from config import progress_store, scrape_job_progress, scrape_job_results, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
-from utils import get_yt_info, get_playlist_client, download_track_logic, _resolve_audio_stream, _proxy_audio_stream, detect_url_service, scrape_external_data, _extract_info_with_proxy_fallback
+from utils import get_yt_info, get_playlist_client, download_track_logic, resolve_audio_stream, proxy_audio_stream, detect_url_service, scrape_external_data, extract_info
 
 routes = Blueprint("routes", __name__)
 
@@ -139,7 +139,7 @@ def _run_scrape_job(input_url, service, progress_job_id):
                             )
                     return result
 
-                with ThreadPoolExecutor(max_workers=5) as executor:
+                with ThreadPoolExecutor(max_workers=12) as executor:
                     futures = {
                         executor.submit(process_track_with_progress, track, index, len(raw_tracks)): index
                         for index, track in enumerate(raw_tracks, start=1)
@@ -249,7 +249,7 @@ def resolve_youtube_url():
             },
             "remote_components": ["ejs:github"],
         }
-        info = _extract_info_with_proxy_fallback(youtube_url, ydl_opts, download=False)
+        info = extract_info(youtube_url, ydl_opts, download=False)
 
         if not info:
             return jsonify({"error": "Could not resolve URL"}), 400
@@ -278,14 +278,12 @@ def resolve_youtube_url():
 def _resolve_with_fallbacks(source):
     """Try multiple yt-dlp configurations to get a working audio URL."""
     strategies = [
-        # Strategy 1: web + web_embedded with missing_pot (default)
         {},
-        # Strategy 2: mweb only — fallback for SABR/DRM experiments
         {"extractor_args": {"youtube": {"player_client": ["mweb"], "formats": ["missing_pot"]}}},
     ]
 
     for extra_opts in strategies:
-        audio_url, content_type, upstream_headers, err = _resolve_audio_stream(source, extra_opts)
+        audio_url, content_type, upstream_headers, err = resolve_audio_stream(source, extra_opts)
         if not err and audio_url:
             return audio_url, content_type, upstream_headers, None
     return None, None, None, "All extraction strategies failed"
@@ -304,7 +302,7 @@ def stream_track_get():
         return jsonify({"error": err}), 404
 
     range_header = request.headers.get("Range", None)
-    return _proxy_audio_stream(audio_url, content_type, range_header, upstream_headers)
+    return proxy_audio_stream(audio_url, content_type, range_header, upstream_headers)
 
 
 @routes.route("/api/stream-track", methods=["POST"])
@@ -326,7 +324,7 @@ def stream_track():
         return jsonify({"error": err}), 404
 
     range_header = request.headers.get("Range", None)
-    return _proxy_audio_stream(audio_url, content_type, range_header, upstream_headers)
+    return proxy_audio_stream(audio_url, content_type, range_header, upstream_headers)
 
 
 @routes.route("/api/download-track", methods=["POST"])
@@ -344,6 +342,8 @@ def download_track():
         release_date = data.get("releaseDate", "")
         cover_url = data.get("cover", "")
         source_url = data.get("sourceUrl", "").strip() or None
+
+        print(f"[Download] Starting single track: {track_title} - {artists}", flush=True)
 
         temp_dir = tempfile.mkdtemp()
 
@@ -436,7 +436,7 @@ def process_playlist_job(job_id, tracks, playlist_name):
 
         completed_tracks = [0]
         progress_lock = threading.Lock()
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=12) as executor:
             futures = {
                 executor.submit(process_track_for_zip, track, index, total_tracks): index
                 for index, track in enumerate(tracks, start=1)
@@ -554,9 +554,6 @@ def scrape_user_playlists():
             ),
             "Accept-Language": "en-US,en;q=0.9",
         })
-        from proxy_manager import next_requests_proxies
-        session.proxies.update(next_requests_proxies() or {})
-
         playlists_url = f"https://open.spotify.com/user/{user_id}/playlists"
         response = session.get(playlists_url, timeout=30)
 

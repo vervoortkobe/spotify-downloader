@@ -28,9 +28,6 @@ def create_app():
     from routes import routes
     app.register_blueprint(routes)
 
-    from proxy_manager import initialize_proxies
-    initialize_proxies()
-
     return app
 
 
@@ -38,4 +35,11 @@ app = create_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    try:
+        from waitress import serve
+        threads = int(os.environ.get("WAITRESS_THREADS", "8"))
+        print(f"[Server] Starting production server (waitress) on 0.0.0.0:{port} with {threads} threads", flush=True)
+        serve(app, host="0.0.0.0", port=port, threads=threads)
+    except ImportError:
+        print("[Server] waitress not installed, falling back to Flask dev server", flush=True)
+        app.run(host="0.0.0.0", port=port, debug=False)
