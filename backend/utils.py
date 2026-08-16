@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import tempfile
 import threading
 import time
 
@@ -495,6 +497,64 @@ def resolve_audio_stream(source, extra_opts=None):
     return audio_url, content_type, request_headers or None, None
 
 
+def download_audio_for_stream(source, extra_opts=None):
+    """Download audio with yt-dlp to a temp file and return (filepath, content_type) or (None, None, error).
+
+    This reuses yt-dlp's HTTP handler (same proxy/session as extraction) so
+    the exit IP always matches the one baked into the streaming URL.
+    """
+    temp_dir = tempfile.mkdtemp()
+    output_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
+
+    base_opts = {
+        "format": "bestaudio/best",
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "logger": _QuietYTDLPLogger(),
+        "outtmpl": output_template,
+        "extractor_args": _youtube_extractor_args(),
+        "remote_components": ["ejs:github"],
+    }
+    if extra_opts:
+        base_opts.update(extra_opts)
+
+    try:
+        info = _run_ytdl_once(source, base_opts, download=True)
+    except Exception as exc:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return None, None, f"Failed to resolve source: {_clean_ytdlp_error(exc)}"
+
+    if not info:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return None, None, "Could not resolve source"
+
+    if "entries" in info and info["entries"]:
+        info = info["entries"][0]
+
+    try:
+        with YoutubeDL(base_opts) as ydl:
+            filepath = ydl.prepare_filename(info)
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return None, None, "Could not determine file path"
+
+    if not os.path.exists(filepath):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return None, None, "Download failed"
+
+    ext = os.path.splitext(filepath)[1].lower()
+    content_type = {
+        ".webm": "audio/webm",
+        ".m4a": "audio/mp4",
+        ".mp3": "audio/mpeg",
+        ".ogg": "audio/ogg",
+    }.get(ext, "audio/webm")
+
+    print(f"[Stream] Downloaded audio for streaming: {os.path.basename(filepath)} ({content_type})", flush=True)
+    return filepath, content_type, None
+
+
 def _get_proxy_for_requests():
     """Return a proxies dict for requests from the WARP proxy environment variables."""
     proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
@@ -514,8 +574,15 @@ def proxy_audio_stream(audio_url, content_type, range_header=None, upstream_head
         "Referer": "https://www.youtube.com/",
         "Origin": "https://www.youtube.com",
     }
+
+    # Only carry over User-Agent from yt-dlp (must match the player client
+    # that generated the URL, e.g. mweb). Do NOT pass cookies or other
+    # session-specific headers — they belong to the extraction session and
+    # cause YouTube to 403 the streaming request.
     if upstream_headers:
-        headers.update(upstream_headers)
+        if "User-Agent" in upstream_headers:
+            headers["User-Agent"] = upstream_headers["User-Agent"]
+
     if range_header:
         headers["Range"] = range_header
 
@@ -528,7 +595,7 @@ def proxy_audio_stream(audio_url, content_type, range_header=None, upstream_head
         return jsonify({"error": "Audio stream temporarily unavailable"}), 502
 
     if upstream.status_code not in (200, 206):
-        print(f"[Stream] Upstream returned HTTP {upstream.status_code} for {audio_url}", flush=True)
+        print(f"[Stream] Upstream HTTP {upstream.status_code} for {audio_url[:100]}...", flush=True)
         upstream.close()
         return jsonify({"error": f"Upstream returned HTTP {upstream.status_code}"}), 502
 
@@ -541,7 +608,7 @@ def proxy_audio_stream(audio_url, content_type, range_header=None, upstream_head
         if h in upstream.headers:
             resp_headers[h] = upstream.headers[h]
 
-    print(f"[Stream] Streaming audio {audio_url[:80]}... status={status} content-type={resp_headers['Content-Type']}", flush=True)
+    print(f"[Stream] Streaming OK {audio_url[:80]}... status={status} ct={resp_headers['Content-Type']}", flush=True)
 
     def generate():
         for chunk in upstream.iter_content(chunk_size=65536):

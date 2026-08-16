@@ -20,7 +20,7 @@ from spotify_client import (
 )
 
 from config import progress_store, scrape_job_progress, scrape_job_results, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
-from utils import get_yt_info, get_playlist_client, download_track_logic, resolve_audio_stream, proxy_audio_stream, detect_url_service, scrape_external_data, extract_info
+from utils import get_yt_info, get_playlist_client, download_track_logic, detect_url_service, scrape_external_data, extract_info, download_audio_for_stream
 
 routes = Blueprint("routes", __name__)
 
@@ -275,18 +275,29 @@ def resolve_youtube_url():
         return jsonify({"error": str(e)}), 500
 
 
-def _resolve_with_fallbacks(source):
-    """Try multiple yt-dlp configurations to get a working audio URL."""
+def _resolve_and_stream(source):
+    """Download audio with yt-dlp (same proxy session as extraction) and return a Flask Response."""
     strategies = [
         {},
         {"extractor_args": {"youtube": {"player_client": ["mweb"], "formats": ["missing_pot"]}}},
     ]
-
+    last_err = None
     for extra_opts in strategies:
-        audio_url, content_type, upstream_headers, err = resolve_audio_stream(source, extra_opts)
-        if not err and audio_url:
-            return audio_url, content_type, upstream_headers, None
-    return None, None, None, "All extraction strategies failed"
+        filepath, content_type, err = download_audio_for_stream(source, extra_opts)
+        if filepath:
+            resp = send_file(filepath, mimetype=content_type)
+            @after_this_request
+            def _cleanup(response, _path=filepath):
+                try:
+                    os.unlink(_path)
+                    os.rmdir(os.path.dirname(_path))
+                except Exception:
+                    pass
+                return response
+            return resp, None
+        last_err = err
+    return None, last_err or "All extraction strategies failed"
+
 
 @routes.route("/api/stream", methods=["GET"])
 def stream_track_get():
@@ -297,12 +308,10 @@ def stream_track_get():
 
     print(f"[Stream] Audio preview for: {source_url}", flush=True)
 
-    audio_url, content_type, upstream_headers, err = _resolve_with_fallbacks(source_url)
+    resp, err = _resolve_and_stream(source_url)
     if err:
         return jsonify({"error": err}), 404
-
-    range_header = request.headers.get("Range", None)
-    return proxy_audio_stream(audio_url, content_type, range_header, upstream_headers)
+    return resp
 
 
 @routes.route("/api/stream-track", methods=["POST"])
@@ -317,14 +326,12 @@ def stream_track():
 
     source = f"ytsearch1:{title} {artists} audio" if (title or artists) else source_url
 
-    audio_url, content_type, upstream_headers, err = _resolve_with_fallbacks(source)
+    resp, err = _resolve_and_stream(source)
     if err and source_url and (title or artists):
-        audio_url, content_type, upstream_headers, err = _resolve_with_fallbacks(f"ytsearch1:{title} {artists} audio")
+        resp, err = _resolve_and_stream(f"ytsearch1:{title} {artists} audio")
     if err:
         return jsonify({"error": err}), 404
-
-    range_header = request.headers.get("Range", None)
-    return proxy_audio_stream(audio_url, content_type, range_header, upstream_headers)
+    return resp
 
 
 @routes.route("/api/download-track", methods=["POST"])
