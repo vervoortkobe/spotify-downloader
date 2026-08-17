@@ -10,5 +10,7 @@ COMPLETED_JOBS_DIR = os.path.join(tempfile.gettempdir(), "spotify_downloader_job
 os.makedirs(COMPLETED_JOBS_DIR, exist_ok=True)
 
 progress_store = {}
+scrape_job_progress: dict[str, dict] = {}
+scrape_job_results: dict[str, dict] = {}
 CANCELLED_TRACKS = set()
 CANCELLED_PLAYLIST_JOBS = set()

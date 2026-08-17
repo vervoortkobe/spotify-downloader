@@ -2,23 +2,25 @@ from __future__ import annotations
 
 import gc
 import os
+import re
+import requests
 import tempfile
 import shutil
 import uuid
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Blueprint, jsonify, request, send_file, after_this_request
 
-from spotify_client import (
+from audio_client import (
     SpotifyDownAPIError,
     SpotifyEmbedAPI,
     detect_spotify_url_type,
     sanitize_filename,
 )
 
-from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
-from utils import get_yt_info, get_playlist_client, download_track_logic, _resolve_audio_stream, _proxy_audio_stream, detect_url_service, scrape_external_data
+from config import progress_store, scrape_job_progress, scrape_job_results, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
+from utils import get_yt_info, get_playlist_client, download_track_logic, detect_url_service, scrape_external_data, extract_info, open_audio_stream
 
 routes = Blueprint("routes", __name__)
 
@@ -29,9 +31,34 @@ def scrape_playlist():
         data = request.get_json()
         input_url = data.get("playlistUrl", "").strip()
         service = data.get("service", "auto")
+        progress_job_id = data.get("progressJobId")
 
         if not input_url:
             return jsonify({"event": "error", "data": {"message": "No URL provided"}}), 400
+
+        if not progress_job_id:
+            progress_job_id = str(uuid.uuid4())
+
+        print(f"[Scrape] Starting background job {progress_job_id} for {input_url}", flush=True)
+
+        scrape_job_progress[progress_job_id] = {'total': 0, 'completed': 0, 'status': 'starting'}
+
+        thread = threading.Thread(target=_run_scrape_job, args=(input_url, service, progress_job_id))
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({"jobId": progress_job_id})
+
+    except Exception as e:
+        print(f"Scrape start error: {e}")
+        return jsonify({"event": "error", "data": {"message": str(e)}}), 500
+
+
+def _run_scrape_job(input_url, service, progress_job_id):
+    try:
+        from utils import scrape_external_data as _scrape_external
+
+        print(f"[Scrape] Background job {progress_job_id} started", flush=True)
 
         if service == "auto":
             detected_service, url_type, item_id = detect_url_service(input_url)
@@ -40,11 +67,16 @@ def scrape_playlist():
             _, url_type, item_id = detect_url_service(input_url)
 
         if not service:
-            return jsonify({"event": "error", "data": {"message": "Unsupported URL — please use Spotify, YouTube, or SoundCloud."}}), 400
+            scrape_job_progress[progress_job_id].update({'total': 0, 'completed': 0, 'status': 'error'})
+            scrape_job_results[progress_job_id] = {'error': 'Unsupported URL'}
+            return
 
         if not url_type or not item_id:
-            return jsonify({"event": "error", "data": {"message": "Could not parse URL"}}), 400
+            scrape_job_progress[progress_job_id].update({'total': 0, 'completed': 0, 'status': 'error'})
+            scrape_job_results[progress_job_id] = {'error': 'Could not parse URL'}
+            return
 
+        scrape_job_progress[progress_job_id].update({'status': 'scraping'})
         tracks: list[dict] = []
 
         if service == "spotify":
@@ -59,7 +91,7 @@ def scrape_playlist():
                     "title": track.title,
                     "artists": track.artists,
                     "album": track.album or "",
-                    "cover": yt_cover or track.cover_url or "",
+                    "cover": track.cover_url or yt_cover or "",
                     "releaseDate": track.release_date or "",
                     "downloadLink": "",
                     "sourceUrl": yt_url,
@@ -70,45 +102,100 @@ def scrape_playlist():
                 playlist_name = f"{metadata.name} - {metadata.owner or 'Unknown'}"
                 raw_tracks = list(client.iter_playlist_tracks(item_id))
 
-                def process_track(track):
+                scrape_job_progress[progress_job_id].update({'total': len(raw_tracks), 'completed': 0})
+                print(f"[Scrape] Job {progress_job_id} scraping {len(raw_tracks)} Spotify tracks", flush=True)
+
+                def process_track(track, index, total):
+                    print(
+                        f"[Scrape] Job {progress_job_id} track {index}/{total}: {track.title} - {track.artists}",
+                        flush=True,
+                    )
                     yt_cover, yt_url = get_yt_info(track.title, track.artists)
                     return {
                         "id": track.spotify_id,
                         "title": track.title,
                         "artists": track.artists,
                         "album": track.album or "",
-                        "cover": yt_cover or track.cover_url or "",
+                        "cover": track.cover_url or yt_cover or "",
                         "releaseDate": track.release_date or "",
                         "downloadLink": "",
                         "sourceUrl": yt_url,
                     }
 
-                with ThreadPoolExecutor(max_workers=5) as executor:
-                    tracks = list(executor.map(process_track, raw_tracks))
+                progress_lock = threading.Lock()
+                completed_count = [0]
+
+                def process_track_with_progress(track, index, total):
+                    result = process_track(track, index, total)
+                    with progress_lock:
+                        completed_count[0] += 1
+                        p = scrape_job_progress.get(progress_job_id)
+                        if p:
+                            p['completed'] = completed_count[0]
+                            p['current'] = index
+                            print(
+                                f"[Scrape] Job {progress_job_id} progress: {completed_count[0]}/{total} tracks scraped",
+                                flush=True,
+                            )
+                    return result
+
+                with ThreadPoolExecutor(max_workers=12) as executor:
+                    futures = {
+                        executor.submit(process_track_with_progress, track, index, len(raw_tracks)): index
+                        for index, track in enumerate(raw_tracks, start=1)
+                    }
+                    tracks_by_index = {}
+                    for future in as_completed(futures):
+                        index = futures[future]
+                        tracks_by_index[index] = future.result()
+                    tracks = [tracks_by_index[i] for i in range(1, len(raw_tracks) + 1)]
 
                 gc.collect()
         elif service in ("youtube", "soundcloud"):
-            playlist_name, tracks = scrape_external_data(input_url, service, url_type)
+            playlist_name, tracks = _scrape_external(input_url, service, url_type, progress_job_id)
         else:
-            return jsonify({"event": "error", "data": {"message": f"Unsupported service: {service}"}}), 400
+            scrape_job_progress[progress_job_id].update({'status': 'error'})
+            scrape_job_results[progress_job_id] = {'error': f'Unsupported service: {service}'}
+            return
 
         gc.collect()
 
-        return jsonify({
-            "event": "complete",
-            "data": {
-                "playlistName": playlist_name,
-                "tracks": tracks,
-            },
-        })
+        print(f"[Scrape] Job {progress_job_id} fetched \"{playlist_name}\" with {len(tracks)} tracks", flush=True)
+
+        scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'current': len(tracks), 'status': 'complete'})
+        scrape_job_results[progress_job_id] = {
+            'playlistName': playlist_name,
+            'tracks': tracks,
+        }
 
     except SpotifyDownAPIError as e:
-        return jsonify({"event": "error", "data": {"message": f"Spotify API error: {e}"}}), 500
+        print(f"[Scrape] Job {progress_job_id} Spotify API error: {e}", flush=True)
+        if progress_job_id in scrape_job_progress:
+            scrape_job_progress[progress_job_id]['status'] = 'error'
+        scrape_job_results[progress_job_id] = {'error': f'Spotify API error: {e}'}
     except Exception as e:
-        print(f"Scrape error: {e}")
+        print(f"[Scrape] Job {progress_job_id} failed: {e}", flush=True)
         import traceback
         traceback.print_exc()
-        return jsonify({"event": "error", "data": {"message": f"Error: {e}"}}), 500
+        if progress_job_id in scrape_job_progress:
+            scrape_job_progress[progress_job_id]['status'] = 'error'
+        scrape_job_results[progress_job_id] = {'error': str(e)}
+
+
+@routes.route("/api/scrape-result/<job_id>", methods=["GET"])
+def get_scrape_result(job_id):
+    result = scrape_job_results.get(job_id)
+    if result is None:
+        return jsonify({"error": "Result not found"}), 404
+    return jsonify(result)
+
+
+@routes.route("/api/scrape-progress/<job_id>", methods=["GET"])
+def get_scrape_progress(job_id):
+    progress = scrape_job_progress.get(job_id)
+    if progress is None:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(progress)
 
 
 @routes.route("/api/cancel-track/<track_id>", methods=["POST"])
@@ -150,14 +237,19 @@ def resolve_youtube_url():
         if not ("youtube.com" in youtube_url or "youtu.be" in youtube_url):
             return jsonify({"error": "Not a valid YouTube URL"}), 400
 
-        from yt_dlp import YoutubeDL
         ydl_opts = {
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["web", "web_embedded"],
+                    "formats": ["missing_pot"]
+                }
+            },
+            "remote_components": ["ejs:github"],
         }
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
+        info = extract_info(youtube_url, ydl_opts, download=False)
 
         if not info:
             return jsonify({"error": "Could not resolve URL"}), 400
@@ -165,8 +257,8 @@ def resolve_youtube_url():
         thumbnails = info.get("thumbnails", [])
         thumbnail = ""
         if thumbnails:
-            jpegs = [t for t in thumbnails if ".jpg" in t.get("url", "") or ".jpeg" in t.get("url", "")]
-            thumbnail = (jpegs[-1].get("url") if jpegs else thumbnails[-1].get("url")) or ""
+            valid_images = [t for t in thumbnails if any(ext in t.get("url", "").lower() for ext in [".jpg", ".jpeg", ".png", ".webp"])]
+            thumbnail = (valid_images[-1].get("url") if valid_images else thumbnails[-1].get("url")) or ""
         if not thumbnail:
             thumbnail = info.get("thumbnail", "")
 
@@ -186,20 +278,18 @@ def resolve_youtube_url():
 @routes.route("/api/stream", methods=["GET"])
 def stream_track_get():
     source_url = request.args.get("source_url", "").strip()
-    title = request.args.get("title", "").strip()
-    artists = request.args.get("artists", "").strip()
+    range_header = request.headers.get("Range")
 
-    if not source_url and not (title or artists):
-        return jsonify({"error": "Provide source_url or title+artists"}), 400
+    if not source_url:
+        return jsonify({"error": "Provide source_url"}), 400
 
-    source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
+    print(f"[Stream] GET /api/stream source={source_url[:200]} range={range_header or 'none'}", flush=True)
 
-    audio_url, content_type, err = _resolve_audio_stream(source)
+    resp, err = open_audio_stream(source_url, range_header=range_header)
     if err:
+        print(f"[Stream] GET /api/stream FAILED: {err}", flush=True)
         return jsonify({"error": err}), 404
-
-    range_header = request.headers.get("Range", None)
-    return _proxy_audio_stream(audio_url, content_type, range_header)
+    return resp
 
 
 @routes.route("/api/stream-track", methods=["POST"])
@@ -208,18 +298,22 @@ def stream_track():
     source_url = (data or {}).get("sourceUrl", "").strip()
     title = (data or {}).get("title", "").strip()
     artists = (data or {}).get("artists", "").strip()
+    range_header = request.headers.get("Range")
 
     if not source_url and not (title or artists):
         return jsonify({"error": "Provide sourceUrl or title+artists"}), 400
 
-    source = source_url if source_url else f"ytsearch1:{title} {artists} audio"
+    source = f"ytsearch1:{title} {artists} audio" if (title or artists) else source_url
+    print(f"[Stream] POST /api/stream-track source={source[:200]} range={range_header or 'none'}", flush=True)
 
-    audio_url, content_type, err = _resolve_audio_stream(source)
+    resp, err = open_audio_stream(source, range_header=range_header)
+    if err and source_url and (title or artists):
+        print(f"[Stream] Primary source failed, retrying with ytsearch: {err}", flush=True)
+        resp, err = open_audio_stream(f"ytsearch1:{title} {artists} audio", range_header=range_header)
     if err:
+        print(f"[Stream] POST /api/stream-track FAILED: {err}", flush=True)
         return jsonify({"error": err}), 404
-
-    range_header = request.headers.get("Range", None)
-    return _proxy_audio_stream(audio_url, content_type, range_header)
+    return resp
 
 
 @routes.route("/api/download-track", methods=["POST"])
@@ -237,6 +331,8 @@ def download_track():
         release_date = data.get("releaseDate", "")
         cover_url = data.get("cover", "")
         source_url = data.get("sourceUrl", "").strip() or None
+
+        print(f"[Download] Starting single track: {track_title} - {artists}", flush=True)
 
         temp_dir = tempfile.mkdtemp()
 
@@ -279,7 +375,7 @@ def download_playlist_zip():
                 progress_store[tid] = 0.0
 
         job_id = str(uuid.uuid4())
-        JOB_STORE[job_id] = {"status": "processing", "progress": 0, "path": None, "error": None}
+        JOB_STORE[job_id] = {"status": "processing", "progress": 0, "path": None, "error": None, "currentTrack": 0, "totalTracks": len(tracks)}
 
         thread = threading.Thread(target=process_playlist_job, args=(job_id, tracks, playlist_name))
         thread.start()
@@ -296,8 +392,10 @@ def process_playlist_job(job_id, tracks, playlist_name):
     try:
         output_dir = os.path.join(temp_dir, sanitize_filename(playlist_name))
         os.makedirs(output_dir, exist_ok=True)
+        total_tracks = len(tracks)
+        print(f"[Playlist] Job {job_id} starting download of {total_tracks} tracks", flush=True)
 
-        def process_track_for_zip(track):
+        def process_track_for_zip(track, index, total):
             try:
                 track_id = track.get("id", "tmp_id")
                 track_title = track.get("title", "Unknown Title")
@@ -310,17 +408,41 @@ def process_playlist_job(job_id, tracks, playlist_name):
                 if job_id in CANCELLED_PLAYLIST_JOBS:
                     return
 
+                print(
+                    f"[Playlist] Job {job_id} downloading track {index}/{total}: {track_title} - {artists}",
+                    flush=True,
+                )
                 final_path = download_track_logic(track_id, track_title, artists, album, release_date, cover_url, output_dir, job_id=job_id, source_url=source_url)
 
                 if final_path and os.path.exists(final_path):
                     user_friendly_name = os.path.join(output_dir, f"{sanitize_filename(track_title)} - {sanitize_filename(artists)}.mp3")
                     if not final_path == user_friendly_name:
                         shutil.move(final_path, user_friendly_name)
+                return track_title
             except Exception as track_e:
                 print(f"Error on track {track.get('title')}: {track_e}")
+                return track.get("title", "Unknown Title")
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            list(executor.map(process_track_for_zip, tracks))
+        completed_tracks = [0]
+        progress_lock = threading.Lock()
+        with ThreadPoolExecutor(max_workers=12) as executor:
+            futures = {
+                executor.submit(process_track_for_zip, track, index, total_tracks): index
+                for index, track in enumerate(tracks, start=1)
+            }
+            for future in as_completed(futures):
+                _ = future.result()
+                with progress_lock:
+                    completed_tracks[0] += 1
+                    JOB_STORE[job_id].update({
+                        "progress": round((completed_tracks[0] / total_tracks) * 100, 2) if total_tracks else 100,
+                        "currentTrack": completed_tracks[0],
+                        "totalTracks": total_tracks,
+                    })
+                    print(
+                        f"[Playlist] Job {job_id} progress: {completed_tracks[0]}/{total_tracks} tracks complete",
+                        flush=True,
+                    )
 
         if job_id in CANCELLED_PLAYLIST_JOBS:
             JOB_STORE[job_id] = {"status": "cancelled", "message": "Playlist download cancelled"}
@@ -394,6 +516,64 @@ def health_check():
     response = jsonify({"online": True})
     print("[Health Check] Responding to health check: online=True", flush=True)
     return response
+
+
+@routes.route("/api/scrape-user-playlists", methods=["POST"])
+def scrape_user_playlists():
+    try:
+        data = request.get_json()
+        profile_url = data.get("profileUrl", "").strip()
+
+        if not profile_url:
+            return jsonify({"error": "No profile URL provided"}), 400
+
+        pattern = r"https://open\.spotify\.com/(?:intl-[a-zA-Z]+/)?user/([a-zA-Z0-9]+)"
+        match = re.match(pattern, profile_url)
+        if not match:
+            return jsonify({"error": "Invalid Spotify user profile URL"}), 400
+
+        user_id = match.group(1)
+
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        })
+        playlists_url = f"https://open.spotify.com/user/{user_id}/playlists"
+        response = session.get(playlists_url, timeout=30)
+
+        if response.status_code != 200:
+            return jsonify({"error": "User not found or no public playlists"}), 404
+
+        playlist_ids = set(re.findall(r'/playlist/([a-zA-Z0-9]+)', response.text))
+
+        if not playlist_ids:
+            return jsonify({"playlists": []})
+
+        api = SpotifyEmbedAPI()
+        results = []
+        for pid in playlist_ids:
+            try:
+                metadata = api.get_playlist_metadata(pid)
+                results.append({
+                    "id": pid,
+                    "name": metadata.name,
+                    "owner": metadata.owner or "",
+                    "trackCount": metadata.track_count or 0,
+                })
+            except Exception:
+                continue
+
+        return jsonify({"playlists": results})
+
+    except requests.RequestException:
+        return jsonify({"error": "Failed to fetch user playlists"}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @routes.route("/")

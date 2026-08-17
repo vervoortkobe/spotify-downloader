@@ -18,7 +18,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Callable, TypeVar
 
-import requests
+import httpx
 
 T = TypeVar("T")
 
@@ -27,6 +27,19 @@ _DEFAULT_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0.0.0 Safari/537.36"
 )
+
+
+def _build_spotify_client(proxy: str | None = None, timeout: float = 15.0) -> httpx.Client:
+    """Create an httpx.Client with connection pooling for Spotify API calls."""
+    transport_kwargs = {}
+    if proxy:
+        transport_kwargs["proxy"] = proxy
+    return httpx.Client(
+        timeout=httpx.Timeout(timeout, connect=10.0),
+        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        follow_redirects=True,
+        **transport_kwargs,
+    )
 
 
 class SpotifyDownAPIError(RuntimeError):
@@ -48,7 +61,7 @@ class RateLimitError(SpotifyDownAPIError):
 def retry_on_network_error(
     max_attempts: int = 3,
     backoff_factor: float = 1.0,
-    exceptions: tuple = (NetworkError, requests.Timeout, requests.ConnectionError),
+    exceptions: tuple = (NetworkError, httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError),
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator to retry a function on network errors with exponential backoff.
 
@@ -124,8 +137,11 @@ class SpotifyEmbedAPI:
     _SPCLIENT_URL = "https://spclient.wg.spotify.com/playlist/v2/playlist/{playlist_id}"
     _NEXT_DATA_PATTERN = re.compile(r'<script id="__NEXT_DATA__"[^>]*>([^<]+)</script>')
 
-    def __init__(self, *, session: requests.Session | None = None) -> None:
-        self._session = session or requests.Session()
+    def __init__(self, *, session: httpx.Client | None = None, proxy: str | None = None) -> None:
+        if session:
+            self._session = session
+        else:
+            self._session = _build_spotify_client()
         self._cached_token: str | None = None
         self._token_expiry: float = 0
 
@@ -170,10 +186,10 @@ class SpotifyEmbedAPI:
             ExtractionError: When page structure is unexpected (not retryable)
         """
         try:
-            response = self._session.get(url, headers=self._headers(), timeout=30)
-        except (requests.Timeout, requests.ConnectionError) as exc:
+            response = self._session.get(url, headers=self._headers())
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
             raise NetworkError(f"Network error fetching embed page: {exc}") from exc
-        except requests.RequestException as exc:
+        except httpx.HTTPError as exc:
             raise SpotifyDownAPIError(f"Failed to fetch embed page: {exc}") from exc
 
         if response.status_code == 429:
@@ -544,10 +560,13 @@ class PlaylistClient:
     def __init__(
         self,
         *,
-        session: requests.Session | None = None,
-        base_urls: Sequence[str] | None = None,  # Ignored - kept for compatibility
+        session: httpx.Client | None = None,
+        base_urls: Sequence[str] | None = None,
     ) -> None:
-        self._session = session or requests.Session()
+        if session:
+            self._session = session
+        else:
+            self._session = _build_spotify_client()
         self._embed_api = SpotifyEmbedAPI(session=self._session)
 
     def get_playlist_metadata(self, playlist_id: str) -> PlaylistInfo:
@@ -565,20 +584,6 @@ class PlaylistClient:
     def validate_playlist(self, playlist_id: str) -> bool:
         """Quick validation that a playlist exists."""
         return self._embed_api.validate_playlist(playlist_id)
-
-    def get_track_download_link(self, track_id: str) -> str | None:
-        """No longer available - spotifydown is dead.
-
-        Use yt-dlp YouTube search instead.
-        """
-        return None
-
-    def get_track_youtube_id(self, track_id: str) -> str | None:
-        """No longer available - spotifydown is dead.
-
-        Use yt-dlp YouTube search instead.
-        """
-        return None
 
     def get_track(self, track_id: str) -> TrackInfo:
         """Get metadata for a single track.

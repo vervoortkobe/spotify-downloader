@@ -1,6 +1,8 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
 import {
   Check,
   Music2,
@@ -18,39 +20,17 @@ import {
   Radio,
   ChevronDown,
 } from "lucide-react"
-import { SiSpotify, SiYoutube, SiSoundcloud } from "react-icons/si"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast, Toaster } from "react-hot-toast"
 import Image from "next/image"
+import type { Track, ServiceTheme } from "@/lib/types"
+import { API_URL, refreshApiUrl } from "@/lib/api"
+import { serviceTheme, serviceLabels, serviceIcons, detectServiceFromUrl } from "@/lib/themes"
 
-interface Track {
-  id: string
-  title: string
-  artists: string
-  album: string
-  cover: string
-  releaseDate: string
-  downloadLink: string
-  sourceUrl?: string
-}
-
-const getApiUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    const url = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
-    return url.match(/^https?:\/\/|^\/\//) ? url : `https://${url}`
-  }
-
-  if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location
-    const port = hostname === "localhost" || hostname === "127.0.0.1" ? ":5000" : ""
-    return `${protocol}//${hostname}${port}`
-  }
-}
-
-let LOCAL_API = getApiUrl()
-
-export default function SpotifyDownloaderApp() {
+export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: string }) {
+  const router = useRouter()
+  const inputRef = useRef<HTMLInputElement>(null)
   const [playlistLink, setPlaylistLink] = useState("")
 
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null)
@@ -60,14 +40,14 @@ export default function SpotifyDownloaderApp() {
   }, [])
 
   useEffect(() => {
-    LOCAL_API = getApiUrl()
+    refreshApiUrl()
 
     const checkHealth = async () => {
-      console.log(`[Health Check] Polling backend health at ${LOCAL_API}/api/health...`)
+      console.log(`[Health Check] Polling backend health at ${API_URL}/api/health...`)
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 4000)
-        const res = await fetch(`${LOCAL_API}/api/health`, { signal: controller.signal })
+        const res = await fetch(`${API_URL}/api/health`, { signal: controller.signal })
         clearTimeout(timeoutId)
         if (res.ok) {
           const data = await res.json()
@@ -104,7 +84,11 @@ export default function SpotifyDownloaderApp() {
   const [isDownloadingTrack, setIsDownloadingTrack] = useState<string | null>(null)
   const [activeAbortController, setActiveAbortController] = useState<AbortController | null>(null)
   const [isDownloadingAll, setIsDownloadingAll] = useState(false)
+  const [isDownloadingIndividually, setIsDownloadingIndividually] = useState(false)
   const [activePlaylistJobId, setActivePlaylistJobId] = useState<string | null>(null)
+  const [scrapeProgress, setScrapeProgress] = useState<{ total: number; completed: number } | null>(null)
+  const [fetchElapsed, setFetchElapsed] = useState(0)
+  const fetchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [playlistDownloadProgress, setPlaylistDownloadProgress] = useState(0)
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({})
   const trackProgressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -112,6 +96,7 @@ export default function SpotifyDownloaderApp() {
   const playlistStartAbortRef = useRef<AbortController | null>(null)
   const playlistStatusAbortRef = useRef<AbortController | null>(null)
   const playlistCancelRequestedRef = useRef(false)
+  const indivCancelRequestedRef = useRef(false)
 
   // Source URL override state
   const [urlOverrides, setUrlOverrides] = useState<Record<string, string>>({})
@@ -121,6 +106,8 @@ export default function SpotifyDownloaderApp() {
   const [urlMeta, setUrlMeta] = useState<
     Record<string, { title: string; channel: string; thumbnail: string; duration: number } | null>
   >({})
+  const getTrackArtwork = (trackId: string, cover: string) =>
+    cover || urlMeta[trackId]?.thumbnail || ""
 
   // Service selector state
   const [selectedService, setSelectedService] = useState<string>("auto")
@@ -128,129 +115,9 @@ export default function SpotifyDownloaderApp() {
   const [showServiceDropdown, setShowServiceDropdown] = useState(false)
   const serviceDropdownRef = useRef<HTMLDivElement | null>(null)
 
-  const serviceLabels: Record<string, string> = {
-    auto: "Auto-detect",
-    spotify: "Spotify",
-    youtube: "YouTube",
-    soundcloud: "SoundCloud",
-  }
-
-  const serviceIcons: Record<string, JSX.Element> = {
-    spotify: <SiSpotify className="h-5 w-5 text-[#1DB954]" />,
-    youtube: <SiYoutube className="h-5 w-5 text-[#FF0000]" />,
-    soundcloud: <SiSoundcloud className="h-5 w-5 text-[#FF7700]" />,
-  }
-
-  const detectServiceFromUrl = (url: string): string | null => {
-    if (/open\.spotify\.com/.test(url)) return "spotify"
-    if (/(youtube\.com|youtu\.be)/.test(url)) return "youtube"
-    if (/soundcloud\.com/.test(url)) return "soundcloud"
-    return null
-  }
-
   const detectedService = detectServiceFromUrl(playlistLink)
-  const effectiveService = selectedService === "auto" ? (detectedService || "spotify") : selectedService
-
-  const serviceTheme: Record<
-    string,
-    {
-      primary: string
-      primaryLight: string
-      primaryDark: string
-      primaryBg: string
-      primaryBgLight: string
-      primaryText: string
-      primaryTextLight: string
-      primaryTextMuted: string
-      border: string
-      borderLight: string
-      borderSubtle: string
-      bgCard: string
-      bgCardLight: string
-      bgCardLighter: string
-      glowRgba: string
-      progressBg: string
-      progressBar: string
-      shadowRgba: string
-      gradient1: string
-      gradient2: string
-      glow: string
-      btn: string
-    }
-  > = {
-    spotify: {
-      primary: "#10b981",
-      primaryLight: "#34d399",
-      primaryDark: "#047857",
-      primaryBg: "#064e3b",
-      primaryBgLight: "#022c22",
-      primaryText: "#ecfdf5",
-      primaryTextLight: "#a7f3d0",
-      primaryTextMuted: "#6ee7b7",
-      border: "rgba(6,78,59,0.6)",
-      borderLight: "rgba(6,78,59,0.7)",
-      borderSubtle: "rgba(5,46,22,0.6)",
-      bgCard: "#09120d",
-      bgCardLight: "#08110c",
-      bgCardLighter: "#0d1913",
-      glowRgba: "rgba(6,95,70,0.25)",
-      progressBg: "#0f1f16",
-      progressBar: "#047857",
-      shadowRgba: "rgba(6,95,70,0.2)",
-      gradient1: "rgba(0,70,45,0.5)",
-      gradient2: "rgba(0,100,50,0.35)",
-      glow: "bg-emerald-900/20",
-      btn: "border-emerald-700/70 bg-emerald-900/80 text-emerald-50 shadow-[0_0_20px_rgba(6,95,70,0.25)] hover:bg-emerald-800/85",
-    },
-    youtube: {
-      primary: "#ef4444",
-      primaryLight: "#f87171",
-      primaryDark: "#b91c1c",
-      primaryBg: "#7f1d1d",
-      primaryBgLight: "#450a0a",
-      primaryText: "#fef2f2",
-      primaryTextLight: "#fca5a5",
-      primaryTextMuted: "#f87171",
-      border: "rgba(127,29,29,0.6)",
-      borderLight: "rgba(127,29,29,0.7)",
-      borderSubtle: "rgba(69,10,10,0.6)",
-      bgCard: "#120909",
-      bgCardLight: "#110808",
-      bgCardLighter: "#1a0d0d",
-      glowRgba: "rgba(239,68,68,0.25)",
-      progressBg: "#1f0f0f",
-      progressBar: "#b91c1c",
-      shadowRgba: "rgba(239,68,68,0.2)",
-      gradient1: "rgba(127,29,29,0.5)",
-      gradient2: "rgba(180,30,30,0.35)",
-      glow: "bg-red-900/20",
-      btn: "border-red-700/70 bg-red-900/80 text-red-50 shadow-[0_0_20px_rgba(239,68,68,0.25)] hover:bg-red-800/85",
-    },
-    soundcloud: {
-      primary: "#ff7700",
-      primaryLight: "#ff9933",
-      primaryDark: "#e06000",
-      primaryBg: "#cc5500",
-      primaryBgLight: "#7a2e00",
-      primaryText: "#fff7ed",
-      primaryTextLight: "#fed7aa",
-      primaryTextMuted: "#ff8c42",
-      border: "rgba(255,119,0,0.6)",
-      borderLight: "rgba(255,119,0,0.7)",
-      borderSubtle: "rgba(224,96,0,0.6)",
-      bgCard: "#120a05",
-      bgCardLight: "#110904",
-      bgCardLighter: "#1a0e06",
-      glowRgba: "rgba(255,119,0,0.3)",
-      progressBg: "#1f1006",
-      progressBar: "#ff7700",
-      shadowRgba: "rgba(255,119,0,0.2)",
-      gradient1: "rgba(200,80,0,0.5)",
-      gradient2: "rgba(255,119,0,0.35)",
-      glow: "bg-orange-900/20",
-      btn: "border-orange-600/80 bg-orange-700/90 text-orange-50 shadow-[0_0_20px_rgba(255,119,0,0.3)] hover:bg-orange-600/85",
-    },
-  }
+  const effectiveService =
+    selectedService === "auto" ? detectedService || "spotify" : selectedService
 
   const t = serviceTheme[effectiveService]
 
@@ -264,6 +131,122 @@ export default function SpotifyDownloaderApp() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  // Autofocus the URL input on mount
+  useEffect(() => {
+    if (!initialJobId) {
+      inputRef.current?.focus()
+    }
+  }, [initialJobId])
+
+  // Warn before closing tab if work is in progress
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isProcessing || isDownloadingAll || isDownloadingTrack || isDownloadingIndividually) {
+        e.preventDefault()
+        e.returnValue = ""
+      }
+    }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [isProcessing, isDownloadingAll, isDownloadingTrack, isDownloadingIndividually])
+
+  // Resume a job from URL (when navigated to /job/:jobId)
+  const resumeJob = useCallback(
+    async (jobId: string) => {
+      setIsProcessing(true)
+      setFetchedService(effectiveService)
+      setDownloadProgress(0)
+      setSongsDownloaded(0)
+      setTotalSongs(0)
+      setScrapeProgress(null)
+      setFetchElapsed(0)
+      setStatusMessage("Resuming fetch…")
+      setTracks([])
+      setSelectedTrack(null)
+
+      if (fetchTimerRef.current) clearInterval(fetchTimerRef.current)
+      fetchTimerRef.current = setInterval(() => {
+        setFetchElapsed((prev) => prev + 1)
+      }, 1000)
+
+      const progressInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_URL}/api/scrape-progress/${jobId}`)
+          if (!res.ok) return
+          const data = await res.json()
+          if (data.total > 0) {
+            setScrapeProgress({ total: data.total, completed: data.completed })
+            setStatusMessage(`Fetching track ${data.completed} / ${data.total}…`)
+          }
+
+          if (data.status === "complete") {
+            clearInterval(progressInterval)
+            if (fetchTimerRef.current) {
+              clearInterval(fetchTimerRef.current)
+              fetchTimerRef.current = null
+            }
+            const resultRes = await fetch(`${API_URL}/api/scrape-result/${jobId}`)
+            if (!resultRes.ok) throw new Error("Failed to fetch scrape result")
+            const resultData = await resultRes.json()
+
+            setPlaylistName(resultData.playlistName || "Playlist")
+            const processedTracks: Track[] = resultData.tracks || []
+            setTracks(processedTracks)
+            setTotalSongs(processedTracks.length)
+            setSongsDownloaded(processedTracks.length)
+            setDownloadProgress(100)
+            setScrapeProgress({ total: processedTracks.length, completed: processedTracks.length })
+            setFetchElapsed((finalElapsed) => {
+              setStatusMessage(`Found ${processedTracks.length} tracks (fetched in ${finalElapsed}s)`)
+              return finalElapsed
+            })
+            if (processedTracks.length > 0) {
+              setSelectedTrack(processedTracks[0])
+            }
+            toast.success(`Loaded ${processedTracks.length} tracks!`)
+            setIsProcessing(false)
+          } else if (data.status === "error") {
+            clearInterval(progressInterval)
+            if (fetchTimerRef.current) {
+              clearInterval(fetchTimerRef.current)
+              fetchTimerRef.current = null
+            }
+            const errorResult = await fetch(`${API_URL}/api/scrape-result/${jobId}`).catch(() => null)
+            const errMsg = errorResult?.ok ? (await errorResult.json()).error : "Scraping failed"
+            toast.error(errMsg)
+            setFetchElapsed((finalElapsed) => {
+              setStatusMessage(`Error — try again (last attempt: ${finalElapsed}s)`)
+              return finalElapsed
+            })
+            setIsProcessing(false)
+          }
+        } catch (error) {
+          clearInterval(progressInterval)
+          if (fetchTimerRef.current) {
+            clearInterval(fetchTimerRef.current)
+            fetchTimerRef.current = null
+          }
+          console.error("Error:", error)
+          toast.error("Failed to resume job")
+          setFetchElapsed((finalElapsed) => {
+            setStatusMessage(`Error — try again (last attempt: ${finalElapsed}s)`)
+            return finalElapsed
+          })
+          setIsProcessing(false)
+        }
+      }, 500)
+    },
+    [effectiveService],
+  )
+
+  // On mount: if we have an initialJobId, start polling immediately
+  useEffect(() => {
+    if (initialJobId) {
+      resumeJob(initialJobId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialJobId])
+
   // Streaming state
   const [streamingTrackId, setStreamingTrackId] = useState<string | null>(null)
   const [isLoadingStream, setIsLoadingStream] = useState(false)
@@ -271,8 +254,11 @@ export default function SpotifyDownloaderApp() {
   const [streamProgress, setStreamProgress] = useState(0) // 0-1
   const [streamDuration, setStreamDuration] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const trackCancelRequestedRef = useRef<Set<string>>(new Set())
+  const streamStopRequestedRef = useRef(false)
 
-  const progressBarClassName = "h-3 bg-[var(--clr-progressBg)] [&>div]:bg-[var(--clr-progressBar)] rounded-full"
+  const progressBarClassName =
+    "h-3 bg-[var(--clr-progressBg)] [&>div]:bg-[var(--clr-progressBar)] rounded-full"
   const allTracksSelected = tracks.length > 0 && selectedTrackIds.length === tracks.length
   const selectedDownloadTracks = tracks.filter((track) => selectedTrackIds.includes(track.id))
 
@@ -350,11 +336,19 @@ export default function SpotifyDownloaderApp() {
 
   const cancelTrackDownload = async (trackId: string) => {
     if (isDownloadingTrack !== trackId) return
+    trackCancelRequestedRef.current.add(trackId)
     clearTrackProgressInterval()
     activeAbortController?.abort()
+    setTrackProgress((prev) => {
+      const newState = { ...prev }
+      delete newState[trackId]
+      return newState
+    })
+    setIsDownloadingTrack(null)
+    setActiveAbortController(null)
 
     try {
-      await fetch(`${LOCAL_API}/api/cancel-track/${trackId}`, { method: "POST" })
+      await fetch(`${API_URL}/api/cancel-track/${trackId}`, { method: "POST" })
     } catch (e) {
       console.error("Failed to notify backend about track cancellation", e)
     }
@@ -400,7 +394,7 @@ export default function SpotifyDownloaderApp() {
     }
     setIsResolvingUrl(true)
     try {
-      const res = await fetch(`${LOCAL_API}/api/resolve-youtube-url`, {
+      const res = await fetch(`${API_URL}/api/resolve-youtube-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ youtubeUrl: url }),
@@ -425,6 +419,7 @@ export default function SpotifyDownloaderApp() {
   // ---- Audio streaming ----
 
   const stopStream = () => {
+    streamStopRequestedRef.current = true
     const audio = audioRef.current
     if (audio) {
       audio.onerror = null
@@ -432,7 +427,7 @@ export default function SpotifyDownloaderApp() {
       audio.ontimeupdate = null
       audio.onended = null
       audio.pause()
-      audio.src = ""
+      audio.removeAttribute("src")
       audio.load()
     }
     setStreamingTrackId(null)
@@ -455,20 +450,29 @@ export default function SpotifyDownloaderApp() {
     }
 
     stopStream()
+    streamStopRequestedRef.current = false
 
     setStreamingTrackId(track.id)
     setIsLoadingStream(true)
 
     try {
       const sourceUrl = urlOverrides[track.id] || track.sourceUrl || ""
-      const params = new URLSearchParams()
-      if (sourceUrl) {
-        params.set("source_url", sourceUrl)
-      } else {
-        params.set("title", track.title)
-        params.set("artists", track.artists)
+      const streamUrl = sourceUrl
+        ? `${API_URL}/api/stream?source_url=${encodeURIComponent(sourceUrl)}`
+        : `${API_URL}/api/stream`
+
+      const checkResp = await fetch(streamUrl, { method: "GET", headers: { Range: "bytes=0-0" } })
+      if (!checkResp.ok) {
+        let errMsg = `Stream error (HTTP ${checkResp.status})`
+        try {
+          const body = await checkResp.json()
+          if (body?.error) errMsg = body.error
+        } catch {}
+        toast.error(errMsg)
+        stopStream()
+        return
       }
-      const streamUrl = `${LOCAL_API}/api/stream?${params.toString()}`
+      checkResp.body?.cancel()
 
       if (!audioRef.current) {
         audioRef.current = new Audio()
@@ -476,26 +480,51 @@ export default function SpotifyDownloaderApp() {
       const audio = audioRef.current
       audio.src = streamUrl
       audio.onloadedmetadata = () => {
+        if (streamStopRequestedRef.current) return
         setStreamDuration(audio.duration || 0)
         setIsLoadingStream(false)
       }
       audio.ontimeupdate = () => {
+        if (streamStopRequestedRef.current) return
         if (audio.duration) setStreamProgress(audio.currentTime / audio.duration)
       }
       audio.onended = () => {
+        if (streamStopRequestedRef.current) return
         setIsPlaying(false)
         setStreamProgress(1)
       }
       audio.onerror = () => {
-        toast.error("Stream error")
+        if (streamStopRequestedRef.current) return
+        const mediaErr = audio.error
+        let detail = "Stream playback error"
+        if (mediaErr) {
+          const codes: Record<number, string> = {
+            1: "Media aborted",
+            2: "Network error loading audio",
+            3: "Audio decoding failed",
+            4: "Audio format not supported",
+          }
+          detail = codes[mediaErr.code] || `Media error code ${mediaErr.code}`
+          if (mediaErr.message) detail += `: ${mediaErr.message}`
+        }
+        toast.error(detail)
         stopStream()
       }
-      await audio.play()
+      const playPromise = audio.play()
+      if (playPromise) {
+        await playPromise
+      }
       setIsPlaying(true)
     } catch (err: any) {
+      if (streamStopRequestedRef.current || err?.name === "AbortError") {
+        return
+      }
       toast.error(err.message || "Failed to stream track")
       stopStream()
     } finally {
+      if (streamStopRequestedRef.current) {
+        streamStopRequestedRef.current = false
+      }
       setIsLoadingStream(false)
     }
   }
@@ -507,10 +536,11 @@ export default function SpotifyDownloaderApp() {
     }
   }
 
-  // Cleanup audio on unmount
+  // Cleanup audio and timers on unmount
   useEffect(() => {
     return () => {
       stopStream()
+      if (fetchTimerRef.current) clearInterval(fetchTimerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -526,7 +556,7 @@ export default function SpotifyDownloaderApp() {
       if (!activePlaylistJobId) {
         return
       }
-      await fetch(`${LOCAL_API}/api/cancel-playlist/${activePlaylistJobId}`, { method: "POST" })
+      await fetch(`${API_URL}/api/cancel-playlist/${activePlaylistJobId}`, { method: "POST" })
       toast.success("Playlist download cancelled", { id: "download-toast" })
     } catch (e) {
       console.error("Failed to notify backend about playlist cancellation", e)
@@ -535,17 +565,18 @@ export default function SpotifyDownloaderApp() {
   }
 
   const downloadTrack = async (track: Track) => {
+    const controller = new AbortController()
     try {
+      trackCancelRequestedRef.current.delete(track.id)
       setIsDownloadingTrack(track.id)
       setTrackProgress((prev) => ({ ...prev, [track.id]: 0 }))
 
-      const controller = new AbortController()
       setActiveAbortController(controller)
 
       clearTrackProgressInterval()
       trackProgressIntervalRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`${LOCAL_API}/api/progress/${track.id}`)
+          const res = await fetch(`${API_URL}/api/progress/${track.id}`)
           if (res.ok) {
             const data = await res.json()
             setTrackProgress((prev) => ({ ...prev, [track.id]: data.progress || 0 }))
@@ -554,14 +585,17 @@ export default function SpotifyDownloaderApp() {
       }, 500)
 
       const sourceUrl = urlOverrides[track.id] || track.sourceUrl || ""
-      const response = await fetch(`${LOCAL_API}/api/download-track`, {
+      const response = await fetch(`${API_URL}/api/download-track`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...track, sourceUrl }),
+        signal: controller.signal,
       })
 
       clearTrackProgressInterval()
-      setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
+      if (controller.signal.aborted || trackCancelRequestedRef.current.has(track.id)) {
+        throw new DOMException("The operation was aborted.", "AbortError")
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -569,6 +603,10 @@ export default function SpotifyDownloaderApp() {
       }
 
       const blob = await response.blob()
+      if (controller.signal.aborted || trackCancelRequestedRef.current.has(track.id)) {
+        throw new DOMException("The operation was aborted.", "AbortError")
+      }
+      setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -590,17 +628,18 @@ export default function SpotifyDownloaderApp() {
     } catch (err: any) {
       clearTrackProgressInterval()
 
-      if (err.name === "AbortError") {
-        fetch(`${LOCAL_API}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
-        toast.error(`Cancelled ${track.title}`)
+      if (err.name === "AbortError" || trackCancelRequestedRef.current.has(track.id)) {
+        fetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
+        toast(`Cancelled: ${track.title}`, { icon: <X className="h-4 w-4 text-zinc-400" /> })
         setTrackProgress((prev) => {
           const newState = { ...prev }
           delete newState[track.id]
           return newState
         })
+        trackCancelRequestedRef.current.delete(track.id)
       } else {
         console.error(err)
-        toast.error(err.message || "Download failed")
+        toast.error(err.message || "Download failed — tap Retry to try again")
         setTrackProgress((prev) => ({ ...prev, [track.id]: -1 }))
         setTimeout(() => {
           setTrackProgress((prev) => {
@@ -613,7 +652,109 @@ export default function SpotifyDownloaderApp() {
     } finally {
       setIsDownloadingTrack(null)
       setActiveAbortController(null)
+      trackCancelRequestedRef.current.delete(track.id)
     }
+  }
+
+  const cancelIndivDownloads = () => {
+    indivCancelRequestedRef.current = true
+    activeAbortController?.abort()
+    clearTrackProgressInterval()
+    toast("Cancelling downloads...", { id: "indiv-download" })
+  }
+
+  const downloadAllIndividually = async () => {
+    if (selectedDownloadTracks.length === 0) {
+      toast.error("Select at least one song to download")
+      return
+    }
+    indivCancelRequestedRef.current = false
+    setIsDownloadingIndividually(true)
+    toast.loading(`Downloading ${selectedDownloadTracks.length} tracks individually...`, { id: "indiv-download" })
+    for (const track of selectedDownloadTracks) {
+      if (indivCancelRequestedRef.current) break
+      if (selectedTrackIds.includes(track.id)) {
+        const controller = new AbortController()
+        try {
+          setIsDownloadingTrack(track.id)
+          setTrackProgress((prev) => ({ ...prev, [track.id]: 0 }))
+
+          trackCancelRequestedRef.current.delete(track.id)
+          setActiveAbortController(controller)
+
+          const sourceUrl = urlOverrides[track.id] || track.sourceUrl || ""
+          const response = await fetch(`${API_URL}/api/download-track`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...track, sourceUrl }),
+            signal: controller.signal,
+          })
+
+          if (controller.signal.aborted || trackCancelRequestedRef.current.has(track.id)) {
+            throw new DOMException("The operation was aborted.", "AbortError")
+          }
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
+            throw new Error(errorData.message || "Download failed")
+          }
+
+          const blob = await response.blob()
+          if (controller.signal.aborted || trackCancelRequestedRef.current.has(track.id)) {
+            throw new DOMException("The operation was aborted.", "AbortError")
+          }
+          setTrackProgress((prev) => ({ ...prev, [track.id]: 100 }))
+          const url = window.URL.createObjectURL(blob)
+          const a = document.createElement("a")
+          a.href = url
+          a.download = `${track.title} - ${track.artists}.mp3`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          window.URL.revokeObjectURL(url)
+        } catch (err: any) {
+          if (err.name === "AbortError" || trackCancelRequestedRef.current.has(track.id)) {
+            fetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
+        toast(`Cancelled: ${track.title}`, { icon: <X className="h-4 w-4 text-zinc-400" /> })
+            setTrackProgress((prev) => {
+              const newState = { ...prev }
+              delete newState[track.id]
+              return newState
+            })
+            trackCancelRequestedRef.current.delete(track.id)
+          } else {
+            console.error(err)
+            toast.error(`Failed: ${track.title} — tap Retry to try again`)
+            setTrackProgress((prev) => ({ ...prev, [track.id]: -1 }))
+            setTimeout(() => {
+              setTrackProgress((prev) => {
+                const newState = { ...prev }
+                delete newState[track.id]
+                return newState
+              })
+            }, 5000)
+          }
+        } finally {
+          setIsDownloadingTrack(null)
+          setActiveAbortController(null)
+          trackCancelRequestedRef.current.delete(track.id)
+          setTimeout(() => {
+            setTrackProgress((prev) => {
+              const newState = { ...prev }
+              delete newState[track.id]
+              return newState
+            })
+          }, 1500)
+        }
+      }
+    }
+    if (indivCancelRequestedRef.current) {
+      toast("Individual downloads cancelled", { id: "indiv-download" })
+    } else {
+      toast.success("All tracks downloaded", { id: "indiv-download" })
+    }
+    setIsDownloadingIndividually(false)
+    indivCancelRequestedRef.current = false
   }
 
   const downloadAll = async () => {
@@ -641,7 +782,7 @@ export default function SpotifyDownloaderApp() {
       clearPlaylistProgressInterval()
       playlistProgressIntervalRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`${LOCAL_API}/api/progress/all`)
+          const res = await fetch(`${API_URL}/api/progress/all`)
           if (res.ok) {
             const data = await res.json()
             setTrackProgress((prev) => {
@@ -658,7 +799,7 @@ export default function SpotifyDownloaderApp() {
         } catch (e) {}
       }, 1000)
 
-      const res = await fetch(`${LOCAL_API}/api/download-playlist-zip`, {
+      const res = await fetch(`${API_URL}/api/download-playlist-zip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -686,9 +827,7 @@ export default function SpotifyDownloaderApp() {
       setActivePlaylistJobId(job_id)
 
       if (playlistCancelRequestedRef.current) {
-        await fetch(`${LOCAL_API}/api/cancel-playlist/${job_id}`, { method: "POST" }).catch(
-          () => {}
-        )
+        await fetch(`${API_URL}/api/cancel-playlist/${job_id}`, { method: "POST" }).catch(() => {})
         setTrackProgress({})
         setPlaylistDownloadProgress(0)
         toast.success("Playlist download cancelled", { id: "download-toast" })
@@ -706,7 +845,7 @@ export default function SpotifyDownloaderApp() {
         }
 
         try {
-          const statusRes = await fetch(`${LOCAL_API}/api/job-status/${job_id}`, {
+          const statusRes = await fetch(`${API_URL}/api/job-status/${job_id}`, {
             signal: playlistStatusAbortRef.current?.signal,
           })
           if (!statusRes.ok) continue
@@ -743,7 +882,7 @@ export default function SpotifyDownloaderApp() {
       if (success) {
         setPlaylistDownloadProgress(100)
         toast.loading("Finalizing ZIP file...", { id: "download-toast" })
-        const downloadUrl = `${LOCAL_API}/api/download-job/${job_id}`
+        const downloadUrl = `${API_URL}/api/download-job/${job_id}`
 
         const a = document.createElement("a")
         a.href = downloadUrl
@@ -790,77 +929,69 @@ export default function SpotifyDownloaderApp() {
       return
     }
 
+    const progressJobId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
     setIsProcessing(true)
     setFetchedService(effectiveService)
     setDownloadProgress(0)
     setSongsDownloaded(0)
     setTotalSongs(0)
-    setStatusMessage("Fetching data...")
+    setScrapeProgress(null)
+    setFetchElapsed(0)
+    setStatusMessage("Fetching playlist/track data...")
     setTracks([])
     setSelectedTrack(null)
 
+    if (fetchTimerRef.current) clearInterval(fetchTimerRef.current)
+    fetchTimerRef.current = setInterval(() => {
+      setFetchElapsed((prev) => prev + 1)
+    }, 1000)
+
     try {
-      const response = await fetch(`${LOCAL_API}/api/scrape-playlist`, {
+      const startRes = await fetch(`${API_URL}/api/scrape-playlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistUrl: playlistLink, service: effectiveService }),
+        body: JSON.stringify({ playlistUrl: playlistLink, service: effectiveService, progressJobId }),
       })
-
-      if (!response.ok) throw new Error("Failed to process playlist")
-
-      const result = await response.json()
-
-      if (result.event === "complete") {
-        setPlaylistName(result.data.playlistName || "Playlist")
-        const processedTracks: Track[] = result.data.tracks || []
-        setTracks(processedTracks)
-        setTotalSongs(processedTracks.length)
-        setSongsDownloaded(processedTracks.length)
-        setDownloadProgress(100)
-        setStatusMessage(`Found ${processedTracks.length} tracks`)
-
-        if (processedTracks.length > 0) {
-          setSelectedTrack(processedTracks[0])
-        }
-
-        toast.success(`Loaded ${processedTracks.length} tracks!`)
-      } else if (result.event === "error") {
-        throw new Error(result.data?.message || "Processing failed")
-      }
+      if (!startRes.ok) throw new Error("Failed to start scrape")
     } catch (error) {
       console.error("Error:", error)
       toast.error(error instanceof Error ? error.message : "Failed to process")
       setStatusMessage("Error - try again")
-    } finally {
       setIsProcessing(false)
+      return
     }
+
+    router.push(`/job/${progressJobId}`)
   }
 
   return (
     <div
-      className={`min-h-dvh bg-[#07110b] font-sans text-zinc-50 selection:bg-[var(--clr-primaryBg)]/40 ${tracks.length === 0 ? "h-dvh overflow-hidden" : ""}`}
-      style={{
-        "--clr-primary": t.primary,
-        "--clr-primaryLight": t.primaryLight,
-        "--clr-primaryDark": t.primaryDark,
-        "--clr-primaryBg": t.primaryBg,
-        "--clr-primaryBgLight": t.primaryBgLight,
-        "--clr-primaryText": t.primaryText,
-        "--clr-primaryTextLight": t.primaryTextLight,
-        "--clr-primaryTextMuted": t.primaryTextMuted,
-        "--clr-border": t.border,
-        "--clr-borderLight": t.borderLight,
-        "--clr-borderSubtle": t.borderSubtle,
-        "--clr-bgCard": t.bgCard,
-        "--clr-bgCardLight": t.bgCardLight,
-        "--clr-bgCardLighter": t.bgCardLighter,
-        "--clr-glowRgba": t.glowRgba,
-        "--clr-progressBg": t.progressBg,
-        "--clr-progressBar": t.progressBar,
-        "--clr-shadowRgba": t.shadowRgba,
-        "--clr-gradient1": t.gradient1,
-        "--clr-gradient2": t.gradient2,
-      } as React.CSSProperties}
+      className={`selection:bg-[var(--clr-primaryBg)]/40 min-h-dvh bg-[#07110b] font-sans text-zinc-50 ${tracks.length === 0 ? "h-dvh overflow-hidden" : ""}`}
+      style={
+        {
+          "--clr-primary": t.primary,
+          "--clr-primaryLight": t.primaryLight,
+          "--clr-primaryDark": t.primaryDark,
+          "--clr-primaryBg": t.primaryBg,
+          "--clr-primaryBgLight": t.primaryBgLight,
+          "--clr-primaryText": t.primaryText,
+          "--clr-primaryTextLight": t.primaryTextLight,
+          "--clr-primaryTextMuted": t.primaryTextMuted,
+          "--clr-border": t.border,
+          "--clr-borderLight": t.borderLight,
+          "--clr-borderSubtle": t.borderSubtle,
+          "--clr-bgCard": t.bgCard,
+          "--clr-bgCardLight": t.bgCardLight,
+          "--clr-bgCardLighter": t.bgCardLighter,
+          "--clr-glowRgba": t.glowRgba,
+          "--clr-progressBg": t.progressBg,
+          "--clr-progressBar": t.progressBar,
+          "--clr-shadowRgba": t.shadowRgba,
+          "--clr-gradient1": t.gradient1,
+          "--clr-gradient2": t.gradient2,
+        } as React.CSSProperties
+      }
     >
       {/* Background Gradient */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
@@ -883,47 +1014,51 @@ export default function SpotifyDownloaderApp() {
               border: "1px solid rgba(16, 185, 129, 0.25)",
               boxShadow: "0 0 20px rgba(16, 185, 129, 0.15)",
             },
-            iconTheme: {
-              primary: "#10b981",
-              secondary: "#09090b",
-            },
+            icon: <Check className="h-4 w-4 text-emerald-400" />,
           },
           error: {
             style: {
               border: "1px solid rgba(239, 68, 68, 0.2)",
               boxShadow: "0 0 20px rgba(239, 68, 68, 0.1)",
             },
-            iconTheme: {
-              primary: "#ef4444",
-              secondary: "#09090b",
-            },
+            icon: <X className="h-4 w-4 text-red-400" />,
           },
         }}
       />
 
-      <main className="relative z-10 mx-auto flex min-h-dvh max-w-[1200px] flex-col px-3 py-4 md:px-6 md:py-16" data-service={effectiveService}>
+      <main
+        className="relative z-10 mx-auto flex min-h-dvh max-w-[1200px] flex-col px-3 py-4 md:px-6 md:py-16"
+        data-service={effectiveService}
+      >
         {/* Top Header Bar */}
-        <div className="mb-4 flex w-full shrink-0 items-center justify-end gap-2 md:mb-12">
-          {backendOnline === null ? (
-            <span className="flex cursor-default items-center gap-1.5 rounded-full border border-[var(--clr-border)] bg-zinc-950/70 px-2.5 py-1 text-[10px] font-medium text-zinc-400 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-zinc-800/80 hover:text-zinc-200">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-500" />
-              Backend: Connecting
-            </span>
-          ) : backendOnline ? (
-            <span className="flex cursor-default items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              Backend: Online
-            </span>
-          ) : (
-            <span className="flex cursor-default items-center gap-1.5 rounded-full border border-red-900/75 bg-red-950/50 px-2.5 py-1 text-[10px] font-medium text-red-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-red-900/80 hover:text-red-100">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-              Backend: Offline
-            </span>
-          )}
+        <div className="mb-4 flex w-full shrink-0 items-center justify-between gap-2 md:mb-12">
+          <Link
+            href="/"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-900/70 bg-emerald-950/50 text-emerald-400 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-300"
+          >
+            <Sparkles className="h-5 w-5" />
+          </Link>
+          <div className="flex items-center gap-2">
+            {backendOnline === null ? (
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-[var(--clr-border)] bg-zinc-950/70 px-2.5 py-1 text-[10px] font-medium text-zinc-400 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-zinc-800/80 hover:text-zinc-200">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-500" />
+                Backend: Connecting
+              </span>
+            ) : backendOnline ? (
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Backend: Online
+              </span>
+            ) : (
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-red-900/75 bg-red-950/50 px-2.5 py-1 text-[10px] font-medium text-red-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-red-900/80 hover:text-red-100">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+                Backend: Offline
+              </span>
+            )}
           <div className="group relative">
             <button
               type="button"
-              className="rounded-full border border-[var(--clr-borderLight)] bg-[var(--clr-primaryBgLight)]/70 px-3 py-1 text-xs font-medium text-[var(--clr-primaryTextLight)] shadow-lg shadow-black/20 transition-colors hover:bg-[var(--clr-primaryBg)]/80"
+              className="flex cursor-default items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100"
               aria-label="Version information"
             >
               v2.2.0
@@ -931,7 +1066,7 @@ export default function SpotifyDownloaderApp() {
             <div className="pointer-events-none absolute right-0 top-full z-40 mt-3 w-[min(22rem,calc(100vw-1.5rem))] translate-y-1 rounded-2xl border border-[var(--clr-borderLight)] bg-[#020604]/40 p-4 text-sm text-zinc-200 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
               <div className="space-y-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--clr-primaryTextMuted)]/90">
+                  <p className="text-[var(--clr-primaryTextMuted)]/90 text-xs font-semibold uppercase tracking-[0.2em]">
                     Version Roadmap
                   </p>
                   <div className="mt-2 space-y-3">
@@ -997,9 +1132,8 @@ export default function SpotifyDownloaderApp() {
               </div>
             </div>
           </div>
+          </div>
         </div>
-
-        {/* Header / Input Section */}
         <div
           className={`relative flex flex-col items-center justify-center transition-all duration-700 ease-in-out ${tracks.length > 0 ? "mb-8 md:mb-12" : "pb-12 md:pb-24"}`}
         >
@@ -1018,7 +1152,9 @@ export default function SpotifyDownloaderApp() {
           </div>
 
           <div className="group relative z-30 w-full max-w-2xl">
-            <div className={`absolute -inset-0.5 rounded-[2rem] ${serviceTheme[effectiveService]?.glow || "bg-[var(--clr-primaryBgLight)]"} opacity-0 blur transition duration-500 group-hover:opacity-100`}></div>
+            <div
+              className={`absolute -inset-0.5 rounded-[2rem] ${serviceTheme[effectiveService]?.glow || "bg-[var(--clr-primaryBgLight)]"} opacity-0 blur transition duration-500 group-hover:opacity-100`}
+            ></div>
             <div className="relative flex flex-col items-center rounded-3xl border border-[var(--clr-borderLight)] bg-[#0a1410]/95 p-2 shadow-2xl shadow-black/30 backdrop-blur-xl sm:flex-row">
               <div className="flex w-full items-center py-1 pl-2 pr-2">
                 <div className="relative shrink-0" ref={serviceDropdownRef}>
@@ -1101,7 +1237,8 @@ export default function SpotifyDownloaderApp() {
                 className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-6 py-3.5 font-semibold transition-all duration-300 active:scale-95 disabled:opacity-70 disabled:hover:scale-100 sm:w-auto md:px-8 md:py-4 md:hover:scale-105 ${
                   backendOnline === false
                     ? "cursor-not-allowed border border-red-900/50 bg-red-900/30 text-red-300"
-                    : serviceTheme[effectiveService]?.btn || "border border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBg)]/80 text-[var(--clr-primaryText)] shadow-[0_0_20px_var(--clr-glowRgba)] hover:bg-[var(--clr-primaryDark)]/85"
+                    : serviceTheme[effectiveService]?.btn ||
+                      "bg-[var(--clr-primaryBg)]/80 hover:bg-[var(--clr-primaryDark)]/85 border border-[var(--clr-primaryDark)] text-[var(--clr-primaryText)] shadow-[0_0_20px_var(--clr-glowRgba)]"
                 }`}
               >
                 {isProcessing ? (
@@ -1122,17 +1259,48 @@ export default function SpotifyDownloaderApp() {
           </div>
 
           {/* Progress Indicator */}
-            {(isProcessing || (downloadProgress > 0 && tracks.length === 0)) && (
+          {(isProcessing || (downloadProgress > 0 && tracks.length === 0)) && (
             <div className="relative z-0 mt-8 w-full max-w-2xl rounded-2xl border border-[var(--clr-borderSubtle)] bg-[#0a1410]/70 p-4 backdrop-blur-md md:p-6">
-              <div className="mb-3 flex justify-between text-sm font-medium text-zinc-400">
-                <span>{statusMessage}</span>
-                {totalSongs > 0 && (
-                  <span className="text-zinc-300">
-                    {songsDownloaded} / {totalSongs}
-                  </span>
-                )}
+              <div className="mb-3 flex items-center justify-between text-sm font-medium">
+                <div className="flex items-center gap-3">
+                  {isProcessing && (
+                    <Loader2 className="h-5 w-5 animate-spin text-[var(--clr-primary)]" />
+                  )}
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-white">{statusMessage}</span>
+                    {isProcessing && (
+                      <span className="text-xs text-zinc-500/70">
+                        {scrapeProgress && scrapeProgress.total > 0
+                          ? `Fetching from ${fetchedService.charAt(0).toUpperCase() + fetchedService.slice(1)}...`
+                          : "Looking up playlist..."}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-zinc-300">
+                  {scrapeProgress && scrapeProgress.total > 0 && (
+                    <span>
+                      {Math.round((scrapeProgress.completed / scrapeProgress.total) * 100)}%
+                    </span>
+                  )}
+                  {!isProcessing && totalSongs > 0 && (
+                    <span>
+                      {songsDownloaded} / {totalSongs}
+                    </span>
+                  )}
+                  {fetchElapsed > 0 && (
+                    <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-xs tabular-nums text-zinc-400">
+                      {fetchElapsed}s
+                    </span>
+                  )}
+                </div>
               </div>
-              {isProcessing ? (
+              {isProcessing && scrapeProgress && scrapeProgress.total > 0 ? (
+                <Progress
+                  value={(scrapeProgress.completed / scrapeProgress.total) * 100}
+                  className={progressBarClassName}
+                />
+              ) : isProcessing ? (
                 <div className="h-3 overflow-hidden rounded-full bg-[var(--clr-progressBg)]">
                   <div className="h-full w-full animate-pulse rounded-full bg-[var(--clr-progressBar)]" />
                 </div>
@@ -1147,7 +1315,7 @@ export default function SpotifyDownloaderApp() {
         {tracks.length > 0 && (
           <div className="grid grid-cols-1 items-start gap-4 duration-700 animate-in fade-in slide-in-from-bottom-8 md:gap-6 lg:grid-cols-[1fr_360px]">
             {/* Track List */}
-            <div className="relative z-0 flex h-[60vh] flex-col overflow-hidden rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 shadow-2xl shadow-black/30 backdrop-blur-xl md:h-[700px]">
+            <div className="relative z-0 flex h-[150vh] flex-col overflow-hidden rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 shadow-2xl shadow-black/30 backdrop-blur-xl md:h-[700px]">
               <div className="group/header border-b border-[var(--clr-borderSubtle)] bg-[#08110c]/85 p-4 md:p-8">
                 <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                   <div className="flex min-w-0 items-center gap-3">
@@ -1160,7 +1328,7 @@ export default function SpotifyDownloaderApp() {
                         disabled={isDownloadingAll}
                         className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-all duration-200 disabled:opacity-50 ${
                           allTracksSelected
-                            ? "border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBgLight)]/80 text-[var(--clr-primaryTextLight)]"
+                            ? "bg-[var(--clr-primaryBgLight)]/80 border-[var(--clr-primaryDark)] text-[var(--clr-primaryTextLight)]"
                             : "border-[var(--clr-border)] bg-transparent text-zinc-500 hover:border-[var(--clr-primaryDark)] hover:text-[var(--clr-primaryTextLight)]"
                         }`}
                         aria-label={allTracksSelected ? "Deselect all songs" : "Select all songs"}
@@ -1174,21 +1342,40 @@ export default function SpotifyDownloaderApp() {
                       </h2>
                       <p className="mt-1 text-sm text-zinc-400">
                         {tracks.length} tracks found in this playlist
+                        {fetchElapsed > 0 && (
+                          <span className="text-zinc-500"> · fetched in {fetchElapsed}s</span>
+                        )}
                       </p>
                     </div>
                   </div>
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <button
+                      onClick={isDownloadingIndividually ? cancelIndivDownloads : downloadAllIndividually}
+                      disabled={!isDownloadingIndividually && selectedDownloadTracks.length === 0}
+                      className={`flex w-full items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold transition-all duration-300 hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 sm:w-auto ${
+                        isDownloadingIndividually
+                          ? "border-red-900/70 bg-red-950/70 text-red-200 shadow-[0_0_20px_rgba(127,29,29,0.2)] hover:border-red-700/80 hover:bg-red-900/80"
+                          : "border-[var(--clr-borderLight)] bg-[var(--clr-primaryBgLight)]/70 text-[var(--clr-primaryTextLight)] shadow-[0_0_20px_var(--clr-shadowRgba)] hover:border-[var(--clr-primaryDark)] hover:bg-[var(--clr-primaryBg)]/80"
+                      }`}
+                    >
+                      {isDownloadingIndividually ? (
+                        <Square className="h-4 w-4 fill-current" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                      {isDownloadingIndividually ? "Cancel" : "Individually"}
+                    </button>
                     <button
                       onClick={isDownloadingAll ? cancelPlaylistDownload : downloadAll}
                       disabled={!isDownloadingAll && selectedDownloadTracks.length === 0}
                       className={`flex w-full items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold transition-all duration-300 hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 sm:w-auto ${
                         isDownloadingAll
                           ? "border-red-900/70 bg-red-950/70 text-red-200 shadow-[0_0_20px_rgba(127,29,29,0.2)] hover:border-red-700/80 hover:bg-red-900/80"
-                          : "border-[var(--clr-borderLight)] bg-[var(--clr-primaryBgLight)]/70 text-[var(--clr-primaryTextLight)] shadow-[0_0_20px_var(--clr-shadowRgba)] hover:border-[var(--clr-primaryDark)] hover:bg-[var(--clr-primaryBg)]/80"
+                          : "bg-[var(--clr-primaryBgLight)]/70 hover:bg-[var(--clr-primaryBg)]/80 border-[var(--clr-borderLight)] text-[var(--clr-primaryTextLight)] shadow-[0_0_20px_var(--clr-shadowRgba)] hover:border-[var(--clr-primaryDark)]"
                       }`}
                     >
                       {isDownloadingAll ? (
-                        <Square className="h-4 w-4 fill-current" />
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Download className="h-4 w-4" />
                       )}
@@ -1210,16 +1397,16 @@ export default function SpotifyDownloaderApp() {
               </div>
 
               <ScrollArea className="w-full flex-1">
-                <div className="space-y-1 p-2 md:p-4">
+                <div className="w-full space-y-1 p-2 pr-4 md:p-4">
                   {tracks.map((track, idx) => (
                     <div
                       key={track.id}
                       onClick={() => setSelectedTrack(track)}
-                      className={`group relative flex cursor-pointer items-center gap-3 rounded-2xl border border-transparent p-3 transition-all duration-200 md:gap-4 md:p-4 ${selectedTrack?.id === track.id ? "border-[var(--clr-border)] bg-[var(--clr-primaryBgLight)]/45 shadow-[0_0_15px_var(--clr-shadowRgba)]" : "hover:border-[var(--clr-borderSubtle)] hover:bg-[#0d1913]"}`}
+                      className={`group relative flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-2xl border border-transparent p-2 transition-all duration-200 md:gap-4 md:p-4 ${selectedTrack?.id === track.id ? "bg-[var(--clr-primaryBgLight)]/45 border-[var(--clr-border)] shadow-[0_0_15px_var(--clr-shadowRgba)]" : "hover:border-[var(--clr-borderSubtle)] hover:bg-[#0d1913]"}`}
                     >
                       <div className="ml-auto flex shrink-0 items-center">
                         <div
-                          className={`mr-2 shrink-0 overflow-hidden transition-all duration-200 ${allTracksSelected ? "w-9 opacity-100 md:w-0 md:group-hover:w-9 md:group-hover:opacity-100" : "w-9 opacity-100"}`}
+                          className={`mr-2 shrink-0 overflow-hidden transition-all duration-200 ${allTracksSelected ? "w-0 opacity-0 group-hover:w-9 group-hover:opacity-100" : "w-9 opacity-100"}`}
                         >
                           <button
                             onClick={(e) => {
@@ -1228,7 +1415,7 @@ export default function SpotifyDownloaderApp() {
                             }}
                             className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-all duration-200 ${
                               selectedTrackIds.includes(track.id)
-                                ? "border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBgLight)]/80 text-[var(--clr-primaryTextLight)]"
+                                ? "bg-[var(--clr-primaryBgLight)]/80 border-[var(--clr-primaryDark)] text-[var(--clr-primaryTextLight)]"
                                 : "border-[var(--clr-border)] bg-zinc-900/70 text-zinc-500 hover:border-[var(--clr-primaryDark)] hover:text-[var(--clr-primaryTextLight)]"
                             }`}
                             aria-label={
@@ -1247,10 +1434,10 @@ export default function SpotifyDownloaderApp() {
                         </span>
                       </div>
 
-                      {(urlMeta[track.id]?.thumbnail || track.cover) ? (
+                      {getTrackArtwork(track.id, track.cover) ? (
                         <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl shadow-md transition-transform duration-200 group-hover:translate-x-1 md:h-14 md:w-14">
                           <Image
-                            src={urlMeta[track.id]?.thumbnail || track.cover}
+                            src={getTrackArtwork(track.id, track.cover)}
                             alt=""
                             fill
                             className="object-cover"
@@ -1279,9 +1466,9 @@ export default function SpotifyDownloaderApp() {
                         </div>
                       )}
 
-                      <div className="min-w-0 flex-1 pr-3 transition-transform duration-200 group-hover:translate-x-1 md:pr-4">
+                      <div className="min-w-0 flex-1 transition-transform duration-200 group-hover:translate-x-1 md:pr-4">
                         <h3
-                          className={`truncate text-sm font-semibold md:text-base ${selectedTrack?.id === track.id ? "text-white" : "text-zinc-200"}`}
+                          className={`truncate text-xs font-semibold md:text-sm ${selectedTrack?.id === track.id ? "text-white" : "text-zinc-200"}`}
                         >
                           {track.title}
                         </h3>
@@ -1293,9 +1480,22 @@ export default function SpotifyDownloaderApp() {
                       <div className="flex shrink-0 items-center">
                         {trackProgress[track.id] !== undefined ? (
                           trackProgress[track.id] === -1 ? (
-                            <span className="rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-300">
-                              Error
-                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setTrackProgress((prev) => {
+                                  const ns = { ...prev }
+                                  delete ns[track.id]
+                                  return ns
+                                })
+                                downloadTrack(track)
+                              }}
+                              className="flex shrink-0 items-center gap-1 rounded-lg border border-red-900/50 bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-300 transition-all duration-200 hover:bg-red-900/40 hover:text-red-200"
+                              aria-label="Retry download"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              Retry
+                            </button>
                           ) : (
                             <div className="flex items-center gap-2">
                               <span className="shrink-0 text-xs font-bold tracking-wider text-[var(--clr-primaryTextMuted)] md:text-sm">
@@ -1307,10 +1507,10 @@ export default function SpotifyDownloaderApp() {
                                     e.stopPropagation()
                                     void cancelTrackDownload(track.id)
                                   }}
-                                  className="flex shrink-0 transform items-center justify-center rounded-xl border border-red-900/70 bg-red-950/70 p-2.5 text-red-200 transition-all duration-300 hover:scale-110 hover:border-red-700/80 hover:bg-red-900/80 hover:text-white hover:shadow-[0_0_16px_rgba(127,29,29,0.35)] active:scale-90"
+                                  className="flex shrink-0 transform items-center justify-center rounded-xl border border-red-900/70 bg-red-950/70 p-1.5 text-red-200 transition-all duration-300 hover:scale-110 hover:border-red-700/80 hover:bg-red-900/80 hover:text-white hover:shadow-[0_0_16px_rgba(127,29,29,0.35)] active:scale-90 md:p-2.5"
                                   aria-label="Stop download"
                                 >
-                                  <Square className="h-5 w-5 fill-current" />
+                                  <Square className="h-4 w-4 fill-current md:h-5 md:w-5" />
                                 </button>
                               ) : trackProgress[track.id] >= 100 ? (
                                 <button
@@ -1318,10 +1518,10 @@ export default function SpotifyDownloaderApp() {
                                     e.stopPropagation()
                                     downloadTrack(track)
                                   }}
-                                  className="flex shrink-0 transform items-center justify-center rounded-xl border border-[var(--clr-primaryBg)] bg-[var(--clr-primaryBgLight)]/30 p-2.5 text-[var(--clr-primaryTextMuted)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-110 hover:border-[var(--clr-primaryDark)] hover:bg-[var(--clr-primaryBgLight)]/45 hover:text-[var(--clr-primaryTextLight)] hover:shadow-[0_0_15px_var(--clr-glowRgba)] active:scale-90"
+                                  className="bg-[var(--clr-primaryBgLight)]/30 hover:bg-[var(--clr-primaryBgLight)]/45 flex shrink-0 transform items-center justify-center rounded-xl border border-[var(--clr-primaryBg)] p-1.5 text-[var(--clr-primaryTextMuted)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-110 hover:border-[var(--clr-primaryDark)] hover:text-[var(--clr-primaryTextLight)] hover:shadow-[0_0_15px_var(--clr-glowRgba)] active:scale-90 md:p-2.5"
                                   aria-label="Download track"
                                 >
-                                  <Download className="h-5 w-5" />
+                                  <Download className="h-4 w-4 md:h-5 md:w-5" />
                                 </button>
                               ) : null}
                             </div>
@@ -1332,10 +1532,10 @@ export default function SpotifyDownloaderApp() {
                               e.stopPropagation()
                               void cancelTrackDownload(track.id)
                             }}
-                            className="flex transform items-center justify-center rounded-xl border border-red-900/70 bg-red-950/70 p-2.5 text-red-200 transition-all duration-300 hover:scale-110 hover:border-red-700/80 hover:bg-red-900/80 hover:text-white hover:shadow-[0_0_16px_rgba(127,29,29,0.35)] active:scale-90"
+                            className="flex transform items-center justify-center rounded-xl border border-red-900/70 bg-red-950/70 p-1.5 text-red-200 transition-all duration-300 hover:scale-110 hover:border-red-700/80 hover:bg-red-900/80 hover:text-white hover:shadow-[0_0_16px_rgba(127,29,29,0.35)] active:scale-90 md:p-2.5"
                             aria-label="Stop download"
                           >
-                            <Square className="h-5 w-5 fill-current" />
+                            <Square className="h-4 w-4 fill-current md:h-5 md:w-5" />
                           </button>
                         ) : (
                           <button
@@ -1343,15 +1543,15 @@ export default function SpotifyDownloaderApp() {
                               e.stopPropagation()
                               downloadTrack(track)
                             }}
-                            className="flex transform items-center justify-center rounded-xl border border-[var(--clr-primaryBg)] bg-[var(--clr-primaryBgLight)]/30 p-2.5 text-[var(--clr-primaryTextMuted)] opacity-100 transition-all duration-300 hover:-translate-y-0.5 hover:scale-110 hover:border-[var(--clr-primaryDark)] hover:bg-[var(--clr-primaryBgLight)]/45 hover:text-[var(--clr-primaryTextLight)] hover:shadow-[0_0_15px_var(--clr-glowRgba)] focus:opacity-100 active:scale-90"
+                            className="bg-[var(--clr-primaryBgLight)]/30 hover:bg-[var(--clr-primaryBgLight)]/45 flex transform items-center justify-center rounded-xl border border-[var(--clr-primaryBg)] p-1.5 text-[var(--clr-primaryTextMuted)] opacity-100 transition-all duration-300 hover:-translate-y-0.5 hover:scale-110 hover:border-[var(--clr-primaryDark)] hover:text-[var(--clr-primaryTextLight)] hover:shadow-[0_0_15px_var(--clr-glowRgba)] focus:opacity-100 active:scale-90 md:p-2.5"
                             aria-label="Download track"
                           >
-                            <Download className="h-5 w-5" />
+                            <Download className="h-4 w-4 md:h-5 md:w-5" />
                           </button>
                         )}
                       </div>
                       {trackProgress[track.id] !== undefined && trackProgress[track.id] !== -1 ? (
-                        <div className="absolute inset-x-3 bottom-0 h-px overflow-hidden rounded-full bg-[var(--clr-primaryBgLight)]/70 md:inset-x-4">
+                        <div className="bg-[var(--clr-primaryBgLight)]/70 absolute inset-x-3 bottom-0 h-px overflow-hidden rounded-full md:inset-x-4">
                           <div
                             className="h-full bg-[var(--clr-primary)] shadow-[0_0_12px_var(--clr-glowRgba)] transition-[width] duration-300"
                             style={{
@@ -1371,9 +1571,9 @@ export default function SpotifyDownloaderApp() {
               {selectedTrack ? (
                 <div className="flex flex-col items-center rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 p-5 text-center shadow-2xl shadow-black/30 backdrop-blur-xl duration-300 animate-in fade-in zoom-in-95 md:p-8">
                   <div className="group relative mb-8 aspect-square w-full overflow-hidden rounded-2xl shadow-2xl">
-                    {(urlMeta[selectedTrack.id]?.thumbnail || selectedTrack.cover) ? (
+                    {getTrackArtwork(selectedTrack.id, selectedTrack.cover) ? (
                       <Image
-                        src={urlMeta[selectedTrack.id]?.thumbnail || selectedTrack.cover}
+                        src={getTrackArtwork(selectedTrack.id, selectedTrack.cover)}
                         alt=""
                         fill
                         className="object-cover transition-transform duration-700 group-hover:scale-105"
@@ -1390,18 +1590,18 @@ export default function SpotifyDownloaderApp() {
                   <h3 className="mb-2 px-2 text-2xl font-bold leading-tight text-white">
                     {selectedTrack.title}
                   </h3>
-                  <p className={`text-base font-medium ${selectedTrack.album ? 'mb-0.5' : 'mb-8'} text-zinc-400`}>
+                  <p
+                    className={`text-base font-medium ${selectedTrack.album ? "mb-0.5" : "mb-8"} text-zinc-400`}
+                  >
                     {selectedTrack.artists}
                   </p>
                   {selectedTrack.album && (
-                    <p className="mb-8 text-sm font-medium text-zinc-500">
-                      {selectedTrack.album}
-                    </p>
+                    <p className="mb-8 text-sm font-medium text-zinc-500">{selectedTrack.album}</p>
                   )}
 
                   <div className="w-full space-y-3">
                     {/* Stream / Preview Player */}
-                    <div className="w-full space-y-3 rounded-2xl border border-[var(--clr-border)] bg-[var(--clr-primaryBgLight)]/20 p-4">
+                    <div className="bg-[var(--clr-primaryBgLight)]/20 w-full space-y-3 rounded-2xl border border-[var(--clr-border)] p-4">
                       <div className="flex items-center gap-3">
                         <button
                           id={`stream-btn-${selectedTrack.id}`}
@@ -1409,8 +1609,8 @@ export default function SpotifyDownloaderApp() {
                           disabled={isLoadingStream && streamingTrackId !== selectedTrack.id}
                           className={`flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${
                             streamingTrackId === selectedTrack.id
-                              ? "border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBg)]/70 text-[var(--clr-primaryTextLight)] hover:bg-[var(--clr-primaryDark)]/80"
-                              : "border-[var(--clr-border)] bg-[var(--clr-primaryBgLight)]/20 text-zinc-300 hover:bg-zinc-800/80 hover:text-white"
+                              ? "bg-[var(--clr-primaryBg)]/70 hover:bg-[var(--clr-primaryDark)]/80 border-[var(--clr-primaryDark)] text-[var(--clr-primaryTextLight)]"
+                              : "bg-[var(--clr-primaryBgLight)]/20 border-[var(--clr-border)] text-zinc-300 hover:bg-zinc-800/80 hover:text-white"
                           }`}
                           aria-label={
                             streamingTrackId === selectedTrack.id && isPlaying
@@ -1445,7 +1645,7 @@ export default function SpotifyDownloaderApp() {
                             <Square className="h-3.5 w-3.5 fill-current" />
                           </button>
                         )}
-                        <span className="ml-auto shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-zinc-500">
+                        <span className="ml-auto shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-white">
                           {streamingTrackId === selectedTrack.id && streamDuration > 0
                             ? `${Math.floor((streamProgress * streamDuration) / 60)
                                 .toString()
@@ -1502,7 +1702,7 @@ export default function SpotifyDownloaderApp() {
                           {!isEditingUrl ? (
                             <button
                               onClick={() => startEditingUrl(selectedTrack)}
-                              className="rounded-lg p-1.5 text-zinc-500 transition-all duration-200 hover:bg-[var(--clr-primaryBgLight)]/40 hover:text-[var(--clr-primaryLight)]"
+                              className="hover:bg-[var(--clr-primaryBgLight)]/40 rounded-lg p-1.5 text-zinc-500 transition-all duration-200 hover:text-[var(--clr-primaryLight)]"
                               title="Edit source URL"
                               aria-label="Edit source URL"
                             >
@@ -1532,13 +1732,13 @@ export default function SpotifyDownloaderApp() {
                               if (e.key === "Enter") saveUrl(selectedTrack)
                               if (e.key === "Escape") cancelEditingUrl()
                             }}
-                            className="w-full rounded-xl border border-[var(--clr-border)] bg-zinc-900/80 px-3 py-2 text-xs text-zinc-200 outline-none transition-all placeholder:text-zinc-600 focus:border-[var(--clr-primaryDark)] focus:ring-1 focus:ring-[var(--clr-primaryBg)]/50"
+                            className="focus:ring-[var(--clr-primaryBg)]/50 w-full rounded-xl border border-[var(--clr-border)] bg-zinc-900/80 px-3 py-2 text-xs text-zinc-200 outline-none transition-all placeholder:text-zinc-600 focus:border-[var(--clr-primaryDark)] focus:ring-1"
                             autoFocus
                           />
                           <button
                             onClick={() => saveUrl(selectedTrack)}
                             disabled={isResolvingUrl}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--clr-primaryDark)] bg-[var(--clr-primaryBg)]/70 py-2 text-xs font-semibold text-[var(--clr-primaryTextLight)] transition-all duration-200 hover:scale-[1.02] hover:bg-[var(--clr-primaryDark)]/80 disabled:opacity-60"
+                            className="bg-[var(--clr-primaryBg)]/70 hover:bg-[var(--clr-primaryDark)]/80 flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--clr-primaryDark)] py-2 text-xs font-semibold text-[var(--clr-primaryTextLight)] transition-all duration-200 hover:scale-[1.02] disabled:opacity-60"
                           >
                             {isResolvingUrl ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1602,9 +1802,9 @@ export default function SpotifyDownloaderApp() {
                                 rel="noopener noreferrer"
                                 className="group/embed relative block aspect-video w-full overflow-hidden rounded-lg border border-[var(--clr-border)]"
                               >
-                                {selectedTrack.cover ? (
+                                {getTrackArtwork(selectedTrack.id, selectedTrack.cover) ? (
                                   <Image
-                                    src={selectedTrack.cover}
+                                    src={getTrackArtwork(selectedTrack.id, selectedTrack.cover)}
                                     alt=""
                                     fill
                                     className="object-cover transition-transform duration-300 group-hover/embed:scale-105"
@@ -1647,7 +1847,6 @@ export default function SpotifyDownloaderApp() {
                         </>
                       )}
                     </button>
-
                   </div>
                 </div>
               ) : (
