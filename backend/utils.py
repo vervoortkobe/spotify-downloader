@@ -13,7 +13,7 @@ from mutagen.id3 import APIC, ID3
 from mutagen.mp3 import MP3
 from flask import Response, stream_with_context
 
-from spotify_client import PlaylistClient
+from audio_client import PlaylistClient
 from config import progress_store, scrape_job_progress, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
 
 # YouTube search result cache: avoids re-searching the same track
@@ -452,8 +452,13 @@ def open_audio_stream(source, range_header=None):
         {"youtube": {"player_client": ["android"], "formats": ["missing_pot"]}},
     ]
 
+    print(f"[Stream] Requested source: {source[:200]}", flush=True)
+    if range_header:
+        print(f"[Stream] Range header: {range_header}", flush=True)
+
     last_err = None
     for strat_idx, extractor_args in enumerate(strategies, 1):
+        player_clients = extractor_args.get("youtube", {}).get("player_client", [])
         base_opts = {
             "format": "bestaudio/best",
             "noplaylist": True,
@@ -467,24 +472,34 @@ def open_audio_stream(source, range_header=None):
             base_opts["proxy"] = proxy_url
 
         try:
+            print(f"[Stream] Strategy {strat_idx} ({player_clients}): extracting info...", flush=True)
             with YoutubeDL(base_opts) as ydl:
                 info = ydl.extract_info(source, download=False)
                 if not info or ('entries' in info and not info.get('entries')):
-                    last_err = f"Strategy {strat_idx}: no results"
+                    last_err = f"Strategy {strat_idx} ({player_clients}): no results returned"
                     print(f"[Stream] {last_err}", flush=True)
                     continue
 
                 if 'entries' in info and info['entries']:
                     info = info['entries'][0]
 
+                video_title = info.get("title", "Unknown")
+                video_id = info.get("id", "")
+                print(f"[Stream] Found: [{video_id}] {video_title}", flush=True)
+
                 audio_url = None
                 content_type = "audio/webm"
                 formats = info.get("formats", [])
+                audio_only_formats = [f for f in formats if f.get("vcodec") == "none" and f.get("url")]
+                all_formats_with_url = [f for f in formats if f.get("url")]
+                print(f"[Stream] Available formats: {len(formats)} total, {len(audio_only_formats)} audio-only with URL, {len(all_formats_with_url)} any with URL", flush=True)
+
                 for fmt in reversed(formats):
                     if fmt.get("vcodec") == "none" and fmt.get("url"):
                         ext = fmt.get("ext", "webm")
                         content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
                         audio_url = fmt["url"]
+                        print(f"[Stream] Selected audio format: {fmt.get('format_id')} ext={ext} abr={fmt.get('abr', '?')}kbps", flush=True)
                         break
                 if not audio_url:
                     for fmt in reversed(formats):
@@ -492,13 +507,16 @@ def open_audio_stream(source, range_header=None):
                             ext = fmt.get("ext", "webm")
                             content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
                             audio_url = fmt["url"]
+                            print(f"[Stream] Fallback format: {fmt.get('format_id')} ext={ext} vcodec={fmt.get('vcodec', '?')}", flush=True)
                             break
                 if not audio_url:
                     audio_url = info.get("url", "")
+                    if audio_url:
+                        print("[Stream] Using top-level URL from info dict", flush=True)
 
                 if not audio_url:
-                    last_err = f"Strategy {strat_idx}: no streamable URL"
-                    print(f"[Stream] {last_err}", flush=True)
+                    last_err = f"Strategy {strat_idx} ({player_clients}): no streamable URL in any format"
+                    print(f"[Stream] {last_err} — formats dict keys: {list(formats[0].keys()) if formats else 'empty'}", flush=True)
                     continue
 
                 req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
@@ -508,7 +526,7 @@ def open_audio_stream(source, range_header=None):
                 if range_header:
                     req_headers["Range"] = range_header
 
-                print(f"[Stream] Strategy {strat_idx}: opening {audio_url[:80]}...", flush=True)
+                print(f"[Stream] Strategy {strat_idx}: opening stream via urlopen (UA={req_headers['User-Agent'][:30]}...)", flush=True)
                 req = urllib.request.Request(audio_url, headers=req_headers)
                 upstream = ydl.urlopen(req)
                 status_code = getattr(upstream, "status", 200) or 200
@@ -523,7 +541,7 @@ def open_audio_stream(source, range_header=None):
                 if content_range:
                     resp_headers["Content-Range"] = content_range
 
-                print(f"[Stream] OK strategy {strat_idx}: status={status_code} ct={content_type}", flush=True)
+                print(f"[Stream] Strategy {strat_idx} SUCCESS: status={status_code} ct={content_type} length={content_length or 'chunked'}", flush=True)
 
                 def generate(_upstream=upstream):
                     try:
@@ -543,8 +561,9 @@ def open_audio_stream(source, range_header=None):
                 ), None
 
         except Exception as exc:
-            last_err = f"Strategy {strat_idx}: {_clean_ytdlp_error(exc)}"
-            print(f"[Stream] {last_err}", flush=True)
+            last_err = f"Strategy {strat_idx} ({player_clients}): {_clean_ytdlp_error(exc)}"
+            print(f"[Stream] Strategy {strat_idx} FAILED: {exc}", flush=True)
             continue
 
+    print(f"[Stream] All strategies exhausted for: {source[:150]} — last error: {last_err}", flush=True)
     return None, last_err or "All extraction strategies failed"
