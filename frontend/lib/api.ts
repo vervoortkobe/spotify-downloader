@@ -6,7 +6,10 @@ export const getApiUrl = () => {
 
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location
-    const port = hostname === "localhost" || hostname === "127.0.0.1" ? ":5000" : ""
+    const port =
+      hostname === "localhost" || hostname === "127.0.0.1" || hostname === "192.168.1.5"
+        ? ":5000"
+        : ""
     return `${protocol}//${hostname}${port}`
   }
 
