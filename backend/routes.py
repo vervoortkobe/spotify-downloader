@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Blueprint, jsonify, request, send_file, after_this_request
 
-from spotify_client import (
+from audio_client import (
     SpotifyDownAPIError,
     SpotifyEmbedAPI,
     detect_spotify_url_type,
@@ -283,10 +283,11 @@ def stream_track_get():
     if not source_url:
         return jsonify({"error": "Provide source_url"}), 400
 
-    print(f"[Stream] Audio preview for: {source_url}", flush=True)
+    print(f"[Stream] GET /api/stream source={source_url[:200]} range={range_header or 'none'}", flush=True)
 
     resp, err = open_audio_stream(source_url, range_header=range_header)
     if err:
+        print(f"[Stream] GET /api/stream FAILED: {err}", flush=True)
         return jsonify({"error": err}), 404
     return resp
 
@@ -303,11 +304,14 @@ def stream_track():
         return jsonify({"error": "Provide sourceUrl or title+artists"}), 400
 
     source = f"ytsearch1:{title} {artists} audio" if (title or artists) else source_url
+    print(f"[Stream] POST /api/stream-track source={source[:200]} range={range_header or 'none'}", flush=True)
 
     resp, err = open_audio_stream(source, range_header=range_header)
     if err and source_url and (title or artists):
+        print(f"[Stream] Primary source failed, retrying with ytsearch: {err}", flush=True)
         resp, err = open_audio_stream(f"ytsearch1:{title} {artists} audio", range_header=range_header)
     if err:
+        print(f"[Stream] POST /api/stream-track FAILED: {err}", flush=True)
         return jsonify({"error": err}), 404
     return resp
 

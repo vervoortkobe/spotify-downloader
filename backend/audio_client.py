@@ -585,20 +585,6 @@ class PlaylistClient:
         """Quick validation that a playlist exists."""
         return self._embed_api.validate_playlist(playlist_id)
 
-    def get_track_download_link(self, track_id: str) -> str | None:
-        """No longer available - spotifydown is dead.
-
-        Use yt-dlp YouTube search instead.
-        """
-        return None
-
-    def get_track_youtube_id(self, track_id: str) -> str | None:
-        """No longer available - spotifydown is dead.
-
-        Use yt-dlp YouTube search instead.
-        """
-        return None
-
     def get_track(self, track_id: str) -> TrackInfo:
         """Get metadata for a single track.
 

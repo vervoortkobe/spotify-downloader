@@ -18,37 +18,13 @@ import {
   Radio,
   ChevronDown,
 } from "lucide-react"
-import { SiSpotify, SiYoutube, SiSoundcloud } from "react-icons/si"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast, Toaster } from "react-hot-toast"
 import Image from "next/image"
-
-interface Track {
-  id: string
-  title: string
-  artists: string
-  album: string
-  cover: string
-  releaseDate: string
-  downloadLink: string
-  sourceUrl?: string
-}
-
-const getApiUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    const url = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "").replace(/\/api$/, "")
-    return url.match(/^https?:\/\/|^\/\//) ? url : `https://${url}`
-  }
-
-  if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location
-    const port = hostname === "localhost" || hostname === "127.0.0.1" ? ":5000" : ""
-    return `${protocol}//${hostname}${port}`
-  }
-}
-
-let API_URL = getApiUrl()
+import type { Track, ServiceTheme } from "@/lib/types"
+import { API_URL, refreshApiUrl } from "@/lib/api"
+import { serviceTheme, serviceLabels, serviceIcons, detectServiceFromUrl } from "@/lib/themes"
 
 export default function SpotifyDownloaderApp() {
   const [playlistLink, setPlaylistLink] = useState("")
@@ -60,7 +36,7 @@ export default function SpotifyDownloaderApp() {
   }, [])
 
   useEffect(() => {
-    API_URL = getApiUrl()
+    refreshApiUrl()
 
     const checkHealth = async () => {
       console.log(`[Health Check] Polling backend health at ${API_URL}/api/health...`)
@@ -107,6 +83,8 @@ export default function SpotifyDownloaderApp() {
   const [isDownloadingIndividually, setIsDownloadingIndividually] = useState(false)
   const [activePlaylistJobId, setActivePlaylistJobId] = useState<string | null>(null)
   const [scrapeProgress, setScrapeProgress] = useState<{ total: number; completed: number } | null>(null)
+  const [fetchElapsed, setFetchElapsed] = useState(0)
+  const fetchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [playlistDownloadProgress, setPlaylistDownloadProgress] = useState(0)
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({})
   const trackProgressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -132,130 +110,9 @@ export default function SpotifyDownloaderApp() {
   const [showServiceDropdown, setShowServiceDropdown] = useState(false)
   const serviceDropdownRef = useRef<HTMLDivElement | null>(null)
 
-  const serviceLabels: Record<string, string> = {
-    auto: "Auto-detect",
-    spotify: "Spotify",
-    youtube: "YouTube",
-    soundcloud: "SoundCloud",
-  }
-
-  const serviceIcons: Record<string, JSX.Element> = {
-    spotify: <SiSpotify className="h-5 w-5 text-[#1DB954]" />,
-    youtube: <SiYoutube className="h-5 w-5 text-[#FF0000]" />,
-    soundcloud: <SiSoundcloud className="h-5 w-5 text-[#FF7700]" />,
-  }
-
-  const detectServiceFromUrl = (url: string): string | null => {
-    if (/open\.spotify\.com/.test(url)) return "spotify"
-    if (/(youtube\.com|youtu\.be)/.test(url)) return "youtube"
-    if (/soundcloud\.com/.test(url)) return "soundcloud"
-    return null
-  }
-
   const detectedService = detectServiceFromUrl(playlistLink)
   const effectiveService =
     selectedService === "auto" ? detectedService || "spotify" : selectedService
-
-  const serviceTheme: Record<
-    string,
-    {
-      primary: string
-      primaryLight: string
-      primaryDark: string
-      primaryBg: string
-      primaryBgLight: string
-      primaryText: string
-      primaryTextLight: string
-      primaryTextMuted: string
-      border: string
-      borderLight: string
-      borderSubtle: string
-      bgCard: string
-      bgCardLight: string
-      bgCardLighter: string
-      glowRgba: string
-      progressBg: string
-      progressBar: string
-      shadowRgba: string
-      gradient1: string
-      gradient2: string
-      glow: string
-      btn: string
-    }
-  > = {
-    spotify: {
-      primary: "#10b981",
-      primaryLight: "#34d399",
-      primaryDark: "#047857",
-      primaryBg: "#064e3b",
-      primaryBgLight: "#022c22",
-      primaryText: "#ecfdf5",
-      primaryTextLight: "#a7f3d0",
-      primaryTextMuted: "#6ee7b7",
-      border: "rgba(6,78,59,0.6)",
-      borderLight: "rgba(6,78,59,0.7)",
-      borderSubtle: "rgba(5,46,22,0.6)",
-      bgCard: "#09120d",
-      bgCardLight: "#08110c",
-      bgCardLighter: "#0d1913",
-      glowRgba: "rgba(6,95,70,0.25)",
-      progressBg: "#0f1f16",
-      progressBar: "#047857",
-      shadowRgba: "rgba(6,95,70,0.2)",
-      gradient1: "rgba(0,70,45,0.5)",
-      gradient2: "rgba(0,100,50,0.35)",
-      glow: "bg-emerald-900/20",
-      btn: "border-emerald-700/70 bg-emerald-900/80 text-emerald-50 shadow-[0_0_20px_rgba(6,95,70,0.25)] hover:bg-emerald-800/85",
-    },
-    youtube: {
-      primary: "#ef4444",
-      primaryLight: "#f87171",
-      primaryDark: "#b91c1c",
-      primaryBg: "#7f1d1d",
-      primaryBgLight: "#450a0a",
-      primaryText: "#fef2f2",
-      primaryTextLight: "#fca5a5",
-      primaryTextMuted: "#f87171",
-      border: "rgba(127,29,29,0.6)",
-      borderLight: "rgba(127,29,29,0.7)",
-      borderSubtle: "rgba(69,10,10,0.6)",
-      bgCard: "#120909",
-      bgCardLight: "#110808",
-      bgCardLighter: "#1a0d0d",
-      glowRgba: "rgba(239,68,68,0.25)",
-      progressBg: "#1f0f0f",
-      progressBar: "#b91c1c",
-      shadowRgba: "rgba(239,68,68,0.2)",
-      gradient1: "rgba(127,29,29,0.5)",
-      gradient2: "rgba(180,30,30,0.35)",
-      glow: "bg-red-900/20",
-      btn: "border-red-700/70 bg-red-900/80 text-red-50 shadow-[0_0_20px_rgba(239,68,68,0.25)] hover:bg-red-800/85",
-    },
-    soundcloud: {
-      primary: "#ff7700",
-      primaryLight: "#ff9933",
-      primaryDark: "#e06000",
-      primaryBg: "#cc5500",
-      primaryBgLight: "#7a2e00",
-      primaryText: "#fff7ed",
-      primaryTextLight: "#fed7aa",
-      primaryTextMuted: "#ff8c42",
-      border: "rgba(255,119,0,0.6)",
-      borderLight: "rgba(255,119,0,0.7)",
-      borderSubtle: "rgba(224,96,0,0.6)",
-      bgCard: "#120a05",
-      bgCardLight: "#110904",
-      bgCardLighter: "#1a0e06",
-      glowRgba: "rgba(255,119,0,0.3)",
-      progressBg: "#1f1006",
-      progressBar: "#ff7700",
-      shadowRgba: "rgba(255,119,0,0.2)",
-      gradient1: "rgba(200,80,0,0.5)",
-      gradient2: "rgba(255,119,0,0.35)",
-      glow: "bg-orange-900/20",
-      btn: "border-orange-600/80 bg-orange-700/90 text-orange-50 shadow-[0_0_20px_rgba(255,119,0,0.3)] hover:bg-orange-600/85",
-    },
-  }
 
   const t = serviceTheme[effectiveService]
 
@@ -483,6 +340,19 @@ export default function SpotifyDownloaderApp() {
         ? `${API_URL}/api/stream?source_url=${encodeURIComponent(sourceUrl)}`
         : `${API_URL}/api/stream`
 
+      const checkResp = await fetch(streamUrl, { method: "GET", headers: { Range: "bytes=0-0" } })
+      if (!checkResp.ok) {
+        let errMsg = `Stream error (HTTP ${checkResp.status})`
+        try {
+          const body = await checkResp.json()
+          if (body?.error) errMsg = body.error
+        } catch {}
+        toast.error(errMsg)
+        stopStream()
+        return
+      }
+      checkResp.body?.cancel()
+
       if (!audioRef.current) {
         audioRef.current = new Audio()
       }
@@ -504,7 +374,19 @@ export default function SpotifyDownloaderApp() {
       }
       audio.onerror = () => {
         if (streamStopRequestedRef.current) return
-        toast.error("Stream error")
+        const mediaErr = audio.error
+        let detail = "Stream playback error"
+        if (mediaErr) {
+          const codes: Record<number, string> = {
+            1: "Media aborted",
+            2: "Network error loading audio",
+            3: "Audio decoding failed",
+            4: "Audio format not supported",
+          }
+          detail = codes[mediaErr.code] || `Media error code ${mediaErr.code}`
+          if (mediaErr.message) detail += `: ${mediaErr.message}`
+        }
+        toast.error(detail)
         stopStream()
       }
       const playPromise = audio.play()
@@ -533,10 +415,11 @@ export default function SpotifyDownloaderApp() {
     }
   }
 
-  // Cleanup audio on unmount
+  // Cleanup audio and timers on unmount
   useEffect(() => {
     return () => {
       stopStream()
+      if (fetchTimerRef.current) clearInterval(fetchTimerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -919,9 +802,15 @@ export default function SpotifyDownloaderApp() {
     setSongsDownloaded(0)
     setTotalSongs(0)
     setScrapeProgress(null)
+    setFetchElapsed(0)
     setStatusMessage("Fetching playlist/track data...")
     setTracks([])
     setSelectedTrack(null)
+
+    if (fetchTimerRef.current) clearInterval(fetchTimerRef.current)
+    fetchTimerRef.current = setInterval(() => {
+      setFetchElapsed((prev) => prev + 1)
+    }, 1000)
 
     try {
       const startRes = await fetch(`${API_URL}/api/scrape-playlist`, {
@@ -951,6 +840,8 @@ export default function SpotifyDownloaderApp() {
 
         if (data.status === 'complete') {
           clearInterval(progressInterval)
+          if (fetchTimerRef.current) { clearInterval(fetchTimerRef.current); fetchTimerRef.current = null }
+          const elapsed = Date.now() // grab a final snapshot — we use the state value below
           const resultRes = await fetch(`${API_URL}/api/scrape-result/${progressJobId}`)
           if (!resultRes.ok) throw new Error("Failed to fetch scrape result")
           const resultData = await resultRes.json()
@@ -962,7 +853,10 @@ export default function SpotifyDownloaderApp() {
           setSongsDownloaded(processedTracks.length)
           setDownloadProgress(100)
           setScrapeProgress({ total: processedTracks.length, completed: processedTracks.length })
-          setStatusMessage(`Found ${processedTracks.length} tracks`)
+          setFetchElapsed((finalElapsed) => {
+            setStatusMessage(`Found ${processedTracks.length} tracks (fetched in ${finalElapsed}s)`)
+            return finalElapsed
+          })
 
           if (processedTracks.length > 0) {
             setSelectedTrack(processedTracks[0])
@@ -972,17 +866,25 @@ export default function SpotifyDownloaderApp() {
           setIsProcessing(false)
         } else if (data.status === 'error') {
           clearInterval(progressInterval)
+          if (fetchTimerRef.current) { clearInterval(fetchTimerRef.current); fetchTimerRef.current = null }
           const errorResult = await fetch(`${API_URL}/api/scrape-result/${progressJobId}`).catch(() => null)
           const errMsg = errorResult?.ok ? (await errorResult.json()).error : "Scraping failed"
           toast.error(errMsg)
-          setStatusMessage("Error - try again")
+          setFetchElapsed((finalElapsed) => {
+            setStatusMessage(`Error — try again (last attempt: ${finalElapsed}s)`)
+            return finalElapsed
+          })
           setIsProcessing(false)
         }
       } catch (error) {
         clearInterval(progressInterval)
+        if (fetchTimerRef.current) { clearInterval(fetchTimerRef.current); fetchTimerRef.current = null }
         console.error("Error:", error)
         toast.error("Failed to process")
-        setStatusMessage("Error - try again")
+        setFetchElapsed((finalElapsed) => {
+          setStatusMessage(`Error — try again (last attempt: ${finalElapsed}s)`)
+          return finalElapsed
+        })
         setIsProcessing(false)
       }
     }, 500)
@@ -1286,24 +1188,37 @@ export default function SpotifyDownloaderApp() {
             <div className="relative z-0 mt-8 w-full max-w-2xl rounded-2xl border border-[var(--clr-borderSubtle)] bg-[#0a1410]/70 p-4 backdrop-blur-md md:p-6">
               <div className="mb-3 flex items-center justify-between text-sm font-medium text-zinc-400">
                 <div className="flex items-center gap-3">
-                  {isProcessing && (!scrapeProgress || scrapeProgress.total === 0) && (
+                  {isProcessing && (
                     <Loader2 className="h-5 w-5 animate-spin text-[var(--clr-primary)]" />
                   )}
                   <div className="flex flex-col gap-0.5">
                     <span>{statusMessage}</span>
-                    <span className="text-xs text-zinc-500/70 italic">This might take a while</span>
+                    {isProcessing && (
+                      <span className="text-xs text-zinc-500/70">
+                        {scrapeProgress && scrapeProgress.total > 0
+                          ? `Fetching from ${fetchedService.charAt(0).toUpperCase() + fetchedService.slice(1)}...`
+                          : "Looking up playlist..."}
+                      </span>
+                    )}
                   </div>
                 </div>
-                {scrapeProgress && (
-                  <span className="text-zinc-300">
-                    {scrapeProgress.completed} / {scrapeProgress.total}
-                  </span>
-                )}
-                {!isProcessing && totalSongs > 0 && !scrapeProgress && (
-                  <span className="text-zinc-300">
-                    {songsDownloaded} / {totalSongs}
-                  </span>
-                )}
+                <div className="flex items-center gap-3 text-zinc-300">
+                  {scrapeProgress && scrapeProgress.total > 0 && (
+                    <span>
+                      {Math.round((scrapeProgress.completed / scrapeProgress.total) * 100)}%
+                    </span>
+                  )}
+                  {!isProcessing && totalSongs > 0 && (
+                    <span>
+                      {songsDownloaded} / {totalSongs}
+                    </span>
+                  )}
+                  {fetchElapsed > 0 && (
+                    <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-xs tabular-nums text-zinc-400">
+                      {fetchElapsed}s
+                    </span>
+                  )}
+                </div>
               </div>
               {isProcessing && scrapeProgress && scrapeProgress.total > 0 ? (
                 <Progress
@@ -1352,6 +1267,9 @@ export default function SpotifyDownloaderApp() {
                       </h2>
                       <p className="mt-1 text-sm text-zinc-400">
                         {tracks.length} tracks found in this playlist
+                        {fetchElapsed > 0 && (
+                          <span className="text-zinc-500"> · fetched in {fetchElapsed}s</span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -1635,7 +1553,7 @@ export default function SpotifyDownloaderApp() {
                             <Square className="h-3.5 w-3.5 fill-current" />
                           </button>
                         )}
-                        <span className="ml-auto shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-zinc-500">
+                        <span className="ml-auto shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-white">
                           {streamingTrackId === selectedTrack.id && streamDuration > 0
                             ? `${Math.floor((streamProgress * streamDuration) / 60)
                                 .toString()
