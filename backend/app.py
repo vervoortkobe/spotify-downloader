@@ -20,7 +20,7 @@ def create_app():
 
     frontend_urls = os.environ.get(
         "FRONTEND_URL",
-        "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+        "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001,http://192.168.1.5:3000,http://192.168.1.5:3001",
     )
     allowed_origins = [url.strip() for url in frontend_urls.split(",") if url.strip()]
     CORS(app, origins=allowed_origins)
