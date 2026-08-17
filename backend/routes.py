@@ -243,7 +243,7 @@ def resolve_youtube_url():
             "skip_download": True,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["web", "mweb"],
+                    "player_client": ["web", "web_embedded"],
                     "formats": ["missing_pot"]
                 }
             },
@@ -276,27 +276,20 @@ def resolve_youtube_url():
 
 
 def _resolve_and_stream(source):
-    """Download audio with yt-dlp (same proxy session as extraction) and return a Flask Response."""
-    strategies = [
-        {},
-        {"extractor_args": {"youtube": {"player_client": ["mweb"], "formats": ["missing_pot"]}}},
-    ]
-    last_err = None
-    for extra_opts in strategies:
-        filepath, content_type, err = download_audio_for_stream(source, extra_opts)
-        if filepath:
-            resp = send_file(filepath, mimetype=content_type)
-            @after_this_request
-            def _cleanup(response, _path=filepath):
-                try:
-                    os.unlink(_path)
-                    os.rmdir(os.path.dirname(_path))
-                except Exception:
-                    pass
-                return response
-            return resp, None
-        last_err = err
-    return None, last_err or "All extraction strategies failed"
+    """Download audio with yt-dlp (all 4 strategies, explicit proxy) and return a Flask Response."""
+    filepath, content_type, err = download_audio_for_stream(source)
+    if filepath:
+        resp = send_file(filepath, mimetype=content_type)
+        @after_this_request
+        def _cleanup(response, _path=filepath):
+            try:
+                os.unlink(_path)
+                os.rmdir(os.path.dirname(_path))
+            except Exception:
+                pass
+            return response
+        return resp, None
+    return None, err or "All extraction strategies failed"
 
 
 @routes.route("/api/stream", methods=["GET"])
