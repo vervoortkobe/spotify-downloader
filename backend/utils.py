@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
-import tempfile
 import threading
 import time
+import urllib.request
 
 import requests
 from yt_dlp import YoutubeDL
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import APIC, ID3
 from mutagen.mp3 import MP3
-from flask import Response, jsonify, stream_with_context
+from flask import Response, stream_with_context
 
 from spotify_client import PlaylistClient
 from config import progress_store, scrape_job_progress, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
@@ -438,90 +437,20 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     return final_path
 
 
-def resolve_audio_stream(source, extra_opts=None):
-    proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
-    base_opts = {
-        "format": "bestaudio/best",
-        "noplaylist": True,
-        "quiet": True,
-        "skip_download": True,
-        "socket_timeout": 30,
-        "extractor_args": _youtube_extractor_args(),
-        "remote_components": ["ejs:github"],
-    }
-    if proxy_url:
-        base_opts["proxy"] = proxy_url
-    if extra_opts:
-        base_opts.update(extra_opts)
-    try:
-        info = _run_ytdl_once(source, base_opts, download=False)
-    except Exception as e:
-        return None, None, None, f"Failed to resolve source: {e}"
+def open_audio_stream(source, range_header=None):
+    """Extract info and open audio stream in one YoutubeDL instance.
 
-    if not info:
-        return None, None, None, "Could not resolve source"
+    Uses the same instance for extraction + urlopen so the connection pool
+    (and exit IP through WARP) is shared — avoids YouTube 403 from IP mismatch.
 
-    if "entries" in info and info["entries"]:
-        info = info["entries"][0]
-
-    audio_url = None
-    content_type = "audio/webm"
-    formats = info.get("formats", [])
-    for fmt in reversed(formats):
-        if fmt.get("vcodec") == "none" and fmt.get("url"):
-            ext = fmt.get("ext", "webm")
-            content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
-            audio_url = fmt["url"]
-            break
-    if not audio_url:
-        for fmt in reversed(formats):
-            if fmt.get("url"):
-                ext = fmt.get("ext", "webm")
-                content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
-                audio_url = fmt["url"]
-                break
-    if not audio_url:
-        audio_url = info.get("url", "")
-
-    if not audio_url:
-        return None, None, None, "No streamable audio URL found"
-
-    request_headers = {}
-    if isinstance(info, dict):
-        top_headers = info.get("http_headers", {})
-        if isinstance(top_headers, dict):
-            request_headers.update(top_headers)
-
-    selected_format = None
-    for fmt in reversed(formats):
-        if fmt.get("url") == audio_url:
-            selected_format = fmt
-            break
-    if isinstance(selected_format, dict):
-        fmt_headers = selected_format.get("http_headers", {})
-        if isinstance(fmt_headers, dict):
-            request_headers.update(fmt_headers)
-
-    return audio_url, content_type, request_headers or None, None
-
-
-def download_audio_for_stream(source, extra_opts=None):
-    """Download audio with yt-dlp to a temp file and return (filepath, content_type) or (None, None, error).
-
-    Uses the same 4-strategy approach and explicit proxy as download_track_logic
-    so that extraction + download always share the same connection through WARP.
+    Returns (Response, None) on success or (None, error_string) on failure.
     """
-    temp_dir = tempfile.mkdtemp()
-    output_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
-
     proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
 
     strategies = [
         _youtube_extractor_args(),
         {"youtube": {"player_client": ["android"], "formats": ["missing_pot"]}},
     ]
-
-    print(f"[StreamDL] Starting download for: {source[:100]}", flush=True)
 
     last_err = None
     for strat_idx, extractor_args in enumerate(strategies, 1):
@@ -530,8 +459,7 @@ def download_audio_for_stream(source, extra_opts=None):
             "noplaylist": True,
             "quiet": True,
             "no_warnings": True,
-            "logger": _QuietYTDLPLogger(),
-            "outtmpl": output_template,
+            "socket_timeout": 30,
             "extractor_args": extractor_args,
             "remote_components": ["ejs:github"],
         }
@@ -539,112 +467,84 @@ def download_audio_for_stream(source, extra_opts=None):
             base_opts["proxy"] = proxy_url
 
         try:
-            info = _run_ytdl_once(source, base_opts, download=True)
+            with YoutubeDL(base_opts) as ydl:
+                info = ydl.extract_info(source, download=False)
+                if not info or ('entries' in info and not info.get('entries')):
+                    last_err = f"Strategy {strat_idx}: no results"
+                    print(f"[Stream] {last_err}", flush=True)
+                    continue
+
+                if 'entries' in info and info['entries']:
+                    info = info['entries'][0]
+
+                audio_url = None
+                content_type = "audio/webm"
+                formats = info.get("formats", [])
+                for fmt in reversed(formats):
+                    if fmt.get("vcodec") == "none" and fmt.get("url"):
+                        ext = fmt.get("ext", "webm")
+                        content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
+                        audio_url = fmt["url"]
+                        break
+                if not audio_url:
+                    for fmt in reversed(formats):
+                        if fmt.get("url"):
+                            ext = fmt.get("ext", "webm")
+                            content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
+                            audio_url = fmt["url"]
+                            break
+                if not audio_url:
+                    audio_url = info.get("url", "")
+
+                if not audio_url:
+                    last_err = f"Strategy {strat_idx}: no streamable URL"
+                    print(f"[Stream] {last_err}", flush=True)
+                    continue
+
+                req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                top_headers = info.get("http_headers", {})
+                if isinstance(top_headers, dict) and "User-Agent" in top_headers:
+                    req_headers["User-Agent"] = top_headers["User-Agent"]
+                if range_header:
+                    req_headers["Range"] = range_header
+
+                print(f"[Stream] Strategy {strat_idx}: opening {audio_url[:80]}...", flush=True)
+                req = urllib.request.Request(audio_url, headers=req_headers)
+                upstream = ydl.urlopen(req)
+                status_code = getattr(upstream, "status", 200) or 200
+                resp_headers = {
+                    "Content-Type": content_type,
+                    "Accept-Ranges": "bytes",
+                }
+                content_length = getattr(upstream, "length", None) or upstream.headers.get("Content-Length")
+                if content_length:
+                    resp_headers["Content-Length"] = content_length
+                content_range = upstream.headers.get("Content-Range")
+                if content_range:
+                    resp_headers["Content-Range"] = content_range
+
+                print(f"[Stream] OK strategy {strat_idx}: status={status_code} ct={content_type}", flush=True)
+
+                def generate(_upstream=upstream):
+                    try:
+                        while True:
+                            chunk = _upstream.read(65536)
+                            if not chunk:
+                                break
+                            yield chunk
+                    finally:
+                        _upstream.close()
+
+                return Response(
+                    stream_with_context(generate()),
+                    status=status_code,
+                    headers=resp_headers,
+                    direct_passthrough=True,
+                ), None
+
         except Exception as exc:
             last_err = f"Strategy {strat_idx}: {_clean_ytdlp_error(exc)}"
-            print(f"[StreamDL] {last_err}", flush=True)
+            print(f"[Stream] {last_err}", flush=True)
             continue
 
-        if not info or ('entries' in info and not info.get('entries')):
-            last_err = f"Strategy {strat_idx}: no results"
-            print(f"[StreamDL] {last_err}", flush=True)
-            continue
-
-        if 'entries' in info and info['entries']:
-            info = info['entries'][0]
-
-        try:
-            with YoutubeDL(base_opts) as ydl:
-                filepath = ydl.prepare_filename(info)
-        except Exception as exc:
-            last_err = f"Strategy {strat_idx}: prepare_filename failed: {exc}"
-            print(f"[StreamDL] {last_err}", flush=True)
-            continue
-
-        if not os.path.exists(filepath):
-            last_err = f"Strategy {strat_idx}: file not found after download"
-            print(f"[StreamDL] {last_err} — dir: {os.listdir(temp_dir)}", flush=True)
-            continue
-
-        file_size = os.path.getsize(filepath)
-        ext = os.path.splitext(filepath)[1].lower()
-        content_type = {
-            ".webm": "audio/webm",
-            ".m4a": "audio/mp4",
-            ".mp3": "audio/mpeg",
-            ".ogg": "audio/ogg",
-        }.get(ext, "audio/webm")
-
-        print(f"[StreamDL] OK strategy {strat_idx}: {os.path.basename(filepath)} size={file_size} ct={content_type}", flush=True)
-        return filepath, content_type, None
-
-    shutil.rmtree(temp_dir, ignore_errors=True)
-    return None, None, last_err or "All strategies failed"
-
-
-def _get_proxy_for_requests():
-    """Return a proxies dict for requests from the WARP proxy environment variables."""
-    proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
-    if proxy_url:
-        return {"http": proxy_url, "https": proxy_url}
-    return None
-
-
-def proxy_audio_stream(audio_url, content_type, range_header=None, upstream_headers=None):
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "*/*",
-        "Referer": "https://www.youtube.com/",
-        "Origin": "https://www.youtube.com",
-    }
-
-    # Only carry over User-Agent from yt-dlp (must match the player client
-    # that generated the URL, e.g. mweb). Do NOT pass cookies or other
-    # session-specific headers — they belong to the extraction session and
-    # cause YouTube to 403 the streaming request.
-    if upstream_headers:
-        if "User-Agent" in upstream_headers:
-            headers["User-Agent"] = upstream_headers["User-Agent"]
-
-    if range_header:
-        headers["Range"] = range_header
-
-    proxies = _get_proxy_for_requests()
-
-    try:
-        upstream = requests.get(audio_url, headers=headers, stream=True, timeout=30, proxies=proxies)
-    except Exception as exc:
-        print(f"[Stream] Audio fetch failed for {audio_url}: {exc}", flush=True)
-        return jsonify({"error": "Audio stream temporarily unavailable"}), 502
-
-    if upstream.status_code not in (200, 206):
-        print(f"[Stream] Upstream HTTP {upstream.status_code} for {audio_url[:100]}...", flush=True)
-        upstream.close()
-        return jsonify({"error": f"Upstream returned HTTP {upstream.status_code}"}), 502
-
-    status = upstream.status_code
-    resp_headers = {
-        "Content-Type": upstream.headers.get("Content-Type", content_type),
-        "Accept-Ranges": "bytes",
-    }
-    for h in ("Content-Length", "Content-Range"):
-        if h in upstream.headers:
-            resp_headers[h] = upstream.headers[h]
-
-    print(f"[Stream] Streaming OK {audio_url[:80]}... status={status} ct={resp_headers['Content-Type']}", flush=True)
-
-    def generate():
-        for chunk in upstream.iter_content(chunk_size=65536):
-            if chunk:
-                yield chunk
-
-    return Response(
-        stream_with_context(generate()),
-        status=status,
-        headers=resp_headers,
-        direct_passthrough=True,
-    )
+    return None, last_err or "All extraction strategies failed"

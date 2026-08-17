@@ -20,7 +20,7 @@ from spotify_client import (
 )
 
 from config import progress_store, scrape_job_progress, scrape_job_results, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
-from utils import get_yt_info, get_playlist_client, download_track_logic, detect_url_service, scrape_external_data, extract_info, download_audio_for_stream
+from utils import get_yt_info, get_playlist_client, download_track_logic, detect_url_service, scrape_external_data, extract_info, open_audio_stream
 
 routes = Blueprint("routes", __name__)
 
@@ -275,33 +275,17 @@ def resolve_youtube_url():
         return jsonify({"error": str(e)}), 500
 
 
-def _resolve_and_stream(source):
-    """Download audio with yt-dlp (all 4 strategies, explicit proxy) and return a Flask Response."""
-    filepath, content_type, err = download_audio_for_stream(source)
-    if filepath:
-        resp = send_file(filepath, mimetype=content_type)
-        @after_this_request
-        def _cleanup(response, _path=filepath):
-            try:
-                os.unlink(_path)
-                os.rmdir(os.path.dirname(_path))
-            except Exception:
-                pass
-            return response
-        return resp, None
-    return None, err or "All extraction strategies failed"
-
-
 @routes.route("/api/stream", methods=["GET"])
 def stream_track_get():
     source_url = request.args.get("source_url", "").strip()
+    range_header = request.headers.get("Range")
 
     if not source_url:
         return jsonify({"error": "Provide source_url"}), 400
 
     print(f"[Stream] Audio preview for: {source_url}", flush=True)
 
-    resp, err = _resolve_and_stream(source_url)
+    resp, err = open_audio_stream(source_url, range_header=range_header)
     if err:
         return jsonify({"error": err}), 404
     return resp
@@ -313,15 +297,16 @@ def stream_track():
     source_url = (data or {}).get("sourceUrl", "").strip()
     title = (data or {}).get("title", "").strip()
     artists = (data or {}).get("artists", "").strip()
+    range_header = request.headers.get("Range")
 
     if not source_url and not (title or artists):
         return jsonify({"error": "Provide sourceUrl or title+artists"}), 400
 
     source = f"ytsearch1:{title} {artists} audio" if (title or artists) else source_url
 
-    resp, err = _resolve_and_stream(source)
+    resp, err = open_audio_stream(source, range_header=range_header)
     if err and source_url and (title or artists):
-        resp, err = _resolve_and_stream(f"ytsearch1:{title} {artists} audio")
+        resp, err = open_audio_stream(f"ytsearch1:{title} {artists} audio", range_header=range_header)
     if err:
         return jsonify({"error": err}), 404
     return resp
