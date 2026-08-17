@@ -14,6 +14,3 @@
 - Fix Flutter app playlist title: no playlist owner
 - Add Flutter app play queue feature
 - Add Flutter app skip song feature
-- Fix frontend fetch text: Add correct progress bar with songs
-- Fix backend playlist fetch/download using threading
-- Fix backend playlist fetch/download threading using proxies
