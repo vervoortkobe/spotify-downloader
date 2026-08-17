@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+import threading
+import time
+import urllib.request
 
 import requests
 from yt_dlp import YoutubeDL
@@ -10,68 +13,179 @@ from mutagen.id3 import APIC, ID3
 from mutagen.mp3 import MP3
 from flask import Response, stream_with_context
 
-from spotify_client import PlaylistClient
-from config import progress_store, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
+from audio_client import PlaylistClient
+from config import progress_store, scrape_job_progress, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, _playlist_client
+
+# YouTube search result cache: avoids re-searching the same track
+_YT_CACHE: dict[str, tuple[str, str, float]] = {}
+_YT_CACHE_LOCK = threading.Lock()
+_YT_CACHE_TTL = 3600 * 6
+
+
+def _yt_cache_key(title: str, artists: str) -> str:
+    return f"{title.strip().lower()}|{artists.strip().lower()}"
+
+
+def _yt_cache_get(title: str, artists: str) -> tuple[str, str] | None:
+    key = _yt_cache_key(title, artists)
+    with _YT_CACHE_LOCK:
+        entry = _YT_CACHE.get(key)
+        if entry and (time.time() - entry[2]) < _YT_CACHE_TTL:
+            return entry[0], entry[1]
+    return None
+
+
+def _yt_cache_set(title: str, artists: str, thumbnail: str, video_url: str) -> None:
+    key = _yt_cache_key(title, artists)
+    with _YT_CACHE_LOCK:
+        _YT_CACHE[key] = (thumbnail, video_url, time.time())
+        if len(_YT_CACHE) > 2000:
+            cutoff = time.time() - _YT_CACHE_TTL
+            stale = [k for k, v in _YT_CACHE.items() if v[2] < cutoff]
+            for k in stale:
+                del _YT_CACHE[k]
+
+
+def _youtube_extractor_args():
+    return {
+        "youtube": {
+            "player_client": ["web", "web_embedded"],
+            "formats": ["missing_pot"],
+        }
+    }
+
+
+class _QuietYTDLPLogger:
+    def debug(self, *args, **kwargs):
+        pass
+
+    def info(self, *args, **kwargs):
+        pass
+
+    def warning(self, *args, **kwargs):
+        pass
+
+    def error(self, *args, **kwargs):
+        pass
+
+
+def _clean_ytdlp_error(exc: Exception) -> str:
+    message = str(exc)
+    lowered = message.lower()
+    if "sign in to confirm you're not a bot" in lowered or "sign in to confirm you\u2019re not a bot" in lowered:
+        return "YouTube blocked anonymous access for this video."
+    if "http error 429" in lowered or "too many requests" in lowered:
+        return "YouTube rate-limited the request."
+    if "requested format is not available" in lowered:
+        return "No streamable audio format is available for this video."
+    if "only images are available for download" in lowered:
+        return "YouTube only exposed image data for this video."
+    return message
+
+
+def _best_thumbnail_url(thumbnails, fallback=""):
+    if not isinstance(thumbnails, list):
+        return fallback or ""
+
+    best_url = ""
+    best_score = -1
+
+    for thumb in thumbnails:
+        if not isinstance(thumb, dict):
+            continue
+        url = thumb.get("url", "")
+        if not url:
+            continue
+        width = thumb.get("width") or 0
+        height = thumb.get("height") or 0
+        try:
+            score = int(width) * int(height)
+        except (TypeError, ValueError):
+            score = 0
+        if score >= best_score:
+            best_score = score
+            best_url = url
+
+    return best_url or fallback or ""
+
+
+def _run_ytdl_once(source, base_opts, download=False):
+    ydl_opts = dict(base_opts)
+    ydl_opts["quiet"] = True
+    ydl_opts["no_warnings"] = True
+    ydl_opts["logger"] = _QuietYTDLPLogger()
+    with YoutubeDL(ydl_opts) as ydl:
+        return ydl.extract_info(source, download=download)
+
+
+def extract_info(source, base_opts, download=False):
+    try:
+        return _run_ytdl_once(source, base_opts, download=download)
+    except Exception as exc:
+        raise RuntimeError(_clean_ytdlp_error(exc))
+
+
+def extract_info_with_tracking(source, base_opts, download=False):
+    """Extract info and return (info, None) for interface compatibility."""
+    return _run_ytdl_once(source, base_opts, download=download), None
+
+
+def http_get(url, **kwargs):
+    kwargs.setdefault("proxies", _get_proxy_for_requests())
+    return requests.get(url, **kwargs)
 
 
 def get_yt_info(track_title, artists):
+    cached = _yt_cache_get(track_title, artists)
+    if cached:
+        return cached
     try:
         search_query = f"ytsearch1:{track_title} {artists} audio"
-        ydl_opts = {
+        proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+        base_opts = {
             "quiet": True,
             "noplaylist": True,
             "skip_download": True,
+            "extractor_args": _youtube_extractor_args(),
+            "remote_components": ["ejs:github"],
         }
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(search_query, download=False)
-            if 'entries' in info and info['entries']:
-                info = info['entries'][0]
+        if proxy_url:
+            base_opts["proxy"] = proxy_url
+        info = extract_info(search_query, base_opts, download=False)
+        if 'entries' in info and info['entries']:
+            info = info['entries'][0]
 
-            video_id = info.get('id', '')
-            video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
+        video_id = info.get('id', '')
+        video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
 
-            thumbnail = ""
-            thumbnails = info.get('thumbnails', [])
-            if thumbnails:
-                jpegs = [t for t in thumbnails if '.jpg' in t.get('url', '') or '.jpeg' in t.get('url', '')]
-                if jpegs:
-                    thumbnail = jpegs[-1].get('url')
-            if not thumbnail:
-                thumbnail = info.get('thumbnail') or ""
+        thumbnail = _best_thumbnail_url(info.get("thumbnails", []), info.get("thumbnail") or "")
 
-            return thumbnail, video_url
+        _yt_cache_set(track_title, artists, thumbnail, video_url)
+        return thumbnail, video_url
     except Exception as e:
         print(f"YT info fetch failed for {track_title}: {e}")
         return "", ""
 
 
 def detect_url_service(url):
-    """Detect service, type, and ID from a URL.
-    Returns (service, type, id) or (None, None, None).
-    """
     url = url.strip()
 
-    # Spotify
     m = re.search(r'open\.spotify\.com/(track|playlist)/([a-zA-Z0-9]+)', url)
     if m:
         return 'spotify', m.group(1), m.group(2)
 
-    # YouTube (watch / youtu.be / shorts / music.youtube.com)
     m = re.search(r'(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})', url)
     if m:
         return 'youtube', 'track', m.group(1)
 
-    # YouTube (playlist)
     m = re.search(r'(?:youtube\.com|music\.youtube\.com)/playlist\?.*list=([a-zA-Z0-9_-]+)', url)
     if m:
         return 'youtube', 'playlist', m.group(1)
 
-    # SoundCloud (set/playlist)
     m = re.search(r'soundcloud\.com/([a-zA-Z0-9_-]+)/sets/', url)
     if m:
         return 'soundcloud', 'playlist', url
 
-    # SoundCloud (track)
     m = re.search(r'soundcloud\.com/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)', url)
     if m:
         return 'soundcloud', 'track', url
@@ -79,26 +193,29 @@ def detect_url_service(url):
     return None, None, None
 
 
-def scrape_external_data(url, service, url_type):
-    """Scrape track/playlist data from YouTube or SoundCloud using yt-dlp.
-    Returns (playlist_name, tracks_list).
-    """
+def scrape_external_data(url, service, url_type, progress_job_id=None):
     is_flat = url_type == "playlist"
-    ydl_opts = {
+    proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+    base_opts = {
         "quiet": True,
         "skip_download": True,
         "extract_flat": is_flat,
+        "extractor_args": _youtube_extractor_args(),
+        "remote_components": ["ejs:github"],
     }
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    if proxy_url:
+        base_opts["proxy"] = proxy_url
+    info = extract_info(url, base_opts, download=False)
 
     if not info:
         raise ValueError(f"Could not fetch data from {url}")
 
     if url_type == "playlist":
         entries = info.get("entries", [])
+        if progress_job_id:
+            scrape_job_progress[progress_job_id] = {'total': len(entries), 'completed': 0, 'status': 'scraping'}
         tracks = []
-        for entry in entries:
+        for i, entry in enumerate(entries):
             if not entry:
                 continue
             vid = entry.get("id", "")
@@ -112,7 +229,7 @@ def scrape_external_data(url, service, url_type):
                     if uploader and slug:
                         entry_url = f"https://soundcloud.com/{uploader}/{slug}"
 
-            thumbnail = entry.get("thumbnail", "")
+            thumbnail = _best_thumbnail_url(entry.get("thumbnails", []), entry.get("thumbnail", ""))
             if not thumbnail and service == "youtube" and vid:
                 thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
             if not thumbnail and service == "soundcloud":
@@ -130,14 +247,18 @@ def scrape_external_data(url, service, url_type):
                 "downloadLink": "",
                 "sourceUrl": entry_url,
             })
+            if progress_job_id and (i % 5 == 0 or i == len(entries) - 1):
+                p = scrape_job_progress.get(progress_job_id)
+                if p:
+                    p['completed'] = len(tracks)
+                    print(
+                        f"[Scrape] Job {progress_job_id} progress: {p['completed']}/{p.get('total', len(entries))} tracks scraped",
+                        flush=True,
+                    )
         playlist_name = info.get("title", f"{service.title()} Playlist")
     else:
         vid = info.get("id", "")
-        thumbnail = info.get("thumbnail", "")
-        thumbnails = info.get("thumbnails", [])
-        if thumbnails:
-            jpegs = [t for t in thumbnails if ".jpg" in t.get("url", "") or ".jpeg" in t.get("url", "")]
-            thumbnail = (jpegs[-1].get("url") if jpegs else thumbnails[-1].get("url")) or thumbnail
+        thumbnail = _best_thumbnail_url(info.get("thumbnails", []), info.get("thumbnail", ""))
         if not thumbnail and service == "youtube" and vid:
             thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
 
@@ -168,10 +289,13 @@ def get_playlist_client():
 def download_cover(url):
     try:
         if not url: return None, None
-        response = requests.get(url, stream=True, timeout=10)
-        if response.status_code == 200:
-            content_type = response.headers.get("Content-Type", "image/jpeg")
-            return response.content, content_type
+        resp = requests.get(url, timeout=10, stream=True, proxies=_get_proxy_for_requests())
+        try:
+            if resp.status_code == 200:
+                content_type = resp.headers.get("Content-Type", "image/jpeg")
+                return resp.content, content_type
+        finally:
+            resp.close()
     except Exception:
         pass
     return None, None
@@ -228,35 +352,62 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         elif d['status'] == 'finished':
             progress_store[track_id] = 90.0
 
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "noplaylist": True,
-        "quiet": True,
-        "outtmpl": output_template,
-        "progress_hooks": [yt_progress_hook],
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ],
-    }
+    download_strategies = [
+        _youtube_extractor_args(),
+        {"youtube": {"player_client": ["android"], "formats": ["missing_pot"]}},
+    ]
+
+    info = None
+    final_path = None
+    last_error = None
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(source, download=True)
+        proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+        for strat_idx, extractor_args in enumerate(download_strategies, 1):
+            if final_path:
+                break
+            print(f"[Download] {track_title} — trying strategy {strat_idx}/{len(download_strategies)}", flush=True)
+            base_opts = {
+                "format": "bestaudio/best",
+                "noplaylist": True,
+                "quiet": True,
+                "outtmpl": output_template,
+                "progress_hooks": [yt_progress_hook],
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "192",
+                    }
+                ],
+                "extractor_args": extractor_args,
+                "remote_components": ["ejs:github"],
+            }
+            if proxy_url:
+                base_opts["proxy"] = proxy_url
+            try:
+                info = _run_ytdl_once(source, base_opts, download=True)
+                if not info or ('entries' in info and not info['entries']):
+                    print(f"Track not found on YouTube: {track_title}")
+                    progress_store[track_id] = -1.0
+                    return None
 
-            if not info or ('entries' in info and not info['entries']):
-                print(f"Track not found on YouTube: {track_title}")
-                progress_store[track_id] = -1.0
-                return None
+                if 'entries' in info and info['entries']:
+                    info = info['entries'][0]
 
-            if 'entries' in info and info['entries']:
-                info = info['entries'][0]
-
-            filepath = ydl.prepare_filename(info)
-            base, _ = os.path.splitext(filepath)
-            final_path = base + ".mp3"
+                filepath = _QuietYTDLPLogger  # placeholder, use ydl
+                ydl_opts = dict(base_opts)
+                ydl_opts["quiet"] = True
+                ydl_opts["no_warnings"] = True
+                ydl_opts["logger"] = _QuietYTDLPLogger()
+                with YoutubeDL(ydl_opts) as ydl:
+                    filepath = ydl.prepare_filename(info)
+                base, _ = os.path.splitext(filepath)
+                final_path = base + ".mp3"
+                break
+            except Exception as exc:
+                last_error = exc
+        if final_path is None:
+            raise RuntimeError(_clean_ytdlp_error(last_error or RuntimeError("yt-dlp download failed")))
     except Exception as e:
         print(f"YT Download failed for {track_title}: {e}")
         progress_store[track_id] = -1.0
@@ -265,15 +416,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     if os.path.exists(final_path):
         progress_store[track_id] = 95.0
 
-        thumbnails = info.get('thumbnails', [])
-        dl_cover = None
-        if thumbnails:
-            jpegs = [t for t in thumbnails if '.jpg' in t.get('url', '') or '.jpeg' in t.get('url', '') or '.png' in t.get('url', '')]
-            if jpegs:
-                dl_cover = jpegs[-1].get('url')
-
-        if not dl_cover:
-            dl_cover = info.get('thumbnail')
+        dl_cover = _best_thumbnail_url(info.get("thumbnails", []), info.get("thumbnail", ""))
 
         if not dl_cover:
             vid = info.get('id')
@@ -285,6 +428,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
         print(f"Applying metadata to {final_path} with cover: {cover_url}")
         apply_metadata(final_path, track_title, artists, album, release_date, cover_url)
         progress_store[track_id] = 100.0
+        print(f"[Download] Completed: {track_title} - {artists}", flush=True)
 
     if not os.path.exists(final_path):
         progress_store[track_id] = -1.0
@@ -293,78 +437,133 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     return final_path
 
 
-def _resolve_audio_stream(source):
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "noplaylist": True,
-        "quiet": True,
-        "skip_download": True,
-        "socket_timeout": 30,
-    }
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(source, download=False)
-    except Exception as e:
-        return None, None, f"Failed to resolve source: {e}"
+def open_audio_stream(source, range_header=None):
+    """Extract info and open audio stream in one YoutubeDL instance.
 
-    if not info:
-        return None, None, "Could not resolve source"
+    Uses the same instance for extraction + urlopen so the connection pool
+    (and exit IP through WARP) is shared — avoids YouTube 403 from IP mismatch.
 
-    if "entries" in info and info["entries"]:
-        info = info["entries"][0]
+    Returns (Response, None) on success or (None, error_string) on failure.
+    """
+    proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
 
-    audio_url = None
-    content_type = "audio/webm"
-    formats = info.get("formats", [])
-    for fmt in reversed(formats):
-        if fmt.get("vcodec") == "none" and fmt.get("url"):
-            ext = fmt.get("ext", "webm")
-            content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
-            audio_url = fmt["url"]
-            break
-    if not audio_url:
-        for fmt in reversed(formats):
-            if fmt.get("url"):
-                ext = fmt.get("ext", "webm")
-                content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
-                audio_url = fmt["url"]
-                break
-    if not audio_url:
-        audio_url = info.get("url", "")
+    strategies = [
+        _youtube_extractor_args(),
+        {"youtube": {"player_client": ["android"], "formats": ["missing_pot"]}},
+    ]
 
-    if not audio_url:
-        return None, None, "No streamable audio URL found"
-
-    return audio_url, content_type, None
-
-
-def _proxy_audio_stream(audio_url, content_type, range_header=None):
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "*/*",
-    }
+    print(f"[Stream] Requested source: {source[:200]}", flush=True)
     if range_header:
-        headers["Range"] = range_header
+        print(f"[Stream] Range header: {range_header}", flush=True)
 
-    upstream = requests.get(audio_url, headers=headers, stream=True, timeout=30)
+    last_err = None
+    for strat_idx, extractor_args in enumerate(strategies, 1):
+        player_clients = extractor_args.get("youtube", {}).get("player_client", [])
+        base_opts = {
+            "format": "bestaudio/best",
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "socket_timeout": 30,
+            "extractor_args": extractor_args,
+            "remote_components": ["ejs:github"],
+        }
+        if proxy_url:
+            base_opts["proxy"] = proxy_url
 
-    status = upstream.status_code
-    resp_headers = {
-        "Content-Type": upstream.headers.get("Content-Type", content_type),
-        "Accept-Ranges": "bytes",
-    }
-    for h in ("Content-Length", "Content-Range"):
-        if h in upstream.headers:
-            resp_headers[h] = upstream.headers[h]
+        try:
+            print(f"[Stream] Strategy {strat_idx} ({player_clients}): extracting info...", flush=True)
+            with YoutubeDL(base_opts) as ydl:
+                info = ydl.extract_info(source, download=False)
+                if not info or ('entries' in info and not info.get('entries')):
+                    last_err = f"Strategy {strat_idx} ({player_clients}): no results returned"
+                    print(f"[Stream] {last_err}", flush=True)
+                    continue
 
-    def generate():
-        for chunk in upstream.iter_content(chunk_size=65536):
-            if chunk:
-                yield chunk
+                if 'entries' in info and info['entries']:
+                    info = info['entries'][0]
 
-    return Response(
-        stream_with_context(generate()),
-        status=status,
-        headers=resp_headers,
-        direct_passthrough=True,
-    )
+                video_title = info.get("title", "Unknown")
+                video_id = info.get("id", "")
+                print(f"[Stream] Found: [{video_id}] {video_title}", flush=True)
+
+                audio_url = None
+                content_type = "audio/webm"
+                formats = info.get("formats", [])
+                audio_only_formats = [f for f in formats if f.get("vcodec") == "none" and f.get("url")]
+                all_formats_with_url = [f for f in formats if f.get("url")]
+                print(f"[Stream] Available formats: {len(formats)} total, {len(audio_only_formats)} audio-only with URL, {len(all_formats_with_url)} any with URL", flush=True)
+
+                for fmt in reversed(formats):
+                    if fmt.get("vcodec") == "none" and fmt.get("url"):
+                        ext = fmt.get("ext", "webm")
+                        content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
+                        audio_url = fmt["url"]
+                        print(f"[Stream] Selected audio format: {fmt.get('format_id')} ext={ext} abr={fmt.get('abr', '?')}kbps", flush=True)
+                        break
+                if not audio_url:
+                    for fmt in reversed(formats):
+                        if fmt.get("url"):
+                            ext = fmt.get("ext", "webm")
+                            content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg") else "audio/webm"
+                            audio_url = fmt["url"]
+                            print(f"[Stream] Fallback format: {fmt.get('format_id')} ext={ext} vcodec={fmt.get('vcodec', '?')}", flush=True)
+                            break
+                if not audio_url:
+                    audio_url = info.get("url", "")
+                    if audio_url:
+                        print("[Stream] Using top-level URL from info dict", flush=True)
+
+                if not audio_url:
+                    last_err = f"Strategy {strat_idx} ({player_clients}): no streamable URL in any format"
+                    print(f"[Stream] {last_err} — formats dict keys: {list(formats[0].keys()) if formats else 'empty'}", flush=True)
+                    continue
+
+                req_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                top_headers = info.get("http_headers", {})
+                if isinstance(top_headers, dict) and "User-Agent" in top_headers:
+                    req_headers["User-Agent"] = top_headers["User-Agent"]
+                if range_header:
+                    req_headers["Range"] = range_header
+
+                print(f"[Stream] Strategy {strat_idx}: opening stream via urlopen (UA={req_headers['User-Agent'][:30]}...)", flush=True)
+                req = urllib.request.Request(audio_url, headers=req_headers)
+                upstream = ydl.urlopen(req)
+                status_code = getattr(upstream, "status", 200) or 200
+                resp_headers = {
+                    "Content-Type": content_type,
+                    "Accept-Ranges": "bytes",
+                }
+                content_length = getattr(upstream, "length", None) or upstream.headers.get("Content-Length")
+                if content_length:
+                    resp_headers["Content-Length"] = content_length
+                content_range = upstream.headers.get("Content-Range")
+                if content_range:
+                    resp_headers["Content-Range"] = content_range
+
+                print(f"[Stream] Strategy {strat_idx} SUCCESS: status={status_code} ct={content_type} length={content_length or 'chunked'}", flush=True)
+
+                def generate(_upstream=upstream):
+                    try:
+                        while True:
+                            chunk = _upstream.read(65536)
+                            if not chunk:
+                                break
+                            yield chunk
+                    finally:
+                        _upstream.close()
+
+                return Response(
+                    stream_with_context(generate()),
+                    status=status_code,
+                    headers=resp_headers,
+                    direct_passthrough=True,
+                ), None
+
+        except Exception as exc:
+            last_err = f"Strategy {strat_idx} ({player_clients}): {_clean_ytdlp_error(exc)}"
+            print(f"[Stream] Strategy {strat_idx} FAILED: {exc}", flush=True)
+            continue
+
+    print(f"[Stream] All strategies exhausted for: {source[:150]} — last error: {last_err}", flush=True)
+    return None, last_err or "All extraction strategies failed"
