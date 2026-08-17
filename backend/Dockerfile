@@ -1,8 +1,8 @@
 FROM python:3.11-slim
 
-# Install system dependencies (ffmpeg, curl, unzip) and Deno in one step for better caching
+# Install system dependencies (ffmpeg, curl, unzip, gnupg) and Deno in one step for better caching
 RUN apt-get update && \
-    apt-get install -y ffmpeg curl unzip && \
+    apt-get install -y ffmpeg curl unzip gnupg && \
     curl -fsSL https://deno.land/x/install/install.sh | sh && \
     rm -rf /var/lib/apt/lists/*
 
