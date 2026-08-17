@@ -50,9 +50,7 @@ def _yt_cache_set(title: str, artists: str, thumbnail: str, video_url: str) -> N
 def _youtube_extractor_args():
     return {
         "youtube": {
-            "player_client": ["android", "mweb", "web_embedded", "tv", "web_safari"],
-            "player_skip": ["configs"],
-            "webpage_client": "web_safari",
+            "player_client": ["web", "web_embedded"],
             "formats": ["missing_pot"],
         }
     }
@@ -144,6 +142,7 @@ def get_yt_info(track_title, artists):
         return cached
     try:
         search_query = f"ytsearch1:{track_title} {artists} audio"
+        proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
         base_opts = {
             "quiet": True,
             "noplaylist": True,
@@ -151,6 +150,8 @@ def get_yt_info(track_title, artists):
             "extractor_args": _youtube_extractor_args(),
             "remote_components": ["ejs:github"],
         }
+        if proxy_url:
+            base_opts["proxy"] = proxy_url
         info = extract_info(search_query, base_opts, download=False)
         if 'entries' in info and info['entries']:
             info = info['entries'][0]
@@ -195,6 +196,7 @@ def detect_url_service(url):
 
 def scrape_external_data(url, service, url_type, progress_job_id=None):
     is_flat = url_type == "playlist"
+    proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
     base_opts = {
         "quiet": True,
         "skip_download": True,
@@ -202,6 +204,8 @@ def scrape_external_data(url, service, url_type, progress_job_id=None):
         "extractor_args": _youtube_extractor_args(),
         "remote_components": ["ejs:github"],
     }
+    if proxy_url:
+        base_opts["proxy"] = proxy_url
     info = extract_info(url, base_opts, download=False)
 
     if not info:
@@ -351,8 +355,6 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
 
     download_strategies = [
         _youtube_extractor_args(),
-        {"youtube": {"player_client": ["mweb"], "formats": ["missing_pot"]}},
-        {"youtube": {"player_client": ["web"], "formats": ["missing_pot"]}},
         {"youtube": {"player_client": ["android"], "formats": ["missing_pot"]}},
     ]
 
@@ -360,6 +362,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     final_path = None
     last_error = None
     try:
+        proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
         for strat_idx, extractor_args in enumerate(download_strategies, 1):
             if final_path:
                 break
@@ -380,6 +383,8 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
                 "extractor_args": extractor_args,
                 "remote_components": ["ejs:github"],
             }
+            if proxy_url:
+                base_opts["proxy"] = proxy_url
             try:
                 info = _run_ytdl_once(source, base_opts, download=True)
                 if not info or ('entries' in info and not info['entries']):
@@ -434,6 +439,7 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
 
 
 def resolve_audio_stream(source, extra_opts=None):
+    proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
     base_opts = {
         "format": "bestaudio/best",
         "noplaylist": True,
@@ -443,6 +449,8 @@ def resolve_audio_stream(source, extra_opts=None):
         "extractor_args": _youtube_extractor_args(),
         "remote_components": ["ejs:github"],
     }
+    if proxy_url:
+        base_opts["proxy"] = proxy_url
     if extra_opts:
         base_opts.update(extra_opts)
     try:
@@ -500,59 +508,78 @@ def resolve_audio_stream(source, extra_opts=None):
 def download_audio_for_stream(source, extra_opts=None):
     """Download audio with yt-dlp to a temp file and return (filepath, content_type) or (None, None, error).
 
-    This reuses yt-dlp's HTTP handler (same proxy/session as extraction) so
-    the exit IP always matches the one baked into the streaming URL.
+    Uses the same 4-strategy approach and explicit proxy as download_track_logic
+    so that extraction + download always share the same connection through WARP.
     """
     temp_dir = tempfile.mkdtemp()
     output_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
 
-    base_opts = {
-        "format": "bestaudio/best",
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "logger": _QuietYTDLPLogger(),
-        "outtmpl": output_template,
-        "extractor_args": _youtube_extractor_args(),
-        "remote_components": ["ejs:github"],
-    }
-    if extra_opts:
-        base_opts.update(extra_opts)
+    proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
 
-    try:
-        info = _run_ytdl_once(source, base_opts, download=True)
-    except Exception as exc:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        return None, None, f"Failed to resolve source: {_clean_ytdlp_error(exc)}"
+    strategies = [
+        _youtube_extractor_args(),
+        {"youtube": {"player_client": ["android"], "formats": ["missing_pot"]}},
+    ]
 
-    if not info:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        return None, None, "Could not resolve source"
+    print(f"[StreamDL] Starting download for: {source[:100]}", flush=True)
 
-    if "entries" in info and info["entries"]:
-        info = info["entries"][0]
+    last_err = None
+    for strat_idx, extractor_args in enumerate(strategies, 1):
+        base_opts = {
+            "format": "bestaudio/best",
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "logger": _QuietYTDLPLogger(),
+            "outtmpl": output_template,
+            "extractor_args": extractor_args,
+            "remote_components": ["ejs:github"],
+        }
+        if proxy_url:
+            base_opts["proxy"] = proxy_url
 
-    try:
-        with YoutubeDL(base_opts) as ydl:
-            filepath = ydl.prepare_filename(info)
-    except Exception:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        return None, None, "Could not determine file path"
+        try:
+            info = _run_ytdl_once(source, base_opts, download=True)
+        except Exception as exc:
+            last_err = f"Strategy {strat_idx}: {_clean_ytdlp_error(exc)}"
+            print(f"[StreamDL] {last_err}", flush=True)
+            continue
 
-    if not os.path.exists(filepath):
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        return None, None, "Download failed"
+        if not info or ('entries' in info and not info.get('entries')):
+            last_err = f"Strategy {strat_idx}: no results"
+            print(f"[StreamDL] {last_err}", flush=True)
+            continue
 
-    ext = os.path.splitext(filepath)[1].lower()
-    content_type = {
-        ".webm": "audio/webm",
-        ".m4a": "audio/mp4",
-        ".mp3": "audio/mpeg",
-        ".ogg": "audio/ogg",
-    }.get(ext, "audio/webm")
+        if 'entries' in info and info['entries']:
+            info = info['entries'][0]
 
-    print(f"[Stream] Downloaded audio for streaming: {os.path.basename(filepath)} ({content_type})", flush=True)
-    return filepath, content_type, None
+        try:
+            with YoutubeDL(base_opts) as ydl:
+                filepath = ydl.prepare_filename(info)
+        except Exception as exc:
+            last_err = f"Strategy {strat_idx}: prepare_filename failed: {exc}"
+            print(f"[StreamDL] {last_err}", flush=True)
+            continue
+
+        if not os.path.exists(filepath):
+            last_err = f"Strategy {strat_idx}: file not found after download"
+            print(f"[StreamDL] {last_err} — dir: {os.listdir(temp_dir)}", flush=True)
+            continue
+
+        file_size = os.path.getsize(filepath)
+        ext = os.path.splitext(filepath)[1].lower()
+        content_type = {
+            ".webm": "audio/webm",
+            ".m4a": "audio/mp4",
+            ".mp3": "audio/mpeg",
+            ".ogg": "audio/ogg",
+        }.get(ext, "audio/webm")
+
+        print(f"[StreamDL] OK strategy {strat_idx}: {os.path.basename(filepath)} size={file_size} ct={content_type}", flush=True)
+        return filepath, content_type, None
+
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    return None, None, last_err or "All strategies failed"
 
 
 def _get_proxy_for_requests():
