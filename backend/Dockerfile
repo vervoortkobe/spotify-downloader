@@ -39,8 +39,8 @@ RUN mkdir -p ~/.yt-dlp && \
 # Copy the rest of the application code
 COPY . .
 
-# Make the WARP init script executable
-RUN chmod +x /app/warp-init.sh
+# WARP init script executable
+RUN sed -i 's/\r$//' /app/warp-init.sh && chmod +x /app/warp-init.sh
 
 # Expose only the required port
 EXPOSE 5000
