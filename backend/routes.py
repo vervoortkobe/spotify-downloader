@@ -518,6 +518,19 @@ def health_check():
     return response
 
 
+@routes.route("/api/warp-status")
+def warp_status():
+    import socket
+    try:
+        s = socket.socket()
+        s.settimeout(2)
+        s.connect(("127.0.0.1", 4000))
+        s.close()
+        return jsonify({"connected": True})
+    except Exception:
+        return jsonify({"connected": False})
+
+
 @routes.route("/api/scrape-user-playlists", methods=["POST"])
 def scrape_user_playlists():
     try:
