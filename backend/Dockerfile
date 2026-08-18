@@ -1,8 +1,11 @@
 FROM python:3.11-slim
 
-# Install system dependencies (ffmpeg, curl, unzip, gnupg) and Deno in one step for better caching
+# Prevent apt-get / debconf interactive prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies (ffmpeg, curl, unzip, gnupg, dbus) and Deno in one step for better caching
 RUN apt-get update && \
-    apt-get install -y ffmpeg curl unzip gnupg && \
+    apt-get install -y ffmpeg curl unzip gnupg dbus && \
     curl -fsSL https://deno.land/x/install/install.sh | sh && \
     rm -rf /var/lib/apt/lists/*
 
