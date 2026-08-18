@@ -202,6 +202,7 @@ def scrape_external_data(url, service, url_type, progress_job_id=None):
         "extract_flat": is_flat,
         "extractor_args": _youtube_extractor_args(),
         "remote_components": ["ejs:github"],
+        "cachedir": False,
     }
     if proxy_url:
         base_opts["proxy"] = proxy_url

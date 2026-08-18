@@ -24,19 +24,25 @@ class PlaylistProvider extends ChangeNotifier {
     if (!forceRefresh) {
       try {
         await _loadCachedPlaylists();
-        if (_playlists.isNotEmpty) return;  // Show cache immediately
+        if (_playlists.isNotEmpty) {
+          notifyListeners(); // Show cache immediately
+        }
       } catch (_) {}
     }
 
     _isLoading = _playlists.isEmpty;
     notifyListeners();
     try {
-      _playlists = await _playlistService.getUserPlaylists(uid);
-      _sharedPlaylists = await _playlistService.getSharedPlaylists(uid);
+      final remotePlaylists = await _playlistService.getUserPlaylists(uid);
+      final remoteShared = await _playlistService.getSharedPlaylists(uid);
+      _playlists = remotePlaylists;
+      _sharedPlaylists = remoteShared;
       _error = null;
       await _saveCachedPlaylists();
     } catch (e) {
-      _error = 'Failed to load playlists';
+      if (_playlists.isEmpty) {
+        _error = 'Failed to load playlists';
+      }
     }
     _isLoading = false;
     notifyListeners();
@@ -85,7 +91,17 @@ class PlaylistProvider extends ChangeNotifier {
   }
 
   bool hasPlaylistWithUrl(String spotifyUrl) {
-    return _playlists.any((p) => p.spotifyUrl == spotifyUrl);
+    return _playlists.any((p) => p.spotifyUrl == spotifyUrl || p.id == spotifyUrl);
+  }
+
+  PlaylistModel? getPlaylistByUrl(String spotifyUrl) {
+    try {
+      return _playlists.firstWhere(
+        (p) => p.spotifyUrl == spotifyUrl || p.id == spotifyUrl,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<PlaylistModel?> importFromUrl(String url, {String service = 'auto', String? creatorUid}) async {
@@ -114,7 +130,24 @@ class PlaylistProvider extends ChangeNotifier {
 
   Future<void> savePlaylist(String uid, PlaylistModel playlist) async {
     await _playlistService.savePlaylist(uid, playlist);
-    _playlists.insert(0, playlist);
+    final idx = _playlists.indexWhere((p) => p.id == playlist.id);
+    if (idx >= 0) {
+      _playlists[idx] = playlist;
+    } else {
+      _playlists.insert(0, playlist);
+    }
+    await _saveCachedPlaylists();
+    notifyListeners();
+  }
+
+  Future<void> updatePlaylist(String uid, PlaylistModel playlist) async {
+    await _playlistService.savePlaylist(uid, playlist);
+    final idx = _playlists.indexWhere((p) => p.id == playlist.id);
+    if (idx >= 0) {
+      _playlists[idx] = playlist;
+    } else {
+      _playlists.insert(0, playlist);
+    }
     await _saveCachedPlaylists();
     notifyListeners();
   }

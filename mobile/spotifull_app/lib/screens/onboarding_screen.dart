@@ -41,24 +41,46 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     if (playlists != null && playlists.isNotEmpty) {
       for (final p in playlists) {
-        final playlistUrl = 'https://open.spotify.com/playlist/${p['id']}';
+        final playlistId = p['id'] as String;
+        final playlistUrl = 'https://open.spotify.com/playlist/$playlistId';
+        final remoteTrackCount = p['trackCount'] as int? ?? 0;
+        final remoteName = p['name'] as String? ?? '';
 
-        if (playlistProv.hasPlaylistWithUrl(playlistUrl)) continue;
+        final existing = playlistProv.getPlaylistByUrl(playlistUrl);
+        if (existing == null) {
+          final scraped = await ApiService.scrapePlaylist(playlistUrl);
+          if (scraped != null && auth.user != null) {
+            final enriched = PlaylistModel(
+              id: scraped.id,
+              name: scraped.name,
+              owner: p['owner'] as String? ?? '',
+              coverUrl: scraped.tracks.isNotEmpty ? scraped.tracks.first.cover : '',
+              tracks: scraped.tracks,
+              creatorUid: auth.user!.uid,
+              source: 'spotify',
+              spotifyUrl: playlistUrl,
+              isUsersOwn: true,
+              lastTrackSync: DateTime.now(),
+            );
+            await playlistProv.savePlaylist(auth.user!.uid, enriched);
+          }
+        } else {
+          final bool changed = (remoteTrackCount > 0 && existing.tracks.length != remoteTrackCount) ||
+              (remoteName.isNotEmpty && existing.name != remoteName) ||
+              existing.tracks.isEmpty;
 
-        final scraped = await ApiService.scrapePlaylist(playlistUrl);
-        if (scraped != null && auth.user != null) {
-          final enriched = PlaylistModel(
-            id: scraped.id,
-            name: scraped.name,
-            owner: p['owner'] as String? ?? '',
-            coverUrl: scraped.tracks.isNotEmpty ? scraped.tracks.first.cover : '',
-            tracks: scraped.tracks,
-            creatorUid: auth.user!.uid,
-            source: 'spotify',
-            spotifyUrl: playlistUrl,
-            isUsersOwn: true,
-          );
-          await playlistProv.savePlaylist(auth.user!.uid, enriched);
+          if (changed && auth.user != null) {
+            final scraped = await ApiService.scrapePlaylist(playlistUrl);
+            if (scraped != null && scraped.tracks.isNotEmpty) {
+              existing.name = scraped.name;
+              existing.tracks = scraped.tracks;
+              if (scraped.tracks.isNotEmpty) {
+                existing.coverUrl = scraped.tracks.first.cover;
+              }
+              existing.lastTrackSync = DateTime.now();
+              await playlistProv.updatePlaylist(auth.user!.uid, existing);
+            }
+          }
         }
       }
       await auth.updateSpotifyProfileUrl(url);

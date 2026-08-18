@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Radio,
   ChevronDown,
+  RefreshCw,
 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -34,6 +35,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
   const [playlistLink, setPlaylistLink] = useState("")
 
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null)
+  const [warpConnected, setWarpConnected] = useState<boolean | null>(null)
 
   useEffect(() => {
     setPlaylistLink("")
@@ -69,7 +71,28 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       }
     }
 
+    const checkWarp = async () => {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 4000)
+        const res = await fetch(`${API_URL}/api/warp-status`, { signal: controller.signal })
+        clearTimeout(timeoutId)
+        if (res.ok) {
+          const data = await res.json()
+          setWarpConnected(data.connected)
+        } else {
+          setWarpConnected(false)
+        }
+      } catch {
+        setWarpConnected(false)
+      }
+    }
+
     checkHealth()
+    checkWarp()
+
+    const warpInterval = setInterval(checkWarp, 30000)
+    return () => clearInterval(warpInterval)
   }, [])
 
   const [downloadProgress, setDownloadProgress] = useState(0)
@@ -92,6 +115,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
   const [fetchElapsed, setFetchElapsed] = useState(0)
   const fetchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [playlistDownloadProgress, setPlaylistDownloadProgress] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({})
   const trackProgressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const playlistProgressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -978,6 +1002,87 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
     router.push(`/job/${progressJobId}`)
   }
 
+  const handleRefreshPlaylist = async () => {
+    if (isProcessing || isRefreshing) return
+    const targetUrl = playlistLink.trim()
+    if (!targetUrl) {
+      toast.error("Please enter a playlist URL to sync")
+      return
+    }
+
+    const previousTracks = [...tracks]
+    const progressJobId =
+      crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+    setIsRefreshing(true)
+    toast.loading("Checking for playlist changes...", { id: "refresh-toast" })
+
+    try {
+      const startRes = await fetch(`${API_URL}/api/scrape-playlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          playlistUrl: targetUrl,
+          service: effectiveService,
+          progressJobId,
+        }),
+      })
+      if (!startRes.ok) throw new Error("Failed to start refresh")
+    } catch (error) {
+      console.error("Error:", error)
+      toast.error("Failed to check playlist updates", { id: "refresh-toast" })
+      setIsRefreshing(false)
+      return
+    }
+
+    const checkInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/scrape-progress/${progressJobId}`)
+        if (!res.ok) return
+        const data = await res.json()
+
+        if (data.status === "complete") {
+          clearInterval(checkInterval)
+          const resultRes = await fetch(`${API_URL}/api/scrape-result/${progressJobId}`)
+          if (!resultRes.ok) throw new Error("Failed to fetch fresh tracks")
+          const resultData = await resultRes.json()
+          const newTracks: Track[] = resultData.tracks || []
+
+          setTracks(newTracks)
+          setPlaylistName(resultData.playlistName || playlistName)
+          setTotalSongs(newTracks.length)
+          setSongsDownloaded(newTracks.length)
+          setIsRefreshing(false)
+
+          const prevIds = new Set(previousTracks.map((t) => t.id))
+          const addedCount = newTracks.filter((t) => !prevIds.has(t.id)).length
+          const removedCount = previousTracks.filter(
+            (t) => !new Set(newTracks.map((n) => n.id)).has(t.id)
+          ).length
+
+          if (addedCount > 0 || removedCount > 0 || newTracks.length !== previousTracks.length) {
+            toast.success(
+              `Playlist updated! ${newTracks.length} tracks (${addedCount > 0 ? `+${addedCount} added` : ""}${removedCount > 0 ? ` -${removedCount} removed` : ""})`,
+              { id: "refresh-toast" }
+            )
+          } else {
+            toast.success(`Playlist is up to date (${newTracks.length} tracks)`, {
+              id: "refresh-toast",
+            })
+          }
+        } else if (data.status === "error") {
+          clearInterval(checkInterval)
+          setIsRefreshing(false)
+          toast.error("Failed to refresh playlist", { id: "refresh-toast" })
+        }
+      } catch (err) {
+        clearInterval(checkInterval)
+        setIsRefreshing(false)
+        toast.error("Failed to check playlist updates", { id: "refresh-toast" })
+      }
+    }, 500)
+  }
+
   return (
     <div
       className={`selection:bg-[var(--clr-primaryBg)]/40 min-h-dvh bg-[#07110b] font-sans text-zinc-50 ${tracks.length === 0 ? "h-dvh overflow-hidden" : ""}`}
@@ -1047,9 +1152,10 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
         <div className="mb-4 flex w-full shrink-0 items-center justify-between gap-2 md:mb-12">
           <Link
             href="/"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-900/70 bg-emerald-950/50 text-emerald-400 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-300"
+            aria-label="Home"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-900/70 bg-emerald-950/50 text-emerald-400 shadow-lg shadow-black/20 transition-all duration-300 hover:scale-105 hover:bg-emerald-900/80 hover:text-emerald-300 md:h-11 md:w-11"
           >
-            <Sparkles className="h-5 w-5" />
+            <Sparkles className="h-5 w-5 md:h-6 md:w-6" />
           </Link>
           <div className="flex items-center gap-2">
             {backendOnline === null ? (
@@ -1066,6 +1172,22 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
               <span className="flex cursor-default items-center gap-1.5 rounded-full border border-red-900/75 bg-red-950/50 px-2.5 py-1 text-[10px] font-medium text-red-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-red-900/80 hover:text-red-100">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
                 Backend: Offline
+              </span>
+            )}
+            {warpConnected === null ? (
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-[var(--clr-border)] bg-zinc-950/70 px-2.5 py-1 text-[10px] font-medium text-zinc-400 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-zinc-800/80 hover:text-zinc-200">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-500" />
+                WARP Proxy: Connecting
+              </span>
+            ) : warpConnected ? (
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-violet-900/75 bg-violet-950/50 px-2.5 py-1 text-[10px] font-medium text-violet-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-violet-900/80 hover:text-violet-100">
+                <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                WARP Proxy: Connected
+              </span>
+            ) : (
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-zinc-700/75 bg-zinc-800/50 px-2.5 py-1 text-[10px] font-medium text-zinc-400 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-zinc-700/80 hover:text-zinc-200">
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+                WARP Proxy: Disconnected
               </span>
             )}
             <div className="group relative">
@@ -1340,7 +1462,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
         {tracks.length > 0 && (
           <div className="grid grid-cols-1 items-start gap-4 duration-700 animate-in fade-in slide-in-from-bottom-8 md:gap-6 lg:grid-cols-[1fr_360px]">
             {/* Track List */}
-            <div className="relative z-0 flex h-[150vh] flex-col overflow-hidden rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 shadow-2xl shadow-black/30 backdrop-blur-xl md:h-[700px]">
+            <div className="relative z-0 flex h-[580px] max-h-[85vh] flex-col overflow-hidden rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 shadow-2xl shadow-black/30 backdrop-blur-xl sm:h-[620px] md:h-[700px]">
               <div className="group/header border-b border-[var(--clr-borderSubtle)] bg-[#08110c]/85 p-4 md:p-8">
                 <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                   <div className="flex min-w-0 items-center gap-3">
@@ -1362,9 +1484,25 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                       </button>
                     </div>
                     <div className="min-w-0">
-                      <h2 className="truncate text-xl font-bold tracking-tight text-zinc-100 md:text-2xl">
-                        {playlistName || "Track List"}
-                      </h2>
+                      <div className="flex items-center gap-2">
+                        <h2 className="truncate text-xl font-bold tracking-tight text-zinc-100 md:text-2xl">
+                          {playlistName || "Track List"}
+                        </h2>
+                        {playlistLink && (
+                          <button
+                            type="button"
+                            onClick={handleRefreshPlaylist}
+                            disabled={isProcessing || isRefreshing}
+                            className="flex items-center gap-1 rounded-lg border border-emerald-900/70 bg-emerald-950/50 px-2 py-0.5 text-xs font-medium text-emerald-400 shadow-sm transition-all duration-200 hover:scale-105 hover:bg-emerald-900/80 hover:text-emerald-300 disabled:opacity-50"
+                            title="Check for playlist changes on Spotify"
+                          >
+                            <RefreshCw
+                              className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`}
+                            />
+                            <span>{isRefreshing ? "Checking..." : "Sync"}</span>
+                          </button>
+                        )}
+                      </div>
                       <p className="mt-1 text-sm text-zinc-400">
                         {tracks.length} tracks found in this playlist
                         {fetchElapsed > 0 && (
@@ -1423,8 +1561,8 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                 )}
               </div>
 
-              <ScrollArea className="w-full flex-1">
-                <div className="w-full space-y-1 p-2 pr-4 md:p-4">
+              <ScrollArea type="always" className="w-full flex-1">
+                <div className="w-full space-y-1 p-2 pr-3 md:p-4 md:pr-4">
                   {tracks.map((track, idx) => (
                     <div
                       key={track.id}
