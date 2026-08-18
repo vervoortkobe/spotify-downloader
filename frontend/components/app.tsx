@@ -86,7 +86,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
   const [isDownloadingAll, setIsDownloadingAll] = useState(false)
   const [isDownloadingIndividually, setIsDownloadingIndividually] = useState(false)
   const [activePlaylistJobId, setActivePlaylistJobId] = useState<string | null>(null)
-  const [scrapeProgress, setScrapeProgress] = useState<{ total: number; completed: number } | null>(null)
+  const [scrapeProgress, setScrapeProgress] = useState<{ total: number; completed: number } | null>(
+    null
+  )
   const [fetchElapsed, setFetchElapsed] = useState(0)
   const fetchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [playlistDownloadProgress, setPlaylistDownloadProgress] = useState(0)
@@ -197,7 +199,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
             setDownloadProgress(100)
             setScrapeProgress({ total: processedTracks.length, completed: processedTracks.length })
             setFetchElapsed((finalElapsed) => {
-              setStatusMessage(`Found ${processedTracks.length} tracks (fetched in ${finalElapsed}s)`)
+              setStatusMessage(
+                `Found ${processedTracks.length} tracks (fetched in ${finalElapsed}s)`
+              )
               return finalElapsed
             })
             if (processedTracks.length > 0) {
@@ -211,7 +215,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
               clearInterval(fetchTimerRef.current)
               fetchTimerRef.current = null
             }
-            const errorResult = await fetch(`${API_URL}/api/scrape-result/${jobId}`).catch(() => null)
+            const errorResult = await fetch(`${API_URL}/api/scrape-result/${jobId}`).catch(
+              () => null
+            )
             const errMsg = errorResult?.ok ? (await errorResult.json()).error : "Scraping failed"
             toast.error(errMsg)
             setFetchElapsed((finalElapsed) => {
@@ -236,7 +242,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
         }
       }, 500)
     },
-    [effectiveService],
+    [effectiveService]
   )
 
   // On mount: if we have an initialJobId, start polling immediately
@@ -670,7 +676,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
     }
     indivCancelRequestedRef.current = false
     setIsDownloadingIndividually(true)
-    toast.loading(`Downloading ${selectedDownloadTracks.length} tracks individually...`, { id: "indiv-download" })
+    toast.loading(`Downloading ${selectedDownloadTracks.length} tracks individually...`, {
+      id: "indiv-download",
+    })
     for (const track of selectedDownloadTracks) {
       if (indivCancelRequestedRef.current) break
       if (selectedTrackIds.includes(track.id)) {
@@ -715,7 +723,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
         } catch (err: any) {
           if (err.name === "AbortError" || trackCancelRequestedRef.current.has(track.id)) {
             fetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
-        toast(`Cancelled: ${track.title}`, { icon: <X className="h-4 w-4 text-zinc-400" /> })
+            toast(`Cancelled: ${track.title}`, { icon: <X className="h-4 w-4 text-zinc-400" /> })
             setTrackProgress((prev) => {
               const newState = { ...prev }
               delete newState[track.id]
@@ -929,7 +937,8 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       return
     }
 
-    const progressJobId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const progressJobId =
+      crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
     setIsProcessing(true)
     setFetchedService(effectiveService)
@@ -951,7 +960,11 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       const startRes = await fetch(`${API_URL}/api/scrape-playlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistUrl: playlistLink, service: effectiveService, progressJobId }),
+        body: JSON.stringify({
+          playlistUrl: playlistLink,
+          service: effectiveService,
+          progressJobId,
+        }),
       })
       if (!startRes.ok) throw new Error("Failed to start scrape")
     } catch (error) {
@@ -1055,83 +1068,95 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                 Backend: Offline
               </span>
             )}
-          <div className="group relative">
-            <button
-              type="button"
-              className="flex cursor-default items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100"
-              aria-label="Version information"
-            >
-              v2.2.0
-            </button>
-            <div className="pointer-events-none absolute right-0 top-full z-40 mt-3 w-[min(22rem,calc(100vw-1.5rem))] translate-y-1 rounded-2xl border border-[var(--clr-borderLight)] bg-[#020604]/40 p-4 text-sm text-zinc-200 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
-              <div className="space-y-3">
-                <div>
-                  <p className="text-[var(--clr-primaryTextMuted)]/90 text-xs font-semibold uppercase tracking-[0.2em]">
-                    Version Roadmap
-                  </p>
-                  <div className="mt-2 space-y-3">
-                    <p className="text-sm font-semibold text-zinc-100">To Do</p>
-                    <div>
-                      <p className="font-semibold text-zinc-100">v4.0.0: Spotifull Web Player</p>
-                      <p className="mt-1 text-zinc-300">
-                        Build Spotifull as a web player that can stream and download songs from
-                        Spotify, YouTube and SoundCloud. It works the same as the Android app and
-                        supports the same features, but in your browser.
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-zinc-100">v3.0.0: Spotifull Android App</p>
-                      <p className="mt-1 text-zinc-300">
-                        Build Spotifull as an Android app that can stream and download tracks from
-                        Spotify, YouTube, and SoundCloud, with custom profiles, imported Spotify
-                        profiles, and saved playlist URLs.
-                      </p>
+            <div className="group relative">
+              <button
+                type="button"
+                className="flex cursor-default items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100"
+                aria-label="Version information"
+              >
+                v2.3.0
+              </button>
+              <div className="pointer-events-none absolute right-0 top-full z-40 mt-3 w-[min(22rem,calc(100vw-1.5rem))] translate-y-1 rounded-2xl border border-[var(--clr-borderLight)] bg-[#020604]/40 p-4 text-sm text-zinc-200 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[var(--clr-primaryTextMuted)]/90 text-xs font-semibold uppercase tracking-[0.2em]">
+                      Version Roadmap
+                    </p>
+                    <div className="mt-2 space-y-3">
+                      <p className="text-sm font-semibold text-zinc-100">To Do</p>
+                      <div>
+                        <p className="font-semibold text-zinc-100">v4.0.0: Spotifull Web Player</p>
+                        <p className="mt-1 text-zinc-300">
+                          Build Spotifull as a web player that can stream and download songs from
+                          Spotify, YouTube and SoundCloud. It works the same as the Android app and
+                          supports the same features, but in your browser.
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-zinc-100">v3.0.0: Spotifull Android App</p>
+                        <p className="mt-1 text-zinc-300">
+                          Build Spotifull as an Android app that can stream and download tracks from
+                          Spotify, YouTube, and SoundCloud, with custom profiles, imported Spotify
+                          profiles, and saved playlist URLs.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="h-px bg-white/70" />
-                <div>
-                  <p className="text-sm font-semibold text-zinc-100">History</p>
-                  <div className="mt-2 space-y-3">
-                    <div>
-                      <p className="font-semibold text-zinc-100">v2.2.0: Multi-Source Downloads</p>
-                      <p className="mt-1 text-zinc-300">
-                        Download songs and playlists from Spotify, YouTube, and SoundCloud with
-                        auto-detection and per-service streaming.
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-zinc-100">v2.1.0: YouTube Source Review</p>
-                      <p className="mt-1 text-zinc-300">
-                        Added in-browser track previewing and YouTube URL override per track, so you
-                        can fix wrong matches before downloading.
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-zinc-100">v2.0.0: Updated UI</p>
-                      <p className="mt-1 text-zinc-300">
-                        Refreshed the UI and added song selection and cancellation controls.
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-zinc-100">
-                        v1.0.0: Spotify Playlist Downloads
-                      </p>
-                      <p className="mt-1 text-zinc-300">
-                        Introduced Spotify URL processing for songs and playlists.
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-zinc-100">base: Sunnify Fork</p>
-                      <p className="mt-1 text-zinc-300">
-                        Forked from sunnypattel/sunnify-spotify-downloader.
-                      </p>
+                  <div className="h-px bg-white/70" />
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-100">History</p>
+                    <div className="mt-2 space-y-3">
+                      <div>
+                        <p className="font-semibold text-zinc-100">
+                          v2.3.0: Threading &amp; Proxying
+                        </p>
+                        <p className="mt-1 text-zinc-300">
+                          Added support for multi-threaded downloading and faster fetching. The
+                          application now uses proxying through Cloudflare WARP for reliable YouTube
+                          access and potential YouTube IP-block bypass.
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-zinc-100">
+                          v2.2.0: Multi-Source Downloads
+                        </p>
+                        <p className="mt-1 text-zinc-300">
+                          Download songs and playlists from Spotify, YouTube, and SoundCloud with
+                          auto-detection and per-service streaming.
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-zinc-100">v2.1.0: YouTube Source Review</p>
+                        <p className="mt-1 text-zinc-300">
+                          Added in-browser track previewing and YouTube URL override per track, so
+                          you can fix wrong matches before downloading.
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-zinc-100">v2.0.0: Updated UI</p>
+                        <p className="mt-1 text-zinc-300">
+                          Refreshed the UI and added song selection and cancellation controls.
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-zinc-100">
+                          v1.0.0: Spotify Playlist Downloads
+                        </p>
+                        <p className="mt-1 text-zinc-300">
+                          Introduced Spotify URL processing for songs and playlists.
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-zinc-100">base: Sunnify Fork</p>
+                        <p className="mt-1 text-zinc-300">
+                          Forked from sunnypattel/sunnify-spotify-downloader.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
           </div>
         </div>
         <div
@@ -1350,12 +1375,14 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                   </div>
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                     <button
-                      onClick={isDownloadingIndividually ? cancelIndivDownloads : downloadAllIndividually}
+                      onClick={
+                        isDownloadingIndividually ? cancelIndivDownloads : downloadAllIndividually
+                      }
                       disabled={!isDownloadingIndividually && selectedDownloadTracks.length === 0}
                       className={`flex w-full items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold transition-all duration-300 hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100 sm:w-auto ${
                         isDownloadingIndividually
                           ? "border-red-900/70 bg-red-950/70 text-red-200 shadow-[0_0_20px_rgba(127,29,29,0.2)] hover:border-red-700/80 hover:bg-red-900/80"
-                          : "border-[var(--clr-borderLight)] bg-[var(--clr-primaryBgLight)]/70 text-[var(--clr-primaryTextLight)] shadow-[0_0_20px_var(--clr-shadowRgba)] hover:border-[var(--clr-primaryDark)] hover:bg-[var(--clr-primaryBg)]/80"
+                          : "bg-[var(--clr-primaryBgLight)]/70 hover:bg-[var(--clr-primaryBg)]/80 border-[var(--clr-borderLight)] text-[var(--clr-primaryTextLight)] shadow-[0_0_20px_var(--clr-shadowRgba)] hover:border-[var(--clr-primaryDark)]"
                       }`}
                     >
                       {isDownloadingIndividually ? (
