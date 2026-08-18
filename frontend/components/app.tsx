@@ -34,6 +34,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
   const [playlistLink, setPlaylistLink] = useState("")
 
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null)
+  const [warpConnected, setWarpConnected] = useState<boolean | null>(null)
 
   useEffect(() => {
     setPlaylistLink("")
@@ -69,7 +70,28 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       }
     }
 
+    const checkWarp = async () => {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 4000)
+        const res = await fetch(`${API_URL}/api/warp-status`, { signal: controller.signal })
+        clearTimeout(timeoutId)
+        if (res.ok) {
+          const data = await res.json()
+          setWarpConnected(data.connected)
+        } else {
+          setWarpConnected(false)
+        }
+      } catch {
+        setWarpConnected(false)
+      }
+    }
+
     checkHealth()
+    checkWarp()
+
+    const warpInterval = setInterval(checkWarp, 30000)
+    return () => clearInterval(warpInterval)
   }, [])
 
   const [downloadProgress, setDownloadProgress] = useState(0)
@@ -1066,6 +1088,22 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
               <span className="flex cursor-default items-center gap-1.5 rounded-full border border-red-900/75 bg-red-950/50 px-2.5 py-1 text-[10px] font-medium text-red-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-red-900/80 hover:text-red-100">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
                 Backend: Offline
+              </span>
+            )}
+            {warpConnected === null ? (
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-[var(--clr-border)] bg-zinc-950/70 px-2.5 py-1 text-[10px] font-medium text-zinc-400 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-zinc-800/80 hover:text-zinc-200">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-500" />
+                WARP Proxy: Connecting
+              </span>
+            ) : warpConnected ? (
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-violet-900/75 bg-violet-950/50 px-2.5 py-1 text-[10px] font-medium text-violet-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-violet-900/80 hover:text-violet-100">
+                <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                WARP Proxy: Connected
+              </span>
+            ) : (
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-zinc-700/75 bg-zinc-800/50 px-2.5 py-1 text-[10px] font-medium text-zinc-400 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-zinc-700/80 hover:text-zinc-200">
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+                WARP Proxy: Disconnected
               </span>
             )}
             <div className="group relative">
