@@ -18,6 +18,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +35,12 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _syncSpotifyPlaylists(AuthProvider auth, PlaylistProvider playlistProv) async {
     final profileUrl = auth.user!.spotifyProfileUrl;
     if (profileUrl.isEmpty) return;
@@ -43,8 +51,11 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final p in playlists) {
       final playlistId = p['id'] as String;
       final playlistUrl = 'https://open.spotify.com/playlist/$playlistId';
+      final remoteTrackCount = p['trackCount'] as int? ?? 0;
+      final remoteName = p['name'] as String? ?? '';
 
-      if (!playlistProv.hasPlaylistWithUrl(playlistUrl)) {
+      final existing = playlistProv.getPlaylistByUrl(playlistUrl);
+      if (existing == null) {
         final scraped = await ApiService.scrapePlaylist(playlistUrl);
         if (scraped != null) {
           final enriched = PlaylistModel(
@@ -57,8 +68,27 @@ class _HomeScreenState extends State<HomeScreen> {
             source: 'spotify',
             spotifyUrl: playlistUrl,
             isUsersOwn: true,
+            lastTrackSync: DateTime.now(),
           );
           await playlistProv.savePlaylist(auth.user!.uid, enriched);
+        }
+      } else {
+        // Detect if playlist changed on Spotify (track count, name, or empty)
+        final bool changed = (remoteTrackCount > 0 && existing.tracks.length != remoteTrackCount) ||
+            (remoteName.isNotEmpty && existing.name != remoteName) ||
+            existing.tracks.isEmpty;
+
+        if (changed) {
+          final scraped = await ApiService.scrapePlaylist(playlistUrl);
+          if (scraped != null && scraped.tracks.isNotEmpty) {
+            existing.name = scraped.name;
+            existing.tracks = scraped.tracks;
+            if (scraped.tracks.isNotEmpty) {
+              existing.coverUrl = scraped.tracks.first.cover;
+            }
+            existing.lastTrackSync = DateTime.now();
+            await playlistProv.updatePlaylist(auth.user!.uid, existing);
+          }
         }
       }
     }
@@ -206,20 +236,41 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _playlistList(PlaylistProvider prov) {
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 80),
-      itemCount: prov.playlists.length,
-      itemBuilder: (_, i) {
-        final p = prov.playlists[i];
-        return PlaylistCard(
-          playlist: p,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PlaylistDetailScreen(playlist: p),
-            ),
-          ),
-          onDelete: () async {
+    final auth = context.read<AuthProvider>();
+    return RefreshIndicator(
+      onRefresh: () async {
+        if (auth.user != null) {
+          await prov.loadPlaylists(auth.user!.uid, forceRefresh: true);
+          if (auth.user!.spotifyProfileUrl.isNotEmpty) {
+            await _syncSpotifyPlaylists(auth, prov);
+          }
+        }
+      },
+      color: const Color(0xFF10b981),
+      backgroundColor: const Color(0xFF0f1d17),
+      child: RawScrollbar(
+        controller: _scrollController,
+        thumbVisibility: true,
+        trackVisibility: false,
+        thickness: 4,
+        radius: const Radius.circular(8),
+        thumbColor: const Color(0xFF10b981).withValues(alpha: 0.5),
+        child: ListView.builder(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 80),
+          itemCount: prov.playlists.length,
+          itemBuilder: (_, i) {
+            final p = prov.playlists[i];
+            return PlaylistCard(
+              playlist: p,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PlaylistDetailScreen(playlist: p),
+                ),
+              ),
+              onDelete: () async {
                 final confirmed = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
@@ -246,9 +297,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   await prov.deletePlaylist(p.creatorUid, p.id);
                 }
               },
-          showDelete: true,
-        );
-      },
+              showDelete: true,
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -326,23 +379,14 @@ class _ImportSheetState extends State<_ImportSheet> {
             child: ElevatedButton(
               onPressed: _loading
                   ? null
-                    : () async {
+                  : () async {
                       final url = _urlController.text.trim();
                       if (url.isEmpty) return;
                       setState(() => _loading = true);
                       final auth = context.read<AuthProvider>();
                       final prov = context.read<PlaylistProvider>();
 
-                      if (prov.hasPlaylistWithUrl(url)) {
-                        if (!context.mounted) return;
-                        setState(() => _loading = false);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Playlist already in your library'),
-                          ),
-                        );
-                        return;
-                      }
+                      final existing = prov.getPlaylistByUrl(url);
 
                       final playlist = await prov.importFromUrl(
                         url,
@@ -352,9 +396,35 @@ class _ImportSheetState extends State<_ImportSheet> {
                       if (!context.mounted) return;
                       setState(() => _loading = false);
                       if (playlist != null) {
-                        await prov.savePlaylist(auth.user!.uid, playlist);
-                        if (!context.mounted) return;
-                        Navigator.pop(context);
+                        if (existing != null) {
+                          final bool hadChanges = existing.tracks.length != playlist.tracks.length ||
+                              existing.name != playlist.name;
+                          existing.name = playlist.name;
+                          existing.tracks = playlist.tracks;
+                          if (playlist.tracks.isNotEmpty) {
+                            existing.coverUrl = playlist.tracks.first.cover;
+                          }
+                          existing.lastTrackSync = DateTime.now();
+                          await prov.updatePlaylist(auth.user!.uid, existing);
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(hadChanges
+                                  ? 'Playlist updated (${playlist.tracks.length} tracks)'
+                                  : 'Playlist is already up to date (${playlist.tracks.length} tracks)'),
+                            ),
+                          );
+                        } else {
+                          await prov.savePlaylist(auth.user!.uid, playlist);
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Imported "${playlist.name}" (${playlist.tracks.length} tracks)'),
+                            ),
+                          );
+                        }
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(

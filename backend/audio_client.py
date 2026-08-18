@@ -174,6 +174,8 @@ class SpotifyEmbedAPI:
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "accept-language": "en-US,en;q=0.9",
             "user-agent": _DEFAULT_USER_AGENT,
+            "cache-control": "no-cache, no-store, must-revalidate",
+            "pragma": "no-cache",
         }
 
     @retry_on_network_error(max_attempts=3, backoff_factor=1.0)
@@ -343,7 +345,12 @@ class SpotifyEmbedAPI:
 
         try:
             spclient_url = self._SPCLIENT_URL.format(playlist_id=playlist_id)
-            headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+            }
             resp = self._session.get(spclient_url, headers=headers, timeout=30)
 
             if resp.status_code != 200:

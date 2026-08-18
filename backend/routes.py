@@ -10,6 +10,8 @@ import uuid
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import subprocess
+
 from flask import Blueprint, jsonify, request, send_file, after_this_request
 
 from audio_client import (
@@ -23,6 +25,14 @@ from config import progress_store, scrape_job_progress, scrape_job_results, CANC
 from utils import get_yt_info, get_playlist_client, download_track_logic, detect_url_service, scrape_external_data, extract_info, open_audio_stream
 
 routes = Blueprint("routes", __name__)
+
+
+@routes.after_request
+def add_no_cache_headers(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @routes.route("/api/scrape-playlist", methods=["POST"])
@@ -516,6 +526,22 @@ def health_check():
     response = jsonify({"online": True})
     print("[Health Check] Responding to health check: online=True", flush=True)
     return response
+
+
+@routes.route("/api/warp-status")
+def warp_status():
+    try:
+        result = subprocess.run(
+            ["warp-cli", "status"],
+            capture_output=True, text=True, timeout=3,
+        )
+        output = result.stdout.lower()
+        connected = "connected" in output
+        return jsonify({"connected": connected, "raw": result.stdout.strip()})
+    except FileNotFoundError:
+        return jsonify({"connected": False, "raw": "warp-cli not found"})
+    except Exception as e:
+        return jsonify({"connected": False, "raw": str(e)})
 
 
 @routes.route("/api/scrape-user-playlists", methods=["POST"])
