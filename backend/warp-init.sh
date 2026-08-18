@@ -16,26 +16,21 @@ for i in {1..15}; do
     sleep 1
 done
 
-# Register if not already registered
-STATUS=$(warp-cli status 2>&1 || true)
-if echo "$STATUS" | grep -q "Registration missing"; then
-    echo "[WARP] Registering device..."
-    warp-cli registration new
-    echo "[WARP] Accepting terms..."
-    warp-cli registration accept
-fi
+# Register (no-op if already registered)
+echo "[WARP] Registering device..."
+warp-cli registration new --accept-tos || true
 
 # Configure proxy mode on port 4000
 echo "[WARP] Enabling proxy mode on port 4000..."
-warp-cli mode proxy
-warp-cli proxy port 4000
-warp-cli connect
+warp-cli mode proxy --accept-tos || true
+warp-cli proxy port 4000 --accept-tos || true
+warp-cli connect --accept-tos || true
 
 # Wait for connection
 echo "[WARP] Waiting for WARP connection..."
 for i in {1..30}; do
     STATUS=$(warp-cli status 2>&1 || true)
-    if echo "$STATUS" | grep -q "Connected"; then
+    if echo "$STATUS" | grep -qi "connected"; then
         echo "[WARP] Connected! Proxy available at 127.0.0.1:4000"
         break
     fi
@@ -44,7 +39,7 @@ done
 
 # Verify proxy is working
 STATUS=$(warp-cli status 2>&1 || true)
-if ! echo "$STATUS" | grep -q "Connected"; then
+if ! echo "$STATUS" | grep -qi "connected"; then
     echo "[WARP] WARNING: WARP may not be fully connected. Continuing anyway..."
 fi
 
