@@ -1180,8 +1180,8 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                 WARP Proxy: Connecting
               </span>
             ) : warpConnected ? (
-              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-violet-900/75 bg-violet-950/50 px-2.5 py-1 text-[10px] font-medium text-violet-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-violet-900/80 hover:text-violet-100">
-                <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+              <span className="flex cursor-default items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 WARP Proxy: Connected
               </span>
             ) : (

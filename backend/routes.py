@@ -530,18 +530,15 @@ def health_check():
 
 @routes.route("/api/warp-status")
 def warp_status():
+    import socket
     try:
-        result = subprocess.run(
-            ["warp-cli", "status"],
-            capture_output=True, text=True, timeout=3,
-        )
-        output = result.stdout.lower()
-        connected = "connected" in output
-        return jsonify({"connected": connected, "raw": result.stdout.strip()})
-    except FileNotFoundError:
-        return jsonify({"connected": False, "raw": "warp-cli not found"})
-    except Exception as e:
-        return jsonify({"connected": False, "raw": str(e)})
+        s = socket.socket()
+        s.settimeout(2)
+        s.connect(("127.0.0.1", 4000))
+        s.close()
+        return jsonify({"connected": True})
+    except Exception:
+        return jsonify({"connected": False})
 
 
 @routes.route("/api/scrape-user-playlists", methods=["POST"])
