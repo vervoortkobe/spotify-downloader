@@ -2,9 +2,9 @@ import 'track_model.dart';
 
 class PlaylistModel {
   final String id;
-  final String name;
+  String name;
   final String owner;
-  final String coverUrl;
+  String coverUrl;
   List<TrackModel> tracks;
   final String source;
   final String spotifyUrl;
