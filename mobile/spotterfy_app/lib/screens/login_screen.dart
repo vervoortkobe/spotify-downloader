@@ -88,6 +88,10 @@ class LoginScreen extends StatelessWidget {
                                 Navigator.pushReplacement(
                                   context, MaterialPageRoute(builder: (_) => const HomeScreen()));
                               }
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Sign-in failed. Check console log for details.')),
+                              );
                             }
                           },
                           style: ElevatedButton.styleFrom(

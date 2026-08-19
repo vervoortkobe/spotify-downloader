@@ -56,8 +56,8 @@ class AuthService {
       }
       return newUser;
     } catch (e) {
-      debugPrint('Sign in failed: $e');
-      return null;
+      debugPrint('Google sign-in failed: $e');
+      rethrow;
     }
   }
 
