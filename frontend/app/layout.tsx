@@ -15,7 +15,7 @@ const geistMono = localFont({
 })
 
 export const metadata: Metadata = {
-  title: "Spotifull Playlist Downloader",
+  title: "Spotterfy Playlist Downloader",
   description: "Download playlists and tracks from Spotify, YouTube, and SoundCloud.",
   openGraph: {
     images: [

@@ -1196,7 +1196,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                 className="flex cursor-default items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100"
                 aria-label="Version information"
               >
-                v2.3.0
+                v3.0.0
               </button>
               <div className="pointer-events-none absolute right-0 top-full z-40 mt-3 w-[min(22rem,calc(100vw-1.5rem))] translate-y-1 rounded-2xl border border-[var(--clr-borderLight)] bg-[#020604]/40 p-4 text-sm text-zinc-200 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
                 <div className="space-y-3">
@@ -1207,17 +1207,17 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                     <div className="mt-2 space-y-3">
                       <p className="text-sm font-semibold text-zinc-100">To Do</p>
                       <div>
-                        <p className="font-semibold text-zinc-100">v4.0.0: Spotifull Web Player</p>
+                        <p className="font-semibold text-zinc-100">v4.0.0: Spotterfy Web Player</p>
                         <p className="mt-1 text-zinc-300">
-                          Build Spotifull as a web player that can stream and download songs from
+                          Build Spotterfy as a web player that can stream and download songs from
                           Spotify, YouTube and SoundCloud. It works the same as the Android app and
                           supports the same features, but in your browser.
                         </p>
                       </div>
                       <div>
-                        <p className="font-semibold text-zinc-100">v3.0.0: Spotifull Android App</p>
+                        <p className="font-semibold text-zinc-100">v3.0.0: Spotterfy Android App</p>
                         <p className="mt-1 text-zinc-300">
-                          Build Spotifull as an Android app that can stream and download tracks from
+                          Build Spotterfy as an Android app that can stream and download tracks from
                           Spotify, YouTube, and SoundCloud, with custom profiles, imported Spotify
                           profiles, and saved playlist URLs.
                         </p>
@@ -1287,7 +1287,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           <div className="mb-8 space-y-4 text-center md:mb-10">
             <div className="mb-2 inline-flex cursor-default items-center gap-2 rounded-full border border-emerald-900/70 bg-emerald-950/70 px-3 py-1 text-xs font-medium text-emerald-200 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100">
               <Sparkles className="h-3 w-3 text-emerald-400" />
-              <span>Spotifull Playlist Downloader</span>
+              <span>Spotterfy Playlist Downloader</span>
             </div>
             <h1 className="pb-2 text-3xl font-bold leading-[1.1] tracking-tighter text-zinc-100 md:text-6xl md:leading-tight">
               Download any playlist.
