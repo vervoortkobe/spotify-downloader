@@ -1,3 +1,5 @@
+rootProject.name = "spotterfy_android"
+
 pluginManagement {
     val flutterSdkPath =
         run {

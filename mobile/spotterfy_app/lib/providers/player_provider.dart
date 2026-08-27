@@ -73,11 +73,25 @@ class PlayerProvider extends ChangeNotifier {
     _currentTrack = track;
     notifyListeners();
 
-    final source = track.sourceUrl.isNotEmpty
+    final primary = track.sourceUrl.isNotEmpty
         ? ApiService.streamTrackUrl(track.sourceUrl)
         : null;
-    if (source != null) {
-      await _player.play(UrlSource(source));
+    final fallback = ApiService.streamTrackUrl('ytsearch1:${track.title} ${track.artists} audio');
+    try {
+      if (primary != null) {
+        await _player.play(UrlSource(primary));
+      } else {
+        await _player.play(UrlSource(fallback));
+      }
+    } catch (e) {
+      debugPrint('primary stream failed: $e, trying fallback');
+      try {
+        if (primary != null) {
+          await _player.play(UrlSource(fallback));
+        }
+      } catch (e2) {
+        debugPrint('fallback stream also failed: $e2');
+      }
     }
   }
 

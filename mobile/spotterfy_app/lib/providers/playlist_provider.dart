@@ -21,23 +21,36 @@ class PlaylistProvider extends ChangeNotifier {
   String? get error => _error;
 
   Future<void> loadPlaylists(String uid, {bool forceRefresh = false}) async {
+    List<PlaylistModel> cached = [];
     if (!forceRefresh) {
       try {
         await _loadCachedPlaylists();
+        cached = _playlists;
         if (_playlists.isNotEmpty) {
           notifyListeners(); // Show cache immediately
         }
       } catch (_) {}
     }
 
-    _isLoading = _playlists.isEmpty;
+    _isLoading = cached.isEmpty;
     notifyListeners();
     try {
       final remotePlaylists = await _playlistService.getUserPlaylists(uid);
-      final remoteShared = await _playlistService.getSharedPlaylists(uid);
-      _playlists = remotePlaylists;
-      _sharedPlaylists = remoteShared;
+      // Merge: prefer remote, but keep locally-cached playlists that were
+      // never synced to the cloud (e.g. import while offline / permission denied).
+      final merged = <PlaylistModel>[...remotePlaylists];
+      final remoteIds = remotePlaylists.map((p) => p.id).toSet();
+      for (final c in cached) {
+        if (!remoteIds.contains(c.id)) merged.add(c);
+      }
+      _playlists = merged;
       _error = null;
+      try {
+        _sharedPlaylists = await _playlistService.getSharedPlaylists(uid);
+      } catch (e) {
+        debugPrint('getSharedPlaylists failed (non-fatal): $e');
+        _sharedPlaylists = [];
+      }
       await _saveCachedPlaylists();
     } catch (e) {
       if (_playlists.isEmpty) {
@@ -50,54 +63,34 @@ class PlaylistProvider extends ChangeNotifier {
 
   Future<void> _saveCachedPlaylists() async {
     final prefs = await SharedPreferences.getInstance();
-    final data = _playlists.map((p) => {
-      'id': p.id,
-      'name': p.name,
-      'owner': p.owner,
-      'coverUrl': p.coverUrl,
-      'source': p.source,
-      'spotifyUrl': p.spotifyUrl,
-      'creatorUid': p.creatorUid,
-      'isCustom': p.isCustom,
-      'isUsersOwn': p.isUsersOwn,
-      'trackCount': p.tracks.length,
-    }).toList();
-    await prefs.setString('cached_playlists_v2', jsonEncode(data));
+    final data = _playlists.map((p) => p.toCache()).toList();
+    await prefs.setString('cached_playlists_v3', jsonEncode(data));
   }
 
   Future<void> _loadCachedPlaylists() async {
     final prefs = await SharedPreferences.getInstance();
-    // Clear stale cache from old doc() scheme
+    // Clear stale cache from old schemes that didn't store tracks
     await prefs.remove('cached_playlists');
-    final cached = prefs.getString('cached_playlists_v2');
+    await prefs.remove('cached_playlists_v2');
+    final cached = prefs.getString('cached_playlists_v3');
     if (cached == null) return;
     final data = jsonDecode(cached) as List<dynamic>;
-    _playlists = data.map((d) {
-      final m = d as Map<String, dynamic>;
-      final id = m['id'] as String? ?? '';
-      return PlaylistModel(
-        id: id,
-        name: m['name'] as String? ?? '',
-        owner: m['owner'] as String? ?? '',
-        coverUrl: m['coverUrl'] as String? ?? '',
-        source: m['source'] as String? ?? 'spotify',
-        spotifyUrl: m['spotifyUrl'] as String? ?? '',
-        creatorUid: m['creatorUid'] as String? ?? '',
-        isCustom: m['isCustom'] as bool? ?? false,
-        isUsersOwn: m['isUsersOwn'] as bool? ?? false,
-      );
-    }).toList();
+    _playlists = data
+        .map((d) => PlaylistModel.fromCache(d as Map<String, dynamic>))
+        .toList();
     _playlists.removeWhere((p) => p.id.isEmpty);
   }
 
   bool hasPlaylistWithUrl(String spotifyUrl) {
-    return _playlists.any((p) => p.spotifyUrl == spotifyUrl || p.id == spotifyUrl);
+    final clean = spotifyUrl.split('?').first;
+    return _playlists.any((p) => p.spotifyUrl == clean || p.spotifyUrl == spotifyUrl || p.id == clean || p.id == spotifyUrl || p.id == clean.hashCode.toString());
   }
 
   PlaylistModel? getPlaylistByUrl(String spotifyUrl) {
+    final clean = spotifyUrl.split('?').first;
     try {
       return _playlists.firstWhere(
-        (p) => p.spotifyUrl == spotifyUrl || p.id == spotifyUrl,
+        (p) => p.spotifyUrl == clean || p.spotifyUrl == spotifyUrl || p.id == clean || p.id == spotifyUrl || p.id == clean.hashCode.toString(),
       );
     } catch (_) {
       return null;
@@ -105,6 +98,7 @@ class PlaylistProvider extends ChangeNotifier {
   }
 
   Future<PlaylistModel?> importFromUrl(String url, {String service = 'auto', String? creatorUid}) async {
+    debugPrint('importFromUrl: starting scrape for $url');
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -112,16 +106,19 @@ class PlaylistProvider extends ChangeNotifier {
       final playlist = await ApiService.scrapePlaylist(url, service: service);
       if (playlist == null) {
         _error = 'Failed to fetch playlist';
+        debugPrint('importFromUrl: scrape returned null');
         _isLoading = false;
         notifyListeners();
         return null;
       }
+      debugPrint('importFromUrl: scrape succeeded, playlist=${playlist.name}, tracks=${playlist.tracks.length}');
       _currentPlaylist = playlist;
       _isLoading = false;
       notifyListeners();
       return playlist;
     } catch (e) {
       _error = 'Error: $e';
+      debugPrint('importFromUrl: exception: $e');
       _isLoading = false;
       notifyListeners();
       return null;
@@ -129,26 +126,51 @@ class PlaylistProvider extends ChangeNotifier {
   }
 
   Future<void> savePlaylist(String uid, PlaylistModel playlist) async {
-    await _playlistService.savePlaylist(uid, playlist);
+    debugPrint('savePlaylist called: uid=$uid, playlist.id=${playlist.id}, playlist.name=${playlist.name}, tracks=${playlist.tracks.length}');
+    // Optimistically add locally so it appears in the app immediately / offline.
     final idx = _playlists.indexWhere((p) => p.id == playlist.id);
     if (idx >= 0) {
       _playlists[idx] = playlist;
+      debugPrint('savePlaylist: updated existing at index $idx');
     } else {
       _playlists.insert(0, playlist);
+      debugPrint('savePlaylist: inserted new at index 0, total playlists=${_playlists.length}');
     }
+    _currentPlaylist = playlist;
+    _error = null;
     await _saveCachedPlaylists();
+    debugPrint('savePlaylist: cache saved, notifying listeners');
     notifyListeners();
+    try {
+      debugPrint('savePlaylist: attempting cloud write...');
+      await _playlistService.savePlaylist(uid, playlist);
+      debugPrint('savePlaylist: cloud write succeeded');
+      await _saveCachedPlaylists();
+    } catch (e) {
+      _error = 'Saved locally only. Cloud sync failed: $e';
+      debugPrint('savePlaylist remote error: $e');
+    }
+    notifyListeners();
+    debugPrint('savePlaylist: done');
   }
 
   Future<void> updatePlaylist(String uid, PlaylistModel playlist) async {
-    await _playlistService.savePlaylist(uid, playlist);
     final idx = _playlists.indexWhere((p) => p.id == playlist.id);
     if (idx >= 0) {
       _playlists[idx] = playlist;
     } else {
       _playlists.insert(0, playlist);
     }
+    _currentPlaylist = playlist;
     await _saveCachedPlaylists();
+    notifyListeners();
+    try {
+      await _playlistService.savePlaylist(uid, playlist);
+      await _saveCachedPlaylists();
+    } catch (e) {
+      _error = 'Saved locally only. Cloud sync failed: $e';
+      debugPrint('updatePlaylist remote error: $e');
+    }
     notifyListeners();
   }
 

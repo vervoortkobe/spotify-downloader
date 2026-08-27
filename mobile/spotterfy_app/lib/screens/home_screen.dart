@@ -19,6 +19,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -182,17 +183,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () => playlistProv.loadPlaylists(auth.user!.uid),
-        child: playlistProv.isLoading
-            ? Center(
-                child: CircularProgressIndicator(
-                  color: const Color(0xFF10b981),
-                ),
-              )
-            : playlistProv.playlists.isEmpty
-            ? _emptyState()
-            : _playlistList(playlistProv),
+      body: Column(
+        children: [
+          _header(auth, playlistProv),
+          Expanded(
+            child: playlistProv.isLoading
+                ? _loadingView()
+                : RefreshIndicator(
+                    onRefresh: () => _onRefresh(auth, playlistProv),
+                    color: const Color(0xFF10b981),
+                    backgroundColor: const Color(0xFF0f1d17),
+                    child: _listView(auth, playlistProv),
+                  ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _importPlaylist,
@@ -202,20 +206,97 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _emptyState() {
+  Widget _header(AuthProvider auth, PlaylistProvider prov) {
+    final name = auth.user?.displayName.isNotEmpty == true
+        ? auth.user!.displayName.split(' ').first
+        : null;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name != null ? 'Hi, $name' : 'Your Library',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            prov.isLoading
+                ? 'Loading your playlists…'
+                : '${prov.playlists.length} playlist${prov.playlists.length == 1 ? '' : 's'}',
+            style: const TextStyle(color: Color(0xFFa1a1aa), fontSize: 13),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            onChanged: (v) => setState(() => _searchQuery = v),
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Search your playlists',
+              hintStyle: const TextStyle(color: Color(0xFFa1a1aa)),
+              filled: true,
+              fillColor: const Color(0xFF0a1410),
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF10b981)),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, color: Color(0xFFa1a1aa)),
+                      onPressed: () => setState(() => _searchQuery = ''),
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF1a3a2a)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF1a3a2a)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF10b981)),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _loadingView() {
+    return Center(
+      child: CircularProgressIndicator(
+        color: const Color(0xFF10b981),
+      ),
+    );
+  }
+
+  List<PlaylistModel> _filtered(PlaylistProvider prov) {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return prov.playlists;
+    return prov.playlists
+        .where((p) => p.name.toLowerCase().contains(q))
+        .toList();
+  }
+
+  Widget _emptyState(PlaylistProvider prov) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const Icon(
               Icons.library_music_outlined,
-              color: const Color(0xFFa1a1aa),
+              color: Color(0xFFa1a1aa),
               size: 64,
             ),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'No playlists yet',
               style: TextStyle(
                 color: Colors.white,
@@ -224,10 +305,24 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Tap + to import a Spotify, YouTube, or SoundCloud playlist',
-              style: TextStyle(color: const Color(0xFFa1a1aa), fontSize: 14),
+              style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 14),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _importPlaylist,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('Import Playlist',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10b981),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
             ),
           ],
         ),
@@ -235,74 +330,118 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _playlistList(PlaylistProvider prov) {
-    final auth = context.read<AuthProvider>();
-    return RefreshIndicator(
-      onRefresh: () async {
-        if (auth.user != null) {
-          await prov.loadPlaylists(auth.user!.uid, forceRefresh: true);
-          if (auth.user!.spotifyProfileUrl.isNotEmpty) {
-            await _syncSpotifyPlaylists(auth, prov);
-          }
-        }
-      },
-      color: const Color(0xFF10b981),
-      backgroundColor: const Color(0xFF0f1d17),
-      child: RawScrollbar(
-        controller: _scrollController,
-        thumbVisibility: true,
-        trackVisibility: false,
-        thickness: 4,
-        radius: const Radius.circular(8),
-        thumbColor: const Color(0xFF10b981).withValues(alpha: 0.5),
-        child: ListView.builder(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 80),
-          itemCount: prov.playlists.length,
-          itemBuilder: (_, i) {
-            final p = prov.playlists[i];
-            return PlaylistCard(
-              playlist: p,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => PlaylistDetailScreen(playlist: p),
-                ),
+  Widget _noResults() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.search_off, color: Color(0xFFa1a1aa), size: 56),
+            const SizedBox(height: 16),
+            const Text(
+              'No matches',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
               ),
-              onDelete: () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    backgroundColor: const Color(0xFF0f1d17),
-                    title: const Text('Delete Playlist',
-                        style: TextStyle(color: Colors.white)),
-                    content: Text('Delete "${p.name}"?',
-                        style: TextStyle(color: const Color(0xFFa1a1aa))),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancel',
-                            style: TextStyle(color: Color(0xFFa1a1aa))),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Delete',
-                            style: TextStyle(color: Color(0xFFef4444))),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirmed == true && context.mounted) {
-                  await prov.deletePlaylist(p.creatorUid, p.id);
-                }
-              },
-              showDelete: true,
-            );
-          },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'No playlists match "$_searchQuery"',
+              style: const TextStyle(color: Color(0xFFa1a1aa), fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => setState(() => _searchQuery = ''),
+              child: const Text('Clear search',
+                  style: TextStyle(color: Color(0xFF10b981))),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  Widget _listView(AuthProvider auth, PlaylistProvider prov) {
+    final filtered = _filtered(prov);
+    if (prov.playlists.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [_emptyState(prov)],
+      );
+    }
+    if (filtered.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [_noResults()],
+      );
+    }
+    return RawScrollbar(
+      controller: _scrollController,
+      thumbVisibility: true,
+      trackVisibility: false,
+      thickness: 4,
+      radius: const Radius.circular(8),
+      thumbColor: const Color(0xFF10b981).withValues(alpha: 0.5),
+      child: ListView.builder(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 80),
+        itemCount: filtered.length,
+        itemBuilder: (_, i) {
+          final p = filtered[i];
+          return PlaylistCard(
+            playlist: p,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PlaylistDetailScreen(playlist: p),
+              ),
+            ),
+            onDelete: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF0f1d17),
+                  title: const Text('Delete Playlist',
+                      style: TextStyle(color: Colors.white)),
+                  content: Text('Delete "${p.name}"?',
+                      style: TextStyle(color: const Color(0xFFa1a1aa))),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel',
+                          style: TextStyle(color: Color(0xFFa1a1aa))),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Delete',
+                          style: TextStyle(color: Color(0xFFef4444))),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true && context.mounted) {
+                await prov.deletePlaylist(p.creatorUid, p.id);
+              }
+            },
+            showDelete: true,
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _onRefresh(AuthProvider auth, PlaylistProvider prov) async {
+    if (auth.user != null) {
+      await prov.loadPlaylists(auth.user!.uid, forceRefresh: true);
+      if (auth.user!.spotifyProfileUrl.isNotEmpty && mounted) {
+        await _syncSpotifyPlaylists(auth, prov);
+      }
+    }
   }
 }
 
@@ -379,60 +518,71 @@ class _ImportSheetState extends State<_ImportSheet> {
             child: ElevatedButton(
               onPressed: _loading
                   ? null
-                  : () async {
-                      final url = _urlController.text.trim();
-                      if (url.isEmpty) return;
-                      setState(() => _loading = true);
-                      final auth = context.read<AuthProvider>();
-                      final prov = context.read<PlaylistProvider>();
+: () async {
+                       final url = _urlController.text.trim();
+                       if (url.isEmpty) return;
+                       setState(() => _loading = true);
+                       final auth = context.read<AuthProvider>();
+                       final prov = context.read<PlaylistProvider>();
 
-                      final existing = prov.getPlaylistByUrl(url);
+                       final existing = prov.getPlaylistByUrl(url);
+                       debugPrint('Import: existing playlist = ${existing?.name ?? "none"}');
 
-                      final playlist = await prov.importFromUrl(
-                        url,
-                        service: _service,
-                        creatorUid: auth.user?.uid,
-                      );
-                      if (!context.mounted) return;
-                      setState(() => _loading = false);
-                      if (playlist != null) {
-                        if (existing != null) {
-                          final bool hadChanges = existing.tracks.length != playlist.tracks.length ||
-                              existing.name != playlist.name;
-                          existing.name = playlist.name;
-                          existing.tracks = playlist.tracks;
-                          if (playlist.tracks.isNotEmpty) {
-                            existing.coverUrl = playlist.tracks.first.cover;
+                       final playlist = await prov.importFromUrl(
+                         url,
+                         service: _service,
+                         creatorUid: auth.user?.uid,
+                       );
+                       if (!context.mounted) return;
+                       setState(() => _loading = false);
+                        if (playlist != null) {
+                          final messenger = ScaffoldMessenger.of(context);
+                          try {
+                            if (existing != null) {
+                              final bool hadChanges = existing.tracks.length != playlist.tracks.length ||
+                                  existing.name != playlist.name;
+                              existing.name = playlist.name;
+                              existing.tracks = playlist.tracks;
+                              if (playlist.tracks.isNotEmpty) {
+                                existing.coverUrl = playlist.tracks.first.cover;
+                              }
+                              existing.lastTrackSync = DateTime.now();
+                              await prov.updatePlaylist(auth.user!.uid, existing);
+                              if (!context.mounted) return;
+                              Navigator.pop(context);
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(hadChanges
+                                      ? 'Playlist updated (${playlist.tracks.length} tracks)'
+                                      : 'Playlist is already up to date (${playlist.tracks.length} tracks)'),
+                                ),
+                              );
+                            } else {
+                              debugPrint('Import: calling savePlaylist for new playlist');
+                              await prov.savePlaylist(auth.user!.uid, playlist);
+                              debugPrint('Import: savePlaylist returned');
+                              if (!context.mounted) return;
+                              Navigator.pop(context);
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text('Imported "${playlist.name}" (${playlist.tracks.length} tracks)'),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(content: Text('Import failed: $e')),
+                            );
                           }
-                          existing.lastTrackSync = DateTime.now();
-                          await prov.updatePlaylist(auth.user!.uid, existing);
-                          if (!context.mounted) return;
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(hadChanges
-                                  ? 'Playlist updated (${playlist.tracks.length} tracks)'
-                                  : 'Playlist is already up to date (${playlist.tracks.length} tracks)'),
-                            ),
-                          );
                         } else {
-                          await prov.savePlaylist(auth.user!.uid, playlist);
-                          if (!context.mounted) return;
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Imported "${playlist.name}" (${playlist.tracks.length} tracks)'),
-                            ),
-                          );
-                        }
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(prov.error ?? 'Failed to import'),
-                          ),
-                        );
-                      }
-                    },
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           SnackBar(
+                             content: Text(prov.error ?? 'Failed to import'),
+                           ),
+                         );
+                       }
+                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF10b981),
                 foregroundColor: Colors.white,

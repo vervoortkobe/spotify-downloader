@@ -64,4 +64,46 @@ class PlaylistModel {
     'createdAt': createdAt,
     'lastTrackSync': lastTrackSync,
   };
+
+  Map<String, dynamic> toCache() => {
+    'id': id,
+    'name': name,
+    'owner': owner,
+    'coverUrl': coverUrl,
+    'tracks': tracks.map((t) => t.toJson()).toList(),
+    'source': source,
+    'spotifyUrl': spotifyUrl,
+    'creatorUid': creatorUid,
+    'sharedWith': sharedWith,
+    'isCustom': isCustom,
+    'isUsersOwn': isUsersOwn,
+    'createdAt': createdAt.toIso8601String(),
+    'lastTrackSync': lastTrackSync?.toIso8601String(),
+  };
+
+  factory PlaylistModel.fromCache(Map<String, dynamic> json) => PlaylistModel(
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    owner: json['owner'] as String? ?? '',
+    coverUrl: json['coverUrl'] as String? ?? '',
+    tracks: (json['tracks'] as List<dynamic>?)
+            ?.map((t) => TrackModel.fromJson(t as Map<String, dynamic>))
+            .toList() ??
+        [],
+    source: json['source'] as String? ?? 'spotify',
+    spotifyUrl: json['spotifyUrl'] as String? ?? '',
+    creatorUid: json['creatorUid'] as String? ?? '',
+    sharedWith: (json['sharedWith'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList() ??
+        [],
+    isCustom: json['isCustom'] as bool? ?? false,
+    isUsersOwn: json['isUsersOwn'] as bool? ?? false,
+    createdAt: json['createdAt'] != null
+        ? DateTime.parse(json['createdAt'] as String)
+        : null,
+    lastTrackSync: json['lastTrackSync'] != null
+        ? DateTime.parse(json['lastTrackSync'] as String)
+        : null,
+  );
 }
