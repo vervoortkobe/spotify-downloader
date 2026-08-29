@@ -285,7 +285,7 @@ def resolve_youtube_url():
         return jsonify({"error": str(e)}), 500
 
 
-@routes.route("/api/stream", methods=["GET"])
+@routes.route("/api/stream", methods=["GET", "HEAD"])
 def stream_track_get():
     source_url = request.args.get("source_url", "").strip()
     range_header = request.headers.get("Range")
@@ -293,12 +293,15 @@ def stream_track_get():
     if not source_url:
         return jsonify({"error": "Provide source_url"}), 400
 
-    print(f"[Stream] GET /api/stream source={source_url[:200]} range={range_header or 'none'}", flush=True)
+    print(f"[Stream] {request.method} /api/stream source={source_url[:200]} range={range_header or 'none'}", flush=True)
 
     resp, err = open_audio_stream(source_url, range_header=range_header)
     if err:
-        print(f"[Stream] GET /api/stream FAILED: {err}", flush=True)
+        print(f"[Stream] {request.method} /api/stream FAILED: {err}", flush=True)
         return jsonify({"error": err}), 404
+    if request.method == "HEAD":
+        resp.direct_passthrough = False
+        resp.set_data(b"")
     return resp
 
 
@@ -522,23 +525,75 @@ def download_job(job_id):
 
 @routes.route("/api/health")
 def health_check():
-    print("[Health Check] Received check request from frontend", flush=True)
-    response = jsonify({"online": True})
-    print("[Health Check] Responding to health check: online=True", flush=True)
+    import socket as _s
+    proxy = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or ""
+    sock_ok = False
+    try:
+        s = _s.socket(); s.settimeout(1); s.connect(("127.0.0.1", 4000)); s.close(); sock_ok = True
+    except Exception:
+        pass
+    import subprocess as _sp
+    cli_ok = False
+    try:
+        r = _sp.run(["warp-cli", "--accept-tos", "status"], capture_output=True, text=True, timeout=2)
+        cli_ok = "connected" in ((r.stdout or "") + (r.stderr or "")).lower()
+        if not cli_ok:
+            r2 = _sp.run(["warp-cli", "status"], capture_output=True, text=True, timeout=2)
+            cli_ok = "connected" in ((r2.stdout or "") + (r2.stderr or "")).lower()
+    except Exception:
+        pass
+    if cli_ok:
+        warp_label = "Connected (tunnel via WARP)" if not (proxy and sock_ok) else "Connected (proxy)"
+    elif proxy and sock_ok:
+        warp_label = "Connected (proxy)"
+    elif proxy and not sock_ok:
+        warp_label = "Degraded"
+    else:
+        warp_label = "Disconnected"
+    connected = cli_ok or bool(proxy and sock_ok)
+    print(f"[Health] Received check - backend online, [WARP Proxy] {warp_label} (cli={'conn' if cli_ok else 'down'} env={'set' if proxy else 'unset'} socket={'ok' if sock_ok else 'down'})", flush=True)
+    response = jsonify({"online": True, "warp": {"connected": connected, "status": warp_label}})
+    print(f"[Health] Responding: online=True warp={warp_label} connected={connected}", flush=True)
     return response
 
 
 @routes.route("/api/warp-status")
 def warp_status():
     import socket
+    import subprocess
+    proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or ""
+    socket_ok = False
     try:
         s = socket.socket()
         s.settimeout(2)
         s.connect(("127.0.0.1", 4000))
         s.close()
-        return jsonify({"connected": True})
+        socket_ok = True
     except Exception:
-        return jsonify({"connected": False})
+        pass
+    cli_text = ""
+    try:
+        r = subprocess.run(["warp-cli", "--accept-tos", "status"], capture_output=True, text=True, timeout=3)
+        cli_text = (r.stdout or "") + (r.stderr or "")
+        if not cli_text.strip():
+            r2 = subprocess.run(["warp-cli", "status"], capture_output=True, text=True, timeout=3)
+            cli_text = (r2.stdout or "") + (r2.stderr or "")
+    except Exception as e:
+        cli_text = str(e)
+    cli_connected = "connected" in cli_text.lower()
+    proxy_works = False
+    if socket_ok:
+        try:
+            prox = {"http": "http://127.0.0.1:4000", "https": "http://127.0.0.1:4000"}
+            pr = requests.get("https://www.cloudflare.com/cdn-cgi/trace", proxies=prox, timeout=5)
+            proxy_works = pr.status_code == 200 and "warp=on" in pr.text.lower()
+            if not proxy_works and pr.status_code == 200:
+                proxy_works = True
+        except Exception:
+            pass
+    connected = cli_connected or (socket_ok and proxy_works) or (socket_ok and bool(proxy_url))
+    print(f"[WARP-Status] socket={socket_ok} cli_connected={cli_connected} proxy_works={proxy_works} env={proxy_url[:30] if proxy_url else 'none'} -> connected={connected} cli={cli_text[:120]!r}", flush=True)
+    return jsonify({"connected": connected, "socket": socket_ok, "cliConnected": cli_connected, "proxyWorks": proxy_works, "envProxy": bool(proxy_url)})
 
 
 @routes.route("/api/scrape-user-playlists", methods=["POST"])

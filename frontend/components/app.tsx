@@ -159,7 +159,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
     refreshApiUrl()
 
     const checkHealth = async () => {
-      console.log(`[Health Check] Polling backend health at ${API_URL}/api/health...`)
+      console.log(`[Health] Polling backend health at ${API_URL}/api/health...`)
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 4000)
@@ -169,18 +169,18 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           const data = await res.json()
           if (data.online) {
             setBackendOnline(true)
-            console.log("[Health Check] Backend is online!")
+            console.log("[Health] Backend is online!")
             return
           }
         }
         setBackendOnline(false)
-        console.log("[Health Check] Backend returned non-OK status or not online.")
+        console.log("[Health] Backend returned non-OK status or not online.")
       } catch (e: any) {
         setBackendOnline(false)
         if (e?.name === "AbortError") {
-          console.warn("[Health Check] Health check request timed out.")
+          console.warn("[Health] Health check request timed out.")
         } else {
-          console.error("[Health Check] Failed to reach backend:", e)
+          console.error("[Health] Failed to reach backend:", e)
         }
       }
     }
@@ -330,7 +330,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
               fetchTimerRef.current = null
             }
             setIsProcessing(false)
-            setStatusMessage("Job not found — start a new search to fetch songs")
+            setStatusMessage("Job not found - start a new search to fetch songs")
             toast.error("This job could not be found. Start a new search to fetch songs.", {
               id: "resume-toast",
             })
@@ -382,7 +382,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
             const errMsg = errorResult?.ok ? (await errorResult.json()).error : "Scraping failed"
             toast.error(errMsg)
             setFetchElapsed((finalElapsed) => {
-              setStatusMessage(`Error — try again (last attempt: ${finalElapsed}s)`)
+              setStatusMessage(`Error - try again (last attempt: ${finalElapsed}s)`)
               return finalElapsed
             })
             setIsProcessing(false)
@@ -396,7 +396,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           console.error("Error:", error)
           toast.error("Failed to resume job")
           setFetchElapsed((finalElapsed) => {
-            setStatusMessage(`Error — try again (last attempt: ${finalElapsed}s)`)
+            setStatusMessage(`Error - try again (last attempt: ${finalElapsed}s)`)
             return finalElapsed
           })
           setIsProcessing(false)
@@ -806,7 +806,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
         trackCancelRequestedRef.current.delete(track.id)
       } else {
         console.error(err)
-        toast.error(err.message || "Download failed — tap Retry to try again")
+        toast.error(err.message || "Download failed - tap Retry to try again")
         setTrackProgress((prev) => ({ ...prev, [track.id]: -1 }))
         setTimeout(() => {
           setTrackProgress((prev) => {
@@ -893,7 +893,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
             trackCancelRequestedRef.current.delete(track.id)
           } else {
             console.error(err)
-            toast.error(`Failed: ${track.title} — tap Retry to try again`)
+            toast.error(`Failed: ${track.title} - tap Retry to try again`)
             setTrackProgress((prev) => ({ ...prev, [track.id]: -1 }))
             setTimeout(() => {
               setTrackProgress((prev) => {
@@ -1019,7 +1019,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           })
           if (!statusRes.ok) {
             toast.error(
-              "This download job is no longer available — please start the download again.",
+              "This download job is no longer available - please start the download again.",
               { id: "download-toast" }
             )
             jobFinished = true
@@ -1101,7 +1101,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
 
     const detected = detectServiceFromUrl(playlistLink)
     if (!detected && selectedService === "auto") {
-      toast.error("Unrecognized URL — please use Spotify, YouTube, or SoundCloud.")
+      toast.error("Unrecognized URL - please use Spotify, YouTube, or SoundCloud.")
       return
     }
 
@@ -1345,7 +1345,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                 v3.0.0
               </button>
               <div
-                className={`pointer-events-none absolute right-0 top-full z-40 flex w-[min(22rem,calc(100vw-1.5rem))] flex-col rounded-2xl border border-[var(--clr-borderLight)]                 bg-[#020604]/40 p-4 pr-2 text-sm text-zinc-200 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 ${showRoadmap ? "pointer-events-auto translate-y-0 opacity-100" : "translate-y-1 opacity-0"}`}
+                className={`pointer-events-none absolute right-0 top-full z-40 flex w-[min(22rem,calc(100vw-1.5rem))] flex-col rounded-2xl border border-[var(--clr-borderLight)] bg-[#020604]/40 p-4 pr-2 text-sm text-zinc-200 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 ${showRoadmap ? "pointer-events-auto translate-y-0 opacity-100" : "translate-y-1 opacity-0"}`}
               >
                 <div className="flex max-h-[28rem] flex-col">
                   <ScrollArea type="always" className="h-[26rem] min-h-0 w-full">
@@ -1722,7 +1722,8 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                             onClick={(e) => {
                               e.stopPropagation()
                               setSelectedTrack(track)
-                              if (!(isLoadingStream && streamingTrackId === track.id)) toggleStream(track)
+                              if (!(isLoadingStream && streamingTrackId === track.id))
+                                toggleStream(track)
                             }}
                             aria-label={
                               isLoadingStream && streamingTrackId === track.id
@@ -1764,45 +1765,46 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                           <Music2 className="h-5 w-5 text-zinc-500 md:h-6 md:w-6" />
                           <button
                             type="button"
-                              disabled={isLoadingStream && streamingTrackId === track.id}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedTrack(track)
-                                if (!(isLoadingStream && streamingTrackId === track.id)) toggleStream(track)
-                              }}
-                              aria-label={
-                                isLoadingStream && streamingTrackId === track.id
-                                  ? "Loading preview"
-                                  : streamingTrackId === track.id && isPlaying
-                                    ? "Stop preview"
-                                    : "Play preview"
-                              }
-                              className={`absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px] transition-opacity duration-200 ${
-                                streamingTrackId === track.id && (isPlaying || isLoadingStream)
-                                  ? "opacity-100"
-                                  : "opacity-0 group-hover/cover:opacity-100"
-                              }`}
+                            disabled={isLoadingStream && streamingTrackId === track.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedTrack(track)
+                              if (!(isLoadingStream && streamingTrackId === track.id))
+                                toggleStream(track)
+                            }}
+                            aria-label={
+                              isLoadingStream && streamingTrackId === track.id
+                                ? "Loading preview"
+                                : streamingTrackId === track.id && isPlaying
+                                  ? "Stop preview"
+                                  : "Play preview"
+                            }
+                            className={`absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px] transition-opacity duration-200 ${
+                              streamingTrackId === track.id && (isPlaying || isLoadingStream)
+                                ? "opacity-100"
+                                : "opacity-0 group-hover/cover:opacity-100"
+                            }`}
                           >
-                              {isLoadingStream && streamingTrackId === track.id ? (
-                                <div className="flex items-center justify-center gap-1">
-                                  <div
-                                    className="animate-smooth-bounce h-5 w-1.5 rounded-full bg-[var(--clr-primary)]"
-                                    style={{ animationDelay: "0ms" }}
-                                  />
-                                  <div
-                                    className="animate-smooth-bounce h-7 w-1.5 rounded-full bg-[var(--clr-primary)]"
-                                    style={{ animationDelay: "150ms" }}
-                                  />
-                                  <div
-                                    className="animate-smooth-bounce h-4 w-1.5 rounded-full bg-[var(--clr-primary)]"
-                                    style={{ animationDelay: "300ms" }}
-                                  />
-                                </div>
-                              ) : streamingTrackId === track.id && isPlaying ? (
-                                <Square className="h-5 w-5 fill-white text-white" />
-                              ) : (
-                                <Play className="h-5 w-5 fill-white text-white" />
-                              )}
+                            {isLoadingStream && streamingTrackId === track.id ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <div
+                                  className="animate-smooth-bounce h-5 w-1.5 rounded-full bg-[var(--clr-primary)]"
+                                  style={{ animationDelay: "0ms" }}
+                                />
+                                <div
+                                  className="animate-smooth-bounce h-7 w-1.5 rounded-full bg-[var(--clr-primary)]"
+                                  style={{ animationDelay: "150ms" }}
+                                />
+                                <div
+                                  className="animate-smooth-bounce h-4 w-1.5 rounded-full bg-[var(--clr-primary)]"
+                                  style={{ animationDelay: "300ms" }}
+                                />
+                              </div>
+                            ) : streamingTrackId === track.id && isPlaying ? (
+                              <Square className="h-5 w-5 fill-white text-white" />
+                            ) : (
+                              <Play className="h-5 w-5 fill-white text-white" />
+                            )}
                           </button>
                         </div>
                       )}
@@ -1908,7 +1910,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
             </div>
 
             {/* Now Playing / Selection */}
-            <div className="md:sticky md:top-6 mb-8 lg:h-[760px]">
+            <div className="mb-8 md:sticky md:top-6 lg:h-[760px]">
               {selectedTrack ? (
                 <div className="flex h-full flex-col items-center rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 p-5 text-center shadow-2xl shadow-black/30 backdrop-blur-xl duration-300 animate-in fade-in zoom-in-95 md:p-8">
                   <div className="group relative mb-8 aspect-square w-full overflow-hidden rounded-2xl shadow-2xl">

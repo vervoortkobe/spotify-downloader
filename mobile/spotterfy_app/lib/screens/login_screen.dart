@@ -13,19 +13,25 @@ class LoginScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
-    // Already logged in — redirect
+    // Already logged in - redirect
     if (!auth.isLoading && auth.isLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
         if (!auth.isApproved) {
           Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (_) => const ApprovalScreen()));
+            context,
+            MaterialPageRoute(builder: (_) => const ApprovalScreen()),
+          );
         } else if (auth.isAdmin) {
           Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (_) => const AdminScreen()));
+            context,
+            MaterialPageRoute(builder: (_) => const AdminScreen()),
+          );
         } else {
           Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+            context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
         }
       });
     }
@@ -34,21 +40,14 @@ class LoginScreen extends StatelessWidget {
       backgroundColor: const Color(0xFF07110b),
       body: Stack(
         children: [
-          CustomPaint(
-            size: Size.infinite,
-            painter: WavesPainter(),
-          ),
+          CustomPaint(size: Size.infinite, painter: WavesPainter()),
           Center(
             child: Padding(
               padding: const EdgeInsets.all(32),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SvgPicture.asset(
-                    'assets/icon.svg',
-                    width: 88,
-                    height: 88,
-                  ),
+                  SvgPicture.asset('assets/icon.svg', width: 88, height: 88),
                   const SizedBox(height: 20),
                   Text(
                     'Spotterfy',
@@ -74,26 +73,45 @@ class LoginScreen extends StatelessWidget {
                         width: double.infinity,
                         height: 56,
                         child: ElevatedButton(
-                          onPressed: auth.isSigningIn ? null : () async {
-                            final success = await auth.signInWithGoogle();
-                            if (!context.mounted) return;
-                            if (success) {
-                              if (!auth.isApproved) {
-                                Navigator.pushReplacement(
-                                  context, MaterialPageRoute(builder: (_) => const ApprovalScreen()));
-                              } else if (auth.isAdmin) {
-                                Navigator.pushReplacement(
-                                  context, MaterialPageRoute(builder: (_) => const AdminScreen()));
-                              } else {
-                                Navigator.pushReplacement(
-                                  context, MaterialPageRoute(builder: (_) => const HomeScreen()));
-                              }
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Sign-in failed. Check console log for details.')),
-                              );
-                            }
-                          },
+                          onPressed: auth.isSigningIn
+                              ? null
+                              : () async {
+                                  final success = await auth.signInWithGoogle();
+                                  if (!context.mounted) return;
+                                  if (success) {
+                                    if (!auth.isApproved) {
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const ApprovalScreen(),
+                                        ),
+                                      );
+                                    } else if (auth.isAdmin) {
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const AdminScreen(),
+                                        ),
+                                      );
+                                    } else {
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const HomeScreen(),
+                                        ),
+                                      );
+                                    }
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Sign-in failed. Check console log for details.',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF10b981),
                             foregroundColor: Colors.white,
@@ -103,15 +121,26 @@ class LoginScreen extends StatelessWidget {
                             elevation: 0,
                           ),
                           child: auth.isSigningIn
-                              ? SizedBox(width: 24, height: 24,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              ? SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
                               : Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Icon(Icons.login, size: 20),
                                     SizedBox(width: 12),
-                                    Text('Sign in with Google',
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                                    Text(
+                                      'Sign in with Google',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ],
                                 ),
                         ),
@@ -145,12 +174,16 @@ class WavesPainter extends CustomPainter {
     final path1 = Path()
       ..moveTo(0, size.height * 0.6)
       ..quadraticBezierTo(
-        size.width * 0.25, size.height * 0.5,
-        size.width * 0.5, size.height * 0.55,
+        size.width * 0.25,
+        size.height * 0.5,
+        size.width * 0.5,
+        size.height * 0.55,
       )
       ..quadraticBezierTo(
-        size.width * 0.75, size.height * 0.6,
-        size.width, size.height * 0.5,
+        size.width * 0.75,
+        size.height * 0.6,
+        size.width,
+        size.height * 0.5,
       )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
@@ -171,12 +204,16 @@ class WavesPainter extends CustomPainter {
     final path2 = Path()
       ..moveTo(0, size.height * 0.45)
       ..quadraticBezierTo(
-        size.width * 0.3, size.height * 0.35,
-        size.width * 0.6, size.height * 0.4,
+        size.width * 0.3,
+        size.height * 0.35,
+        size.width * 0.6,
+        size.height * 0.4,
       )
       ..quadraticBezierTo(
-        size.width * 0.8, size.height * 0.45,
-        size.width, size.height * 0.35,
+        size.width * 0.8,
+        size.height * 0.45,
+        size.width,
+        size.height * 0.35,
       )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
@@ -197,16 +234,22 @@ class WavesPainter extends CustomPainter {
     final path3 = Path()
       ..moveTo(0, size.height * 0.7)
       ..quadraticBezierTo(
-        size.width * 0.2, size.height * 0.65,
-        size.width * 0.4, size.height * 0.7,
+        size.width * 0.2,
+        size.height * 0.65,
+        size.width * 0.4,
+        size.height * 0.7,
       )
       ..quadraticBezierTo(
-        size.width * 0.6, size.height * 0.75,
-        size.width * 0.8, size.height * 0.7,
+        size.width * 0.6,
+        size.height * 0.75,
+        size.width * 0.8,
+        size.height * 0.7,
       )
       ..quadraticBezierTo(
-        size.width * 0.9, size.height * 0.65,
-        size.width, size.height * 0.7,
+        size.width * 0.9,
+        size.height * 0.65,
+        size.width,
+        size.height * 0.7,
       )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)

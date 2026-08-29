@@ -23,11 +23,24 @@ class PlayerProvider extends ChangeNotifier {
   AudioPlayer get player => _player;
 
   PlayerProvider() {
+    _player.setAudioContext(AudioContext(
+      android: AudioContextAndroid(
+        isSpeakerphoneOn: false,
+        stayAwake: true,
+        contentType: AndroidContentType.music,
+        usageType: AndroidUsageType.media,
+        audioFocus: AndroidAudioFocus.gain,
+      ),
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playback,
+        options: {AVAudioSessionOptions.mixWithOthers},
+      ),
+    ));
+    _player.setReleaseMode(ReleaseMode.stop);
     final notif = NotificationService();
     notif.onPlayPause = togglePlayPause;
     notif.onNext = next;
     notif.onPrevious = previous;
-
     _player.onPositionChanged.listen((pos) {
       _position = pos;
       notifyListeners();
@@ -41,12 +54,14 @@ class PlayerProvider extends ChangeNotifier {
       notifyListeners();
       _scheduleNotifUpdates();
     });
+    _player.onPlayerComplete.listen((_) {
+      if (_queue.isNotEmpty && _currentIndex < _queue.length - 1) next();
+    });
   }
 
   void _scheduleNotifUpdates() {
     _notifTimer?.cancel();
     if (!_isPlaying || _currentTrack == null) return;
-
     _notifTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _updateNotification();
     });
@@ -66,31 +81,32 @@ class PlayerProvider extends ChangeNotifier {
     if (queue != null) {
       _queue = queue;
       _currentIndex = queue.indexOf(track);
-    } else {
-      _currentTrack = track;
+      if (_currentIndex == -1) _currentIndex = 0;
+    } else if (_queue.isEmpty) {
+      _queue = [track];
       _currentIndex = 0;
     }
     _currentTrack = track;
+    _position = Duration.zero;
+    _duration = Duration.zero;
     notifyListeners();
-
-    final primary = track.sourceUrl.isNotEmpty
-        ? ApiService.streamTrackUrl(track.sourceUrl)
-        : null;
+    final primary = track.sourceUrl.isNotEmpty ? ApiService.streamTrackUrl(track.sourceUrl) : null;
     final fallback = ApiService.streamTrackUrl('ytsearch1:${track.title} ${track.artists} audio');
+    debugPrint('[Player] play ${track.title} primary=$primary');
     try {
+      await _player.stop();
       if (primary != null) {
         await _player.play(UrlSource(primary));
       } else {
         await _player.play(UrlSource(fallback));
       }
     } catch (e) {
-      debugPrint('primary stream failed: $e, trying fallback');
+      debugPrint('[Player] primary stream failed: $e, trying fallback');
       try {
-        if (primary != null) {
-          await _player.play(UrlSource(fallback));
-        }
+        await _player.stop();
+        await _player.play(UrlSource(fallback));
       } catch (e2) {
-        debugPrint('fallback stream also failed: $e2');
+        debugPrint('[Player] fallback stream also failed: $e2');
       }
     }
   }
