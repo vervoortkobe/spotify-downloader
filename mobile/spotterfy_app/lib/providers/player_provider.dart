@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:http/http.dart' as http;
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/notification_service.dart';
@@ -93,18 +94,22 @@ class PlayerProvider extends ChangeNotifier {
     final primary = track.sourceUrl.isNotEmpty ? ApiService.streamTrackUrl(track.sourceUrl) : null;
     final fallback = ApiService.streamTrackUrl('ytsearch1:${track.title} ${track.artists} audio');
     debugPrint('[Player] play ${track.title} primary=$primary');
+    Future<void> warm(String url) async {
+      try {
+        await http.head(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    }
     try {
       await _player.stop();
-      if (primary != null) {
-        await _player.play(UrlSource(primary));
-      } else {
-        await _player.play(UrlSource(fallback));
-      }
+      final url = primary ?? fallback;
+      await warm(url);
+      await _player.play(UrlSource(url)).timeout(const Duration(seconds: 35));
     } catch (e) {
       debugPrint('[Player] primary stream failed: $e, trying fallback');
       try {
         await _player.stop();
-        await _player.play(UrlSource(fallback));
+        await warm(fallback);
+        await _player.play(UrlSource(fallback)).timeout(const Duration(seconds: 35));
       } catch (e2) {
         debugPrint('[Player] fallback stream also failed: $e2');
       }

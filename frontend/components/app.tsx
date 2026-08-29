@@ -1347,9 +1347,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
               <div
                 className={`pointer-events-none absolute right-0 top-full z-40 flex w-[min(22rem,calc(100vw-1.5rem))] flex-col rounded-2xl border border-[var(--clr-borderLight)] bg-[#020604]/40 p-4 pr-2 text-sm text-zinc-200 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 ${showRoadmap ? "pointer-events-auto translate-y-0 opacity-100" : "translate-y-1 opacity-0"}`}
               >
-                <div className="flex max-h-[28rem] flex-col">
-                  <ScrollArea type="always" className="h-[26rem] min-h-0 w-full">
-                    <div className="space-y-3 pr-5">
+                <div className="flex max-h-[28rem] min-h-0 flex-col">
+                  <ScrollArea type="hover" className="h-[26rem] max-h-[26rem] min-h-0 w-full">
+                    <div className="space-y-3 pr-3">
                       <div>
                         <p className="text-[var(--clr-primaryTextMuted)]/90 text-xs font-semibold uppercase tracking-[0.2em]">
                           Version Roadmap
@@ -1669,7 +1669,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                 )}
               </div>
 
-              <ScrollArea type="always" className="w-full flex-1">
+              <ScrollArea type="hover" className="w-full flex-1 min-h-0">
                 <div className="w-full space-y-1 p-2 pr-3 md:p-4 md:pr-4">
                   {tracks.map((track, idx) => (
                     <div

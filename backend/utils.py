@@ -23,13 +23,19 @@ def _get_proxy_url() -> str | None:
 
 def _get_proxy_for_requests() -> dict[str, str] | None:
     proxy_url = _get_proxy_url()
-    if proxy_url:
-        return {"http": proxy_url, "https": proxy_url}
-    return None
+    if not proxy_url:
+        return None
+    if proxy_url.startswith("http://127.0.0.1:4000") or proxy_url.startswith("http://localhost:4000"):
+        socks_url = proxy_url.replace("http://", "socks5://")
+        return {"http": socks_url, "https": socks_url}
+    return {"http": proxy_url, "https": proxy_url}
 
 
 def _get_proxy_for_ytdlp() -> str | None:
-    return _get_proxy_url()
+    url = _get_proxy_url()
+    if url and (url.startswith("http://127.0.0.1:4000") or url.startswith("http://localhost:4000")):
+        return url.replace("http://", "socks5://")
+    return url
 
 
 def _warp_cli_connected() -> bool:
@@ -71,6 +77,26 @@ def _log_warp_context(action: str):
 _YT_CACHE: dict[str, tuple[str, str, float]] = {}
 _YT_CACHE_LOCK = threading.Lock()
 _YT_CACHE_TTL = 3600 * 6
+
+_AUDIO_URL_CACHE: dict[str, tuple[str, str, dict, float]] = {}
+_AUDIO_CACHE_LOCK = threading.Lock()
+_AUDIO_CACHE_TTL = 600
+
+def _audio_cache_get(source: str) -> tuple[str, str, dict] | None:
+    with _AUDIO_CACHE_LOCK:
+        e = _AUDIO_URL_CACHE.get(source)
+        if e and (time.time() - e[3]) < _AUDIO_CACHE_TTL:
+            return e[0], e[1], e[2]
+    return None
+
+def _audio_cache_set(source: str, audio_url: str, content_type: str, headers: dict):
+    with _AUDIO_CACHE_LOCK:
+        _AUDIO_URL_CACHE[source] = (audio_url, content_type, headers, time.time())
+        if len(_AUDIO_URL_CACHE) > 500:
+            cutoff = time.time() - _AUDIO_CACHE_TTL
+            stale = [k for k, v in list(_AUDIO_URL_CACHE.items()) if v[3] < cutoff]
+            for k in stale:
+                del _AUDIO_URL_CACHE[k]
 
 
 def _yt_cache_key(title: str, artists: str) -> str:
@@ -491,138 +517,156 @@ def download_track_logic(track_id, track_title, artists, album, release_date, co
     return final_path
 
 
+def _pick_audio_format(formats):
+    if not formats:
+        return None, "audio/webm"
+    def _valid(f):
+        if not f.get("url"):
+            return False
+        ext = f.get("ext", "")
+        fid = str(f.get("format_id", ""))
+        if ext in ("mhtml", "json") or fid.startswith("sb"):
+            return False
+        if f.get("protocol") in ("m3u8", "m3u8_native"):
+            return False
+        return True
+    valid = [f for f in formats if _valid(f)]
+    if not valid:
+        return None, "audio/webm"
+    audio_only = [f for f in valid if f.get("vcodec") == "none"]
+    pool = audio_only if audio_only else valid
+    for fmt in reversed(pool):
+        ext = fmt.get("ext", "webm")
+        if ext == "opus":
+            return fmt, "audio/ogg"
+        if ext in ("webm", "m4a", "mp4", "ogg"):
+            return fmt, f"audio/{ext}"
+    fmt = pool[-1]
+    ext = fmt.get("ext", "webm")
+    ct = "audio/ogg" if ext == "opus" else f"audio/{ext}" if ext in ("webm","m4a","mp4","ogg") else "audio/webm"
+    return fmt, ct
+
+def _proxy_googlevideo(audio_url, content_type, base_headers, range_header, proxy_dict):
+    req_headers = dict(base_headers) if base_headers else {}
+    if "User-Agent" not in req_headers:
+        req_headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    if range_header:
+        req_headers["Range"] = range_header
+    upstream = requests.get(audio_url, headers=req_headers, stream=True, proxies=proxy_dict, timeout=15, allow_redirects=True)
+    if upstream.status_code in (403, 401):
+        body = upstream.content[:200] if upstream.content else b""
+        upstream.close()
+        return None, f"googlevideo HTTP {upstream.status_code} {body!r}"
+    if upstream.status_code not in (200, 206):
+        upstream.close()
+        return None, f"googlevideo HTTP {upstream.status_code}"
+    status_code = upstream.status_code
+    resp_headers = {
+        "Content-Type": content_type,
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-cache",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges, Content-Type",
+    }
+    cl = upstream.headers.get("Content-Length")
+    if cl:
+        resp_headers["Content-Length"] = cl
+    cr = upstream.headers.get("Content-Range")
+    if cr:
+        resp_headers["Content-Range"] = cr
+    elif status_code == 206 and range_header:
+        resp_headers["Content-Range"] = range_header.replace("bytes=", "bytes ") + "/*"
+    def generate(_up=upstream):
+        try:
+            for chunk in _up.iter_content(chunk_size=65536):
+                if chunk:
+                    yield chunk
+        finally:
+            _up.close()
+    return Response(stream_with_context(generate()), status=status_code, headers=resp_headers, direct_passthrough=True), None
+
 def open_audio_stream(source, range_header=None):
     _log_warp_context("stream")
     proxy_url = _get_proxy_for_ytdlp()
     proxy_dict = _get_proxy_for_requests()
+    print(f"[Stream] Requested source: {source[:200]} range={range_header or 'none'}", flush=True)
+    cached = _audio_cache_get(source)
+    if cached:
+        audio_url, content_type, base_headers = cached
+        print(f"[Stream] Cache HIT for {source[:80]} -> {audio_url[:60]}...", flush=True)
+        resp, err = _proxy_googlevideo(audio_url, content_type, base_headers, range_header, proxy_dict)
+        if resp:
+            print(f"[Stream] Cache SUCCESS status={resp.status_code}", flush=True)
+            return resp, None
+        print(f"[Stream] Cache stale ({err}), re-extracting...", flush=True)
+        with _AUDIO_CACHE_LOCK:
+            _AUDIO_URL_CACHE.pop(source, None)
     strategies = [
         _youtube_extractor_args(),
         {"youtube": {"player_client": ["android"], "formats": ["missing_pot"]}},
         {"youtube": {"player_client": ["ios"], "formats": ["missing_pot"]}},
     ]
-    print(f"[Stream] Requested source: {source[:200]}", flush=True)
-    if range_header:
-        print(f"[Stream] Range header: {range_header}", flush=True)
     last_err = None
-    for strat_idx, extractor_args in enumerate(strategies, 1):
-        player_clients = extractor_args.get("youtube", {}).get("player_client", [])
-        base_opts = {
-            "format": "bestaudio/best",
-            "noplaylist": True,
-            "quiet": True,
-            "no_warnings": True,
-            "socket_timeout": 30,
-            "extractor_args": extractor_args,
-            "remote_components": ["ejs:github"],
-        }
-        if proxy_url:
-            base_opts["proxy"] = proxy_url
-        try:
-            print(f"[Stream] Strategy {strat_idx} ({player_clients}): extracting info...", flush=True)
-            with YoutubeDL(base_opts) as ydl:
-                info = ydl.extract_info(source, download=False)
-                if not info or ('entries' in info and not info.get('entries')):
-                    last_err = f"Strategy {strat_idx} ({player_clients}): no results returned"
+    for use_proxy in ([True] if proxy_url else [False]) + ([False] if proxy_url else []):
+        cur_proxy_url = proxy_url if use_proxy else None
+        cur_proxy_dict = proxy_dict if use_proxy else None
+        if not use_proxy and proxy_url:
+            print("[Stream] Retrying all strategies WITHOUT proxy (direct egress)...", flush=True)
+            with _AUDIO_CACHE_LOCK:
+                _AUDIO_URL_CACHE.pop(source, None)
+        for strat_idx, extractor_args in enumerate(strategies, 1):
+            player_clients = extractor_args.get("youtube", {}).get("player_client", [])
+            base_opts = {
+                "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
+                "noplaylist": True,
+                "quiet": True,
+                "no_warnings": True,
+                "socket_timeout": 15,
+                "extractor_args": extractor_args,
+                "remote_components": ["ejs:github"],
+            }
+            if cur_proxy_url:
+                base_opts["proxy"] = cur_proxy_url
+            try:
+                print(f"[Stream] Strategy {strat_idx} ({player_clients}) {'via proxy' if use_proxy else 'direct'}: extracting info...", flush=True)
+                with YoutubeDL(base_opts) as ydl:
+                    info = ydl.extract_info(source, download=False)
+                    if not info or ('entries' in info and not info.get('entries')):
+                        last_err = f"Strategy {strat_idx} ({player_clients}): no results"
+                        print(f"[Stream] {last_err}", flush=True)
+                        continue
+                    if 'entries' in info and info['entries']:
+                        info = info['entries'][0]
+                    video_title = info.get("title", "Unknown")
+                    video_id = info.get("id", "")
+                    print(f"[Stream] Found: [{video_id}] {video_title}", flush=True)
+                    formats = info.get("formats", []) or []
+                    selected_fmt, content_type = _pick_audio_format(formats)
+                    if not selected_fmt:
+                        audio_url = info.get("url", "")
+                        if not audio_url:
+                            last_err = f"Strategy {strat_idx} ({player_clients}): no streamable URL"
+                            print(f"[Stream] {last_err}", flush=True)
+                            continue
+                        base_headers = info.get("http_headers", {}) or {}
+                        content_type = "audio/webm"
+                    else:
+                        audio_url = selected_fmt["url"]
+                        base_headers = selected_fmt.get("http_headers") or info.get("http_headers", {}) or {}
+                        print(f"[Stream] Selected audio format: {selected_fmt.get('format_id')} ext={selected_fmt.get('ext')} abr={selected_fmt.get('abr','?')}", flush=True)
+                    _audio_cache_set(source, audio_url, content_type, base_headers)
+                    resp, err = _proxy_googlevideo(audio_url, content_type, base_headers, range_header, cur_proxy_dict)
+                    if resp:
+                        print(f"[Stream] Strategy {strat_idx} SUCCESS status={resp.status_code} ct={content_type} {'via proxy' if use_proxy else 'direct'}", flush=True)
+                        return resp, None
+                    last_err = f"Strategy {strat_idx} ({player_clients}): {err}"
                     print(f"[Stream] {last_err}", flush=True)
                     continue
-                if 'entries' in info and info['entries']:
-                    info = info['entries'][0]
-                video_title = info.get("title", "Unknown")
-                video_id = info.get("id", "")
-                print(f"[Stream] Found: [{video_id}] {video_title}", flush=True)
-                audio_url = None
-                content_type = "audio/webm"
-                selected_fmt = None
-                formats = info.get("formats", []) or []
-                for fmt in reversed(formats):
-                    if fmt.get("vcodec") == "none" and fmt.get("url"):
-                        ext = fmt.get("ext", "webm")
-                        content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg", "opus") else "audio/webm"
-                        if ext == "opus":
-                            content_type = "audio/ogg"
-                        audio_url = fmt["url"]
-                        selected_fmt = fmt
-                        print(f"[Stream] Selected audio format: {fmt.get('format_id')} ext={ext} abr={fmt.get('abr', '?')}kbps", flush=True)
-                        break
-                if not audio_url:
-                    for fmt in reversed(formats):
-                        if fmt.get("url"):
-                            ext = fmt.get("ext", "webm")
-                            content_type = f"audio/{ext}" if ext in ("webm", "m4a", "mp4", "ogg", "opus") else "audio/webm"
-                            if ext == "opus":
-                                content_type = "audio/ogg"
-                            audio_url = fmt["url"]
-                            selected_fmt = fmt
-                            print(f"[Stream] Fallback format: {fmt.get('format_id')} ext={ext} vcodec={fmt.get('vcodec', '?')}", flush=True)
-                            break
-                if not audio_url:
-                    audio_url = info.get("url", "")
-                    if audio_url:
-                        print("[Stream] Using top-level URL from info dict", flush=True)
-                if not audio_url:
-                    last_err = f"Strategy {strat_idx} ({player_clients}): no streamable URL in any format"
-                    print(f"[Stream] {last_err}", flush=True)
-                    continue
-                req_headers = {}
-                fmt_headers = (selected_fmt or {}).get("http_headers") if isinstance(selected_fmt, dict) else None
-                top_headers = info.get("http_headers", {})
-                if isinstance(fmt_headers, dict):
-                    req_headers.update(fmt_headers)
-                elif isinstance(top_headers, dict):
-                    req_headers.update(top_headers)
-                if "User-Agent" not in req_headers:
-                    req_headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                if range_header:
-                    req_headers["Range"] = range_header
-                print(f"[Stream] Strategy {strat_idx}: proxying via requests to googlevideo (UA={req_headers['User-Agent'][:30]}...)", flush=True)
-                upstream = requests.get(audio_url, headers=req_headers, stream=True, proxies=proxy_dict, timeout=30, allow_redirects=True)
-                if upstream.status_code in (403, 401):
-                    body_snip = upstream.content[:500] if upstream.content else b""
-                    upstream.close()
-                    last_err = f"Strategy {strat_idx} ({player_clients}): googlevideo returned HTTP {upstream.status_code} {body_snip[:200]!r}"
-                    print(f"[Stream] {last_err}", flush=True)
-                    continue
-                if upstream.status_code not in (200, 206):
-                    upstream.close()
-                    last_err = f"Strategy {strat_idx} ({player_clients}): googlevideo returned HTTP {upstream.status_code}"
-                    print(f"[Stream] {last_err}", flush=True)
-                    continue
-                status_code = upstream.status_code
-                resp_headers = {
-                    "Content-Type": content_type,
-                    "Accept-Ranges": "bytes",
-                    "Cache-Control": "no-cache",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges, Content-Type",
-                }
-                content_length = upstream.headers.get("Content-Length")
-                if content_length:
-                    resp_headers["Content-Length"] = content_length
-                content_range = upstream.headers.get("Content-Range")
-                if content_range:
-                    resp_headers["Content-Range"] = content_range
-                else:
-                    if status_code == 206 and range_header:
-                        resp_headers["Content-Range"] = range_header.replace("bytes=", "bytes ") + "/*"
-                print(f"[Stream] Strategy {strat_idx} SUCCESS: status={status_code} ct={content_type} length={content_length or 'chunked'}", flush=True)
-
-                def generate(_upstream=upstream):
-                    try:
-                        for chunk in _upstream.iter_content(chunk_size=65536):
-                            if chunk:
-                                yield chunk
-                    finally:
-                        _upstream.close()
-
-                return Response(
-                    stream_with_context(generate()),
-                    status=status_code,
-                    headers=resp_headers,
-                    direct_passthrough=True,
-                ), None
-        except Exception as exc:
-            last_err = f"Strategy {strat_idx} ({player_clients}): {_clean_ytdlp_error(exc)}"
-            print(f"[Stream] Strategy {strat_idx} FAILED: {exc}", flush=True)
-            continue
+            except Exception as exc:
+                last_err = f"Strategy {strat_idx} ({player_clients}): {_clean_ytdlp_error(exc)}"
+                print(f"[Stream] Strategy {strat_idx} FAILED: {exc}", flush=True)
+                continue
+        if not use_proxy:
+            break
     print(f"[Stream] All strategies exhausted for: {source[:150]} - last error: {last_err}", flush=True)
     return None, last_err or "All extraction strategies failed"
