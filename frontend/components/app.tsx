@@ -29,6 +29,108 @@ import type { Track, ServiceTheme } from "@/lib/types"
 import { API_URL, refreshApiUrl } from "@/lib/api"
 import { serviceTheme, serviceLabels, serviceIcons, detectServiceFromUrl } from "@/lib/themes"
 
+type RoadmapVersion = {
+  label: string
+  title: string
+  description: string
+}
+
+const ROADMAP_TODO: RoadmapVersion[] = [
+  {
+    label: "v4.0.0",
+    title: "Spotterfy Web Player",
+    description:
+      "Build Spotterfy as a web player that can stream and download songs from Spotify, YouTube and SoundCloud. It works the same as the Android app and supports the same features, but in your browser.",
+  },
+  {
+    label: "v3.0.0",
+    title: "Spotterfy Android App",
+    description:
+      "Build Spotterfy as an Android app that can stream and download tracks from Spotify, YouTube, and SoundCloud, with custom profiles, imported Spotify profiles, and saved playlist URLs.",
+  },
+]
+
+const ROADMAP_HISTORY: RoadmapVersion[] = [
+  {
+    label: "v2.3.0",
+    title: "Threading & Proxying",
+    description:
+      "Added support for multi-threaded downloading and faster fetching. The application now uses proxying through Cloudflare WARP for reliable YouTube access and potential YouTube IP-block bypass.",
+  },
+  {
+    label: "v2.2.0",
+    title: "Multi-Source Downloads",
+    description:
+      "Download songs and playlists from Spotify, YouTube, and SoundCloud with auto-detection and per-service streaming.",
+  },
+  {
+    label: "v2.1.0",
+    title: "YouTube Source Review",
+    description:
+      "Added in-browser track previewing and YouTube URL override per track, so you can fix wrong matches before downloading.",
+  },
+  {
+    label: "v2.0.0",
+    title: "Updated UI",
+    description: "Refreshed the UI and added song selection and cancellation controls.",
+  },
+  {
+    label: "v1.0.0",
+    title: "Spotify Playlist Downloads",
+    description: "Introduced Spotify URL processing for songs and playlists.",
+  },
+  {
+    label: "base",
+    title: "Sunnify Fork",
+    description: "Forked from sunnypattel/sunnify-spotify-downloader.",
+  },
+]
+
+function RoadmapAccordionItem({
+  version,
+  isOpen,
+  onToggle,
+}: {
+  version: RoadmapVersion
+  isOpen: boolean
+  onToggle: () => void
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-label={`Toggle ${version.label} details`}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.06]"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+            {version.label}
+          </span>
+          <span className="truncate font-semibold text-zinc-100">{version.title}</span>
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      <div
+        className={`grid transition-all duration-200 ease-out ${
+          isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <p className="cursor-text select-text px-3 pb-3 pt-2 text-[13px] leading-relaxed text-zinc-300">
+            {version.description}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: string }) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -36,6 +138,18 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
 
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null)
   const [warpConnected, setWarpConnected] = useState<boolean | null>(null)
+
+  const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set())
+  const toggleVersion = (label: string) =>
+    setExpandedVersions((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+
+  const [showRoadmap, setShowRoadmap] = useState(false)
+  const roadmapRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setPlaylistLink("")
@@ -45,7 +159,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
     refreshApiUrl()
 
     const checkHealth = async () => {
-      console.log(`[Health Check] Polling backend health at ${API_URL}/api/health...`)
+      console.log(`[Health] Polling backend health at ${API_URL}/api/health...`)
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 4000)
@@ -55,18 +169,18 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           const data = await res.json()
           if (data.online) {
             setBackendOnline(true)
-            console.log("[Health Check] Backend is online!")
+            console.log("[Health] Backend is online!")
             return
           }
         }
         setBackendOnline(false)
-        console.log("[Health Check] Backend returned non-OK status or not online.")
+        console.log("[Health] Backend returned non-OK status or not online.")
       } catch (e: any) {
         setBackendOnline(false)
         if (e?.name === "AbortError") {
-          console.warn("[Health Check] Health check request timed out.")
+          console.warn("[Health] Health check request timed out.")
         } else {
-          console.error("[Health Check] Failed to reach backend:", e)
+          console.error("[Health] Failed to reach backend:", e)
         }
       }
     }
@@ -157,6 +271,17 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  // Close the version roadmap popover when clicking outside of it
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showRoadmap && roadmapRef.current && !roadmapRef.current.contains(e.target as Node)) {
+        setShowRoadmap(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [showRoadmap])
+
   // Autofocus the URL input on mount
   useEffect(() => {
     if (!initialJobId) {
@@ -198,7 +323,19 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       const progressInterval = setInterval(async () => {
         try {
           const res = await fetch(`${API_URL}/api/scrape-progress/${jobId}`)
-          if (!res.ok) return
+          if (!res.ok) {
+            clearInterval(progressInterval)
+            if (fetchTimerRef.current) {
+              clearInterval(fetchTimerRef.current)
+              fetchTimerRef.current = null
+            }
+            setIsProcessing(false)
+            setStatusMessage("Job not found - start a new search to fetch songs")
+            toast.error("This job could not be found. Start a new search to fetch songs.", {
+              id: "resume-toast",
+            })
+            return
+          }
           const data = await res.json()
           if (data.total > 0) {
             setScrapeProgress({ total: data.total, completed: data.completed })
@@ -231,7 +368,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
             if (processedTracks.length > 0) {
               setSelectedTrack(processedTracks[0])
             }
-            toast.success(`Loaded ${processedTracks.length} tracks!`)
+            toast.success(`Loaded ${processedTracks.length} tracks!`, { id: "loaded-toast" })
             setIsProcessing(false)
           } else if (data.status === "error") {
             clearInterval(progressInterval)
@@ -245,7 +382,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
             const errMsg = errorResult?.ok ? (await errorResult.json()).error : "Scraping failed"
             toast.error(errMsg)
             setFetchElapsed((finalElapsed) => {
-              setStatusMessage(`Error — try again (last attempt: ${finalElapsed}s)`)
+              setStatusMessage(`Error - try again (last attempt: ${finalElapsed}s)`)
               return finalElapsed
             })
             setIsProcessing(false)
@@ -259,7 +396,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           console.error("Error:", error)
           toast.error("Failed to resume job")
           setFetchElapsed((finalElapsed) => {
-            setStatusMessage(`Error — try again (last attempt: ${finalElapsed}s)`)
+            setStatusMessage(`Error - try again (last attempt: ${finalElapsed}s)`)
             return finalElapsed
           })
           setIsProcessing(false)
@@ -669,7 +806,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
         trackCancelRequestedRef.current.delete(track.id)
       } else {
         console.error(err)
-        toast.error(err.message || "Download failed — tap Retry to try again")
+        toast.error(err.message || "Download failed - tap Retry to try again")
         setTrackProgress((prev) => ({ ...prev, [track.id]: -1 }))
         setTimeout(() => {
           setTrackProgress((prev) => {
@@ -756,7 +893,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
             trackCancelRequestedRef.current.delete(track.id)
           } else {
             console.error(err)
-            toast.error(`Failed: ${track.title} — tap Retry to try again`)
+            toast.error(`Failed: ${track.title} - tap Retry to try again`)
             setTrackProgress((prev) => ({ ...prev, [track.id]: -1 }))
             setTimeout(() => {
               setTrackProgress((prev) => {
@@ -880,7 +1017,14 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           const statusRes = await fetch(`${API_URL}/api/job-status/${job_id}`, {
             signal: playlistStatusAbortRef.current?.signal,
           })
-          if (!statusRes.ok) continue
+          if (!statusRes.ok) {
+            toast.error(
+              "This download job is no longer available - please start the download again.",
+              { id: "download-toast" }
+            )
+            jobFinished = true
+            break
+          }
 
           const job = await statusRes.json()
           if (job.status === "completed") {
@@ -957,7 +1101,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
 
     const detected = detectServiceFromUrl(playlistLink)
     if (!detected && selectedService === "auto") {
-      toast.error("Unrecognized URL — please use Spotify, YouTube, or SoundCloud.")
+      toast.error("Unrecognized URL - please use Spotify, YouTube, or SoundCloud.")
       return
     }
 
@@ -1190,92 +1334,56 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                 WARP Proxy: Disconnected
               </span>
             )}
-            <div className="group relative">
+            <div ref={roadmapRef} className="relative">
               <button
                 type="button"
-                className="flex cursor-default items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100"
+                onClick={() => setShowRoadmap((v) => !v)}
+                className="flex cursor-pointer items-center gap-1.5 rounded-full border border-emerald-900/75 bg-emerald-950/50 px-2.5 py-1 text-[10px] font-medium text-emerald-300 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100"
                 aria-label="Version information"
+                aria-expanded={showRoadmap}
               >
-                v2.3.0
+                v3.0.0
               </button>
-              <div className="pointer-events-none absolute right-0 top-full z-40 mt-3 w-[min(22rem,calc(100vw-1.5rem))] translate-y-1 rounded-2xl border border-[var(--clr-borderLight)] bg-[#020604]/40 p-4 text-sm text-zinc-200 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-[var(--clr-primaryTextMuted)]/90 text-xs font-semibold uppercase tracking-[0.2em]">
-                      Version Roadmap
-                    </p>
-                    <div className="mt-2 space-y-3">
-                      <p className="text-sm font-semibold text-zinc-100">To Do</p>
+              <div
+                className={`pointer-events-none absolute right-0 top-full z-40 flex w-[min(22rem,calc(100vw-1.5rem))] flex-col rounded-2xl border border-[var(--clr-borderLight)] bg-[#020604]/40 p-4 pr-2 text-sm text-zinc-200 shadow-2xl shadow-black/70 backdrop-blur-[28px] transition-all duration-200 ${showRoadmap ? "pointer-events-auto translate-y-0 opacity-100" : "translate-y-1 opacity-0"}`}
+              >
+                <div className="flex max-h-[28rem] flex-col">
+                  <ScrollArea type="always" className="h-[26rem] min-h-0 w-full">
+                    <div className="space-y-3 pr-5">
                       <div>
-                        <p className="font-semibold text-zinc-100">v4.0.0: Spotifull Web Player</p>
-                        <p className="mt-1 text-zinc-300">
-                          Build Spotifull as a web player that can stream and download songs from
-                          Spotify, YouTube and SoundCloud. It works the same as the Android app and
-                          supports the same features, but in your browser.
+                        <p className="text-[var(--clr-primaryTextMuted)]/90 text-xs font-semibold uppercase tracking-[0.2em]">
+                          Version Roadmap
                         </p>
+                        <div className="mt-2 space-y-2">
+                          <p className="text-sm font-semibold text-zinc-100">To Do</p>
+                          <div className="space-y-2">
+                            {ROADMAP_TODO.map((v) => (
+                              <RoadmapAccordionItem
+                                key={v.label}
+                                version={v}
+                                isOpen={expandedVersions.has(v.label)}
+                                onToggle={() => toggleVersion(v.label)}
+                              />
+                            ))}
+                          </div>
+                        </div>
                       </div>
+                      <div className="h-px bg-white/70" />
                       <div>
-                        <p className="font-semibold text-zinc-100">v3.0.0: Spotifull Android App</p>
-                        <p className="mt-1 text-zinc-300">
-                          Build Spotifull as an Android app that can stream and download tracks from
-                          Spotify, YouTube, and SoundCloud, with custom profiles, imported Spotify
-                          profiles, and saved playlist URLs.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="h-px bg-white/70" />
-                  <div>
-                    <p className="text-sm font-semibold text-zinc-100">History</p>
-                    <div className="mt-2 space-y-3">
-                      <div>
-                        <p className="font-semibold text-zinc-100">
-                          v2.3.0: Threading &amp; Proxying
-                        </p>
-                        <p className="mt-1 text-zinc-300">
-                          Added support for multi-threaded downloading and faster fetching. The
-                          application now uses proxying through Cloudflare WARP for reliable YouTube
-                          access and potential YouTube IP-block bypass.
-                        </p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">
-                          v2.2.0: Multi-Source Downloads
-                        </p>
-                        <p className="mt-1 text-zinc-300">
-                          Download songs and playlists from Spotify, YouTube, and SoundCloud with
-                          auto-detection and per-service streaming.
-                        </p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">v2.1.0: YouTube Source Review</p>
-                        <p className="mt-1 text-zinc-300">
-                          Added in-browser track previewing and YouTube URL override per track, so
-                          you can fix wrong matches before downloading.
-                        </p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">v2.0.0: Updated UI</p>
-                        <p className="mt-1 text-zinc-300">
-                          Refreshed the UI and added song selection and cancellation controls.
-                        </p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">
-                          v1.0.0: Spotify Playlist Downloads
-                        </p>
-                        <p className="mt-1 text-zinc-300">
-                          Introduced Spotify URL processing for songs and playlists.
-                        </p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-100">base: Sunnify Fork</p>
-                        <p className="mt-1 text-zinc-300">
-                          Forked from sunnypattel/sunnify-spotify-downloader.
-                        </p>
+                        <p className="text-sm font-semibold text-zinc-100">History</p>
+                        <div className="mt-2 space-y-2">
+                          {ROADMAP_HISTORY.map((v) => (
+                            <RoadmapAccordionItem
+                              key={v.label}
+                              version={v}
+                              isOpen={expandedVersions.has(v.label)}
+                              onToggle={() => toggleVersion(v.label)}
+                            />
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </ScrollArea>
                 </div>
               </div>
             </div>
@@ -1287,7 +1395,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           <div className="mb-8 space-y-4 text-center md:mb-10">
             <div className="mb-2 inline-flex cursor-default items-center gap-2 rounded-full border border-emerald-900/70 bg-emerald-950/70 px-3 py-1 text-xs font-medium text-emerald-200 shadow-lg shadow-black/20 transition-all duration-300 hover:bg-emerald-900/80 hover:text-emerald-100">
               <Sparkles className="h-3 w-3 text-emerald-400" />
-              <span>Spotifull Playlist Downloader</span>
+              <span>Spotify Playlist Downloader</span>
             </div>
             <h1 className="pb-2 text-3xl font-bold leading-[1.1] tracking-tighter text-zinc-100 md:text-6xl md:leading-tight">
               Download any playlist.
@@ -1460,9 +1568,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
 
         {/* Content Area */}
         {tracks.length > 0 && (
-          <div className="grid grid-cols-1 items-start gap-4 duration-700 animate-in fade-in slide-in-from-bottom-8 md:gap-6 lg:grid-cols-[1fr_360px]">
+          <div className="grid grid-cols-1 items-stretch gap-4 duration-700 animate-in fade-in slide-in-from-bottom-8 md:gap-6 lg:grid-cols-[1fr_360px]">
             {/* Track List */}
-            <div className="relative z-0 flex h-[580px] max-h-[85vh] flex-col overflow-hidden rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 shadow-2xl shadow-black/30 backdrop-blur-xl sm:h-[620px] md:h-[700px]">
+            <div className="relative z-0 mb-8 flex h-[580px] max-h-[85vh] flex-col overflow-hidden rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 shadow-2xl shadow-black/30 backdrop-blur-xl sm:h-[620px] md:h-[760px] lg:h-[760px]">
               <div className="group/header border-b border-[var(--clr-borderSubtle)] bg-[#08110c]/85 p-4 md:p-8">
                 <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                   <div className="flex min-w-0 items-center gap-3">
@@ -1600,7 +1708,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                       </div>
 
                       {getTrackArtwork(track.id, track.cover) ? (
-                        <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl shadow-md transition-transform duration-200 group-hover:translate-x-1 md:h-14 md:w-14">
+                        <div className="group/cover relative h-11 w-11 shrink-0 overflow-hidden rounded-xl shadow-md transition-transform duration-200 group-hover:translate-x-1 md:h-14 md:w-14">
                           <Image
                             src={getTrackArtwork(track.id, track.cover)}
                             alt=""
@@ -1608,26 +1716,96 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                             className="object-cover"
                             unoptimized
                           />
-                          {streamingTrackId === track.id && isPlaying && (
-                            <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/35">
-                              <div
-                                className="animate-smooth-bounce h-5 w-1.5 rounded-full bg-[var(--clr-primary)]"
-                                style={{ animationDelay: "0ms" }}
-                              />
-                              <div
-                                className="animate-smooth-bounce h-7 w-1.5 rounded-full bg-[var(--clr-primary)]"
-                                style={{ animationDelay: "150ms" }}
-                              />
-                              <div
-                                className="animate-smooth-bounce h-4 w-1.5 rounded-full bg-[var(--clr-primary)]"
-                                style={{ animationDelay: "300ms" }}
-                              />
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            disabled={isLoadingStream && streamingTrackId === track.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedTrack(track)
+                              if (!(isLoadingStream && streamingTrackId === track.id))
+                                toggleStream(track)
+                            }}
+                            aria-label={
+                              isLoadingStream && streamingTrackId === track.id
+                                ? "Loading preview"
+                                : streamingTrackId === track.id && isPlaying
+                                  ? "Stop preview"
+                                  : "Play preview"
+                            }
+                            className={`absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px] transition-opacity duration-200 ${
+                              streamingTrackId === track.id && (isPlaying || isLoadingStream)
+                                ? "opacity-100"
+                                : "opacity-0 group-hover/cover:opacity-100"
+                            }`}
+                          >
+                            {isLoadingStream && streamingTrackId === track.id ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <div
+                                  className="animate-smooth-bounce h-5 w-1.5 rounded-full bg-[var(--clr-primary)]"
+                                  style={{ animationDelay: "0ms" }}
+                                />
+                                <div
+                                  className="animate-smooth-bounce h-7 w-1.5 rounded-full bg-[var(--clr-primary)]"
+                                  style={{ animationDelay: "150ms" }}
+                                />
+                                <div
+                                  className="animate-smooth-bounce h-4 w-1.5 rounded-full bg-[var(--clr-primary)]"
+                                  style={{ animationDelay: "300ms" }}
+                                />
+                              </div>
+                            ) : streamingTrackId === track.id && isPlaying ? (
+                              <Square className="h-5 w-5 fill-white text-white" />
+                            ) : (
+                              <Play className="h-5 w-5 fill-white text-white" />
+                            )}
+                          </button>
                         </div>
                       ) : (
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-900 transition-transform duration-200 group-hover:translate-x-1 md:h-14 md:w-14">
+                        <div className="group/cover relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-900 transition-transform duration-200 group-hover:translate-x-1 md:h-14 md:w-14">
                           <Music2 className="h-5 w-5 text-zinc-500 md:h-6 md:w-6" />
+                          <button
+                            type="button"
+                            disabled={isLoadingStream && streamingTrackId === track.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedTrack(track)
+                              if (!(isLoadingStream && streamingTrackId === track.id))
+                                toggleStream(track)
+                            }}
+                            aria-label={
+                              isLoadingStream && streamingTrackId === track.id
+                                ? "Loading preview"
+                                : streamingTrackId === track.id && isPlaying
+                                  ? "Stop preview"
+                                  : "Play preview"
+                            }
+                            className={`absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px] transition-opacity duration-200 ${
+                              streamingTrackId === track.id && (isPlaying || isLoadingStream)
+                                ? "opacity-100"
+                                : "opacity-0 group-hover/cover:opacity-100"
+                            }`}
+                          >
+                            {isLoadingStream && streamingTrackId === track.id ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <div
+                                  className="animate-smooth-bounce h-5 w-1.5 rounded-full bg-[var(--clr-primary)]"
+                                  style={{ animationDelay: "0ms" }}
+                                />
+                                <div
+                                  className="animate-smooth-bounce h-7 w-1.5 rounded-full bg-[var(--clr-primary)]"
+                                  style={{ animationDelay: "150ms" }}
+                                />
+                                <div
+                                  className="animate-smooth-bounce h-4 w-1.5 rounded-full bg-[var(--clr-primary)]"
+                                  style={{ animationDelay: "300ms" }}
+                                />
+                              </div>
+                            ) : streamingTrackId === track.id && isPlaying ? (
+                              <Square className="h-5 w-5 fill-white text-white" />
+                            ) : (
+                              <Play className="h-5 w-5 fill-white text-white" />
+                            )}
+                          </button>
                         </div>
                       )}
 
@@ -1732,9 +1910,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
             </div>
 
             {/* Now Playing / Selection */}
-            <div className="md:sticky md:top-6">
+            <div className="mb-8 md:sticky md:top-6 lg:h-[760px]">
               {selectedTrack ? (
-                <div className="flex flex-col items-center rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 p-5 text-center shadow-2xl shadow-black/30 backdrop-blur-xl duration-300 animate-in fade-in zoom-in-95 md:p-8">
+                <div className="flex h-full flex-col items-center rounded-[2rem] border border-[var(--clr-borderSubtle)] bg-[#09120d]/80 p-5 text-center shadow-2xl shadow-black/30 backdrop-blur-xl duration-300 animate-in fade-in zoom-in-95 md:p-8">
                   <div className="group relative mb-8 aspect-square w-full overflow-hidden rounded-2xl shadow-2xl">
                     {getTrackArtwork(selectedTrack.id, selectedTrack.cover) ? (
                       <Image
@@ -2015,7 +2193,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                   </div>
                 </div>
               ) : (
-                <div className="flex h-[500px] flex-col items-center justify-center rounded-[2rem] border border-dashed border-[var(--clr-borderSubtle)] bg-[#09120d]/55 p-8 text-center">
+                <div className="flex h-full flex-col items-center justify-center rounded-[2rem] border border-dashed border-[var(--clr-borderSubtle)] bg-[#09120d]/55 p-8 text-center">
                   <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-zinc-900/70">
                     <Music2 className="h-10 w-10 text-zinc-600" />
                   </div>
