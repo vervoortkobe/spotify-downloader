@@ -81,18 +81,33 @@ class NotificationService {
       'Playback',
       channelDescription: 'Music playback controls',
       importance: Importance.low,
-      priority: Priority.defaultPriority,
+      priority: Priority.high,
       ongoing: true,
       showWhen: false,
       usesChronometer: false,
+      playSound: false,
+      enableVibration: false,
       actions: <AndroidNotificationAction>[
-        const AndroidNotificationAction('previous', 'Prev',
-            showsUserInterface: false),
         AndroidNotificationAction(
-            'play_pause', isPlaying ? 'Pause' : 'Play',
-            showsUserInterface: false),
-        const AndroidNotificationAction('next', 'Next',
-            showsUserInterface: false),
+          'previous',
+          'Previous',
+          showsUserInterface: true,
+          icon: const DrawableResourceAndroidBitmap('ic_media_previous'),
+        ),
+        AndroidNotificationAction(
+          'play_pause',
+          isPlaying ? 'Pause' : 'Play',
+          showsUserInterface: true,
+          icon: DrawableResourceAndroidBitmap(
+            isPlaying ? 'ic_media_pause' : 'ic_media_play'
+          ),
+        ),
+        AndroidNotificationAction(
+          'next',
+          'Next',
+          showsUserInterface: true,
+          icon: const DrawableResourceAndroidBitmap('ic_media_next'),
+        ),
       ],
       styleInformation: const MediaStyleInformation(),
     );
