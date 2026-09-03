@@ -13,6 +13,7 @@ class NotificationService {
   void Function()? onPlayPause;
   void Function()? onNext;
   void Function()? onPrevious;
+  void Function()? onClose;
   void Function()? onNotificationTap;
 
   Future<void> initialize() async {
@@ -38,6 +39,19 @@ class NotificationService {
       final android = _plugin!.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       await android?.requestNotificationsPermission();
+      
+      // Create playback channel with high importance for Samsung Now Bar compatibility
+      await android?.createNotificationChannel(
+        AndroidNotificationChannel(
+          'playback_channel',
+          'Playback',
+          description: 'Music playback controls',
+          importance: Importance.high,
+          playSound: false,
+          enableVibration: false,
+          showBadge: false,
+        ),
+      );
     }
 
     _initialized = true;
@@ -53,6 +67,9 @@ class NotificationService {
         break;
       case 'previous':
         onPrevious?.call();
+        break;
+      case 'close':
+        onClose?.call();
         break;
       default:
         onNotificationTap?.call();
@@ -80,13 +97,14 @@ class NotificationService {
       'playback_channel',
       'Playback',
       channelDescription: 'Music playback controls',
-      importance: Importance.low,
+      importance: Importance.high,
       priority: Priority.high,
       ongoing: true,
       showWhen: false,
       usesChronometer: false,
       playSound: false,
       enableVibration: false,
+      visibility: NotificationVisibility.public,
       actions: <AndroidNotificationAction>[
         AndroidNotificationAction(
           'previous',
@@ -107,6 +125,12 @@ class NotificationService {
           'Next',
           showsUserInterface: true,
           icon: const DrawableResourceAndroidBitmap('ic_media_next'),
+        ),
+        AndroidNotificationAction(
+          'close',
+          'Close',
+          showsUserInterface: true,
+          icon: const DrawableResourceAndroidBitmap('ic_media_close'),
         ),
       ],
       styleInformation: const MediaStyleInformation(),

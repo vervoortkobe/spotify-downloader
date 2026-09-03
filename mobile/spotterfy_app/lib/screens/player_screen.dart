@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key});
@@ -29,22 +31,38 @@ class PlayerScreen extends StatelessWidget {
         ? pos.inMilliseconds / dur.inMilliseconds
         : 0.0;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF07110b),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+    return SwipeBackWrapper(
+      child: Scaffold(
+        backgroundColor: const Color(0xFF07110b),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
         ),
-      ),
-      body: Padding(
+      body: GestureDetector(
+        onVerticalDragEnd: (d) {
+          if ((d.primaryVelocity ?? 0) > 400) {
+            HapticFeedback.lightImpact();
+            Navigator.pop(context);
+          }
+        },
+        onHorizontalDragEnd: (d) {
+          final v = d.primaryVelocity ?? 0;
+          if (v < -600) { HapticFeedback.lightImpact(); player.next(); }
+          else if (v > 600) { HapticFeedback.lightImpact(); player.previous(); }
+        },
+        child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Column(
           children: [
+            Center(child: Container(width: 36, height: 4, margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(2)))),
             const Spacer(flex: 1),
-            ClipRRect(
+            Hero(
+              tag: 'mini-cover-${track.id}',
+              child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 width: 280,
@@ -66,7 +84,7 @@ class PlayerScreen extends StatelessWidget {
                         size: 64,
                       ),
               ),
-            ),
+            )),
             const Spacer(flex: 1),
             Text(
               track.title,
@@ -166,9 +184,13 @@ class PlayerScreen extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            Text('${player.queue.indexOf(track) + 1} / ${player.queue.length} in queue', style: const TextStyle(color: Color(0xFF10b981), fontSize: 11, fontWeight: FontWeight.w600)),
             const Spacer(flex: 2),
           ],
         ),
+      ),
+      ),
       ),
     );
   }

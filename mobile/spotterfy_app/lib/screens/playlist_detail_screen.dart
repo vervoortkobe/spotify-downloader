@@ -7,6 +7,8 @@ import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
+import 'package:spotterfy_app/widgets/floating_status_bar.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
 
 class PlaylistDetailScreen extends StatefulWidget {
@@ -107,7 +109,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return SwipeBackWrapper(
+      child: Scaffold(
       backgroundColor: const Color(0xFF07110b),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -136,11 +139,32 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () => _forceSyncTracks(showFeedback: true),
-        color: const Color(0xFF10b981),
-        backgroundColor: const Color(0xFF0f1d17),
-        child: _playlist.tracks.isEmpty
+      body: Column(
+        children: [
+          const FloatingStatusBar(),
+          if (_playlist.tracks.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final player = context.read<PlayerProvider>();
+                    player.setQueue(_playlist.tracks, startIndex: 0);
+                    player.play(_playlist.tracks.first, queue: _playlist.tracks);
+                  },
+                  icon: const Icon(Icons.play_arrow, color: Colors.white),
+                  label: Text('Play • ${_playlist.tracks.length} tracks', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10b981), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                ),
+              ),
+            ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => _forceSyncTracks(showFeedback: true),
+              color: const Color(0xFF10b981),
+              backgroundColor: const Color(0xFF0f1d17),
+              child: _playlist.tracks.isEmpty
             ? ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
@@ -185,13 +209,21 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   itemCount: _playlist.tracks.length,
                   itemBuilder: (_, i) {
                     final track = _playlist.tracks[i];
+                    final player = context.watch<PlayerProvider>();
+                    final isPlaying = player.currentTrack?.id == track.id && player.isPlaying;
                     return TrackTile(
                       track: track,
+                      isSelected: player.currentTrack?.id == track.id,
+                      isPlaying: isPlaying,
                       onPlay: () => _playTrack(context, track, i),
                     );
                   },
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
       ),
     );
   }
@@ -200,9 +232,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final player = context.read<PlayerProvider>();
     player.setQueue(_playlist.tracks, startIndex: index);
     player.play(track, queue: _playlist.tracks);
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => const PlayerScreen(),
-    ));
+    Navigator.push(context, swipeRoute(const PlayerScreen()));
   }
 
   void _sharePlaylist(BuildContext context) async {

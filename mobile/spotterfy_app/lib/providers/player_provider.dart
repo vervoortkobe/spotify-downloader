@@ -42,6 +42,10 @@ class PlayerProvider extends ChangeNotifier {
     notif.onPlayPause = togglePlayPause;
     notif.onNext = next;
     notif.onPrevious = previous;
+    notif.onClose = () async {
+      await stop();
+      notif.cancelPlaybackNotification();
+    };
     _player.onPositionChanged.listen((pos) {
       _position = pos;
       notifyListeners();
@@ -143,6 +147,14 @@ class PlayerProvider extends ChangeNotifier {
     }
     _currentIndex--;
     await play(_queue[_currentIndex], queue: _queue);
+  }
+
+  Future<void> stop() async {
+    await _player.stop();
+    _isPlaying = false;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    notifyListeners();
   }
 
   void setQueue(List<TrackModel> tracks, {int startIndex = 0}) {

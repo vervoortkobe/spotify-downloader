@@ -6,6 +6,7 @@ class PlaylistCard extends StatelessWidget {
   final PlaylistModel playlist;
   final VoidCallback? onTap;
   final VoidCallback? onDelete;
+  final VoidCallback? onPlay;
   final bool showDelete;
   final Widget? trailing;
 
@@ -14,6 +15,7 @@ class PlaylistCard extends StatelessWidget {
     required this.playlist,
     this.onTap,
     this.onDelete,
+    this.onPlay,
     this.showDelete = false,
     this.trailing,
   });
@@ -68,7 +70,18 @@ class PlaylistCard extends StatelessWidget {
                 ],
               ),
             ),
-            ?trailing,
+            // ignore: use_null_aware_elements
+            if (trailing != null) trailing!,
+            if (onPlay != null)
+              Container(
+                decoration: BoxDecoration(color: Color(0xFF10b981), shape: BoxShape.circle, boxShadow: [BoxShadow(color: Color(0xFF10b981).withValues(alpha: 0.4), blurRadius: 10)]),
+                child: IconButton(
+                  icon: Icon(Icons.play_arrow, color: Colors.white, size: 20),
+                  onPressed: onPlay,
+                  padding: EdgeInsets.all(6),
+                  constraints: BoxConstraints(),
+                ),
+              ),
             if (showDelete)
               IconButton(
                 icon: Icon(

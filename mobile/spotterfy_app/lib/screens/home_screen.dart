@@ -5,10 +5,13 @@ import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/widgets/playlist_card.dart';
+import 'package:spotterfy_app/widgets/floating_status_bar.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/playlist_detail_screen.dart';
 import 'package:spotterfy_app/screens/admin_screen.dart';
 import 'package:spotterfy_app/screens/jam_screen.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
+import 'package:spotterfy_app/providers/player_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -135,14 +138,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const AdminScreen()),
+                swipeRoute(const AdminScreen()),
               ),
             ),
           IconButton(
             icon: Icon(Icons.groups, color: const Color(0xFFa1a1aa)),
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const JamScreen()),
+              swipeRoute(const JamScreen()),
             ),
           ),
           IconButton(
@@ -185,6 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
+          const FloatingStatusBar(),
           _header(auth, playlistProv),
           Expanded(
             child: playlistProv.isLoading
@@ -397,10 +401,15 @@ class _HomeScreenState extends State<HomeScreen> {
             playlist: p,
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => PlaylistDetailScreen(playlist: p),
-              ),
+              swipeRoute(PlaylistDetailScreen(playlist: p)),
             ),
+            onPlay: p.tracks.isEmpty
+                ? null
+                : () {
+                    final player = context.read<PlayerProvider>();
+                    player.setQueue(p.tracks, startIndex: 0);
+                    player.play(p.tracks.first, queue: p.tracks);
+                  },
             onDelete: () async {
               final confirmed = await showDialog<bool>(
                 context: context,

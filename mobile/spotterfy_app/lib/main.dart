@@ -8,6 +8,8 @@ import 'providers/playlist_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/jam_provider.dart';
 import 'providers/admin_provider.dart';
+import 'providers/status_provider.dart';
+import 'services/network_stats_service.dart';
 import 'screens/splash_screen.dart';
 import 'screens/player_screen.dart';
 import 'widgets/mini_player.dart';
@@ -38,6 +40,8 @@ class SpotterfyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PlayerProvider()),
         ChangeNotifierProvider(create: (_) => JamProvider()),
         ChangeNotifierProvider(create: (_) => AdminProvider()),
+        ChangeNotifierProvider(create: (_) => StatusProvider()),
+        ChangeNotifierProvider(create: (_) => NetworkStatsService()),
       ],
       child: MaterialApp(
         navigatorKey: navigatorKey,
