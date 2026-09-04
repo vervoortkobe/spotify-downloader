@@ -31,8 +31,16 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "logo/spotterfy_black_bg.png"
+  adaptive_icon_background: "#090b0b"
+  adaptive_icon_foreground: "logo/spotterfy_black_bg.png"
+  remove_alpha_ios: true
+
 flutter:
   uses-material-design: true
   assets:
-    - assets/app_icon.png
+    - logo/spotterfy_black_bg.png
     - assets/icon.svg

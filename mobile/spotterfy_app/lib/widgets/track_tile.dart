@@ -34,14 +34,14 @@ class TrackTile extends StatelessWidget {
         decoration: BoxDecoration(color: Color(0xFF10b981), borderRadius: BorderRadius.circular(12)),
         alignment: Alignment.centerLeft,
         padding: EdgeInsets.only(left: 24),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.queue_music, color: Colors.white, size: 18), SizedBox(width: 6), Text('Queue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12))]),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.queue_music, color: Colors.white, size: 18), SizedBox(width: 6), Text('Add to Queue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12))]),
       ),
       secondaryBackground: Container(
         margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(color: Color(0xFF0f766e), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(color: Color(0xFF34d399), borderRadius: BorderRadius.circular(12)),
         alignment: Alignment.centerRight,
         padding: EdgeInsets.only(right: 24),
-        child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [Text('Play', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)), SizedBox(width: 6), Icon(Icons.play_arrow, color: Colors.white, size: 18)]),
+        child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [Text('Play Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)), SizedBox(width: 6), Icon(Icons.play_arrow, color: Colors.white, size: 18)]),
       ),
       confirmDismiss: (dir) async {
         HapticFeedback.lightImpact();
@@ -129,6 +129,25 @@ class TrackTile extends StatelessWidget {
             if (progress >= 100) Icon(Icons.check_circle, color: Color(0xFF10b981), size: 20),
             if (onDownload != null && progress == 0)
               IconButton(icon: Icon(Icons.download, color: Color(0xFFa1a1aa), size: 20), onPressed: onDownload, padding: EdgeInsets.zero, constraints: BoxConstraints()),
+            // Queue button
+            IconButton(
+              icon: Icon(Icons.queue_music, color: isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa), size: 20),
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                final player = context.read<PlayerProvider>();
+                final newQueue = [...player.queue, track];
+                player.setQueue(newQueue, startIndex: player.currentIndex);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Added "${track.title}" to queue'),
+                    duration: Duration(milliseconds: 900),
+                    backgroundColor: Color(0xFF0f1d17),
+                  ),
+                );
+              },
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints(),
+            ),
             if (onPlay != null)
               IconButton(
                 icon: Icon(active ? Icons.pause_circle_filled : Icons.play_circle_filled, color: active ? Color(0xFF10b981) : isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa), size: 28),

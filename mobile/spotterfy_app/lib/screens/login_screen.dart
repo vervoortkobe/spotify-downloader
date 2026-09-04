@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/home_screen.dart';
@@ -47,7 +46,7 @@ class LoginScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SvgPicture.asset('assets/icon.svg', width: 88, height: 88),
+                  Image.asset('logo/spotterfy_black_bg.png', width: 88, height: 88),
                   const SizedBox(height: 20),
                   Text(
                     'Spotterfy',

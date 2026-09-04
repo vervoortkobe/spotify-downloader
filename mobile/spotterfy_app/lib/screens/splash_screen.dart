@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
-import 'package:spotterfy_app/screens/home_screen.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
 import 'package:spotterfy_app/screens/approval_screen.dart';
 import 'package:spotterfy_app/screens/onboarding_screen.dart';
 import 'package:spotterfy_app/screens/admin_screen.dart';
+import 'package:spotterfy_app/screens/main_screen.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
@@ -41,24 +41,24 @@ class SplashScreen extends StatelessWidget {
         } else {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            MaterialPageRoute(builder: (_) => const MainScreen()),
           );
         }
       });
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF07110b),
+      backgroundColor: SpotterfyTheme.background,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SvgPicture.asset('assets/icon.svg', width: 80, height: 80),
+            Image.asset('logo/spotterfy_black_bg.png', width: 120, height: 120),
             const SizedBox(height: 24),
             Text(
               'Spotterfy',
               style: TextStyle(
-                color: Colors.white,
+                color: SpotterfyTheme.text,
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
                 letterSpacing: -0.5,

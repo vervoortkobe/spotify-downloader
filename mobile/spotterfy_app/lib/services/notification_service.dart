@@ -46,7 +46,7 @@ class NotificationService {
           'playback_channel',
           'Playback',
           description: 'Music playback controls',
-          importance: Importance.high,
+          importance: Importance.max,
           playSound: false,
           enableVibration: false,
           showBadge: false,
@@ -59,16 +59,16 @@ class NotificationService {
 
   void _onNotificationResponse(NotificationResponse response) {
     switch (response.actionId) {
-      case 'play_pause':
+      case 'android.intent.action.MEDIA_PLAY_PAUSE':
         onPlayPause?.call();
         break;
-      case 'next':
+      case 'android.intent.action.MEDIA_NEXT':
         onNext?.call();
         break;
-      case 'previous':
+      case 'android.intent.action.MEDIA_PREVIOUS':
         onPrevious?.call();
         break;
-      case 'close':
+      case 'android.intent.action.MEDIA_STOP':
         onClose?.call();
         break;
       default:
@@ -97,43 +97,52 @@ class NotificationService {
       'playback_channel',
       'Playback',
       channelDescription: 'Music playback controls',
-      importance: Importance.high,
-      priority: Priority.high,
+      importance: Importance.max,
+      priority: Priority.max,
       ongoing: true,
       showWhen: false,
-      usesChronometer: false,
+      usesChronometer: true,
+      chronometerCountDown: false,
       playSound: false,
       enableVibration: false,
       visibility: NotificationVisibility.public,
+      // Make notification expandable to full height and sticky
+      ticker: 'Now Playing: ${track.title}',
+      autoCancel: false,
+      onlyAlertOnce: true,
       actions: <AndroidNotificationAction>[
-        AndroidNotificationAction(
-          'previous',
+        const AndroidNotificationAction(
+          'android.intent.action.MEDIA_PREVIOUS',
           'Previous',
           showsUserInterface: true,
-          icon: const DrawableResourceAndroidBitmap('ic_media_previous'),
+          icon: DrawableResourceAndroidBitmap('ic_media_previous'),
         ),
         AndroidNotificationAction(
-          'play_pause',
+          'android.intent.action.MEDIA_PLAY_PAUSE',
           isPlaying ? 'Pause' : 'Play',
           showsUserInterface: true,
           icon: DrawableResourceAndroidBitmap(
             isPlaying ? 'ic_media_pause' : 'ic_media_play'
           ),
         ),
-        AndroidNotificationAction(
-          'next',
+        const AndroidNotificationAction(
+          'android.intent.action.MEDIA_NEXT',
           'Next',
           showsUserInterface: true,
-          icon: const DrawableResourceAndroidBitmap('ic_media_next'),
+          icon: DrawableResourceAndroidBitmap('ic_media_next'),
         ),
-        AndroidNotificationAction(
-          'close',
+        const AndroidNotificationAction(
+          'android.intent.action.MEDIA_STOP',
           'Close',
           showsUserInterface: true,
-          icon: const DrawableResourceAndroidBitmap('ic_media_close'),
+          icon: DrawableResourceAndroidBitmap('ic_media_close'),
         ),
       ],
-      styleInformation: const MediaStyleInformation(),
+      // Use MediaStyleInformation for Samsung Now Bar compatibility
+      styleInformation: MediaStyleInformation(
+        htmlFormatContent: true,
+        htmlFormatTitle: true,
+      ),
     );
 
     await _plugin!.show(

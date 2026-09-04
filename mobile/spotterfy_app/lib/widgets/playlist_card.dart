@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 class PlaylistCard extends StatelessWidget {
   final PlaylistModel playlist;
@@ -28,9 +29,8 @@ class PlaylistCard extends StatelessWidget {
         margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         padding: EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Color(0xFF0f1d17),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Color(0xFF1a3a2a)),
+          color: SpotterfyTheme.card,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
@@ -55,7 +55,7 @@ class PlaylistCard extends StatelessWidget {
                   Text(
                     playlist.name,
                     style: TextStyle(
-                      color: Colors.white,
+                      color: SpotterfyTheme.text,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -64,8 +64,10 @@ class PlaylistCard extends StatelessWidget {
                   ),
                   SizedBox(height: 4),
                   Text(
-                    '${playlist.tracks.length} tracks • ${playlist.source}${playlist.isCustom ? ' • Custom' : ''}',
-                    style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
+                    '${playlist.tracks.length} tracks • ${playlist.source}',
+                    style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -74,9 +76,9 @@ class PlaylistCard extends StatelessWidget {
             if (trailing != null) trailing!,
             if (onPlay != null)
               Container(
-                decoration: BoxDecoration(color: Color(0xFF10b981), shape: BoxShape.circle, boxShadow: [BoxShadow(color: Color(0xFF10b981).withValues(alpha: 0.4), blurRadius: 10)]),
+                decoration: BoxDecoration(color: SpotterfyTheme.primary, shape: BoxShape.circle, boxShadow: [BoxShadow(color: SpotterfyTheme.primary.withValues(alpha: 0.4), blurRadius: 10)]),
                 child: IconButton(
-                  icon: Icon(Icons.play_arrow, color: Colors.white, size: 20),
+                  icon: Icon(Icons.play_arrow, color: Colors.black, size: 20),
                   onPressed: onPlay,
                   padding: EdgeInsets.all(6),
                   constraints: BoxConstraints(),
@@ -86,7 +88,7 @@ class PlaylistCard extends StatelessWidget {
               IconButton(
                 icon: Icon(
                   Icons.delete_outline,
-                  color: Color(0xFFef4444),
+                  color: SpotterfyTheme.muted,
                   size: 20,
                 ),
                 onPressed: onDelete,
@@ -101,8 +103,8 @@ class PlaylistCard extends StatelessWidget {
     return Container(
       width: 56,
       height: 56,
-      color: Color(0xFF1a1a2e),
-      child: Icon(Icons.library_music, color: Colors.grey[600], size: 28),
+      color: SpotterfyTheme.surface,
+      child: Icon(Icons.library_music, color: SpotterfyTheme.muted, size: 28),
     );
   }
 }
