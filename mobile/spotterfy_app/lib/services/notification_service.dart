@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/track_model.dart';
 
@@ -38,20 +39,26 @@ class NotificationService {
     if (defaultTargetPlatform == TargetPlatform.android) {
       final android = _plugin!.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
-      await android?.requestNotificationsPermission();
-      
-      // Create playback channel with high importance for Samsung Now Bar compatibility
-      await android?.createNotificationChannel(
-        AndroidNotificationChannel(
-          'playback_channel',
-          'Playback',
-          description: 'Music playback controls',
-          importance: Importance.max,
-          playSound: false,
-          enableVibration: false,
-          showBadge: false,
-        ),
-      );
+      try {
+        await android?.requestNotificationsPermission();
+      } catch (e) {
+        debugPrint('[NotificationService] requestNotificationsPermission failed (Activity not ready): $e');
+      }
+      try {
+        await android?.createNotificationChannel(
+          AndroidNotificationChannel(
+            'playback_channel',
+            'Playback',
+            description: 'Music playback controls',
+            importance: Importance.max,
+            playSound: false,
+            enableVibration: false,
+            showBadge: false,
+          ),
+        );
+      } catch (e) {
+        debugPrint('[NotificationService] createNotificationChannel failed: $e');
+      }
     }
 
     _initialized = true;
@@ -93,52 +100,62 @@ class NotificationService {
 
     final sub = '${track.artists}  •  ${_posText(position)} / ${_posText(duration)}';
 
+    final isLong = duration.inSeconds > 0;
+    final prog = isLong ? position.inSeconds.clamp(0, duration.inSeconds) : 0;
+    final maxProg = isLong ? duration.inSeconds : 100;
+
     final androidDetails = AndroidNotificationDetails(
       'playback_channel',
       'Playback',
-      channelDescription: 'Music playback controls',
-      importance: Importance.max,
-      priority: Priority.max,
-      ongoing: true,
+      channelDescription: 'Music playback controls — Now Bar',
+      importance: Importance.low,
+      priority: Priority.low,
+      ongoing: isPlaying,
+      autoCancel: false,
+      onlyAlertOnce: true,
       showWhen: false,
-      usesChronometer: true,
-      chronometerCountDown: false,
       playSound: false,
       enableVibration: false,
       visibility: NotificationVisibility.public,
-      // Make notification expandable to full height and sticky
+      category: AndroidNotificationCategory.transport,
       ticker: 'Now Playing: ${track.title}',
-      autoCancel: false,
-      onlyAlertOnce: true,
+      color: const Color(0xFF10b981),
+      colorized: true,
+      largeIcon: track.cover.isNotEmpty ? null : const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+      showProgress: isLong,
+      maxProgress: maxProg,
+      progress: prog,
+      indeterminate: false,
       actions: <AndroidNotificationAction>[
         const AndroidNotificationAction(
           'android.intent.action.MEDIA_PREVIOUS',
           'Previous',
-          showsUserInterface: true,
+          showsUserInterface: false,
+          cancelNotification: false,
           icon: DrawableResourceAndroidBitmap('ic_media_previous'),
         ),
         AndroidNotificationAction(
           'android.intent.action.MEDIA_PLAY_PAUSE',
           isPlaying ? 'Pause' : 'Play',
-          showsUserInterface: true,
-          icon: DrawableResourceAndroidBitmap(
-            isPlaying ? 'ic_media_pause' : 'ic_media_play'
-          ),
+          showsUserInterface: false,
+          cancelNotification: false,
+          icon: DrawableResourceAndroidBitmap(isPlaying ? 'ic_media_pause' : 'ic_media_play'),
         ),
         const AndroidNotificationAction(
           'android.intent.action.MEDIA_NEXT',
           'Next',
-          showsUserInterface: true,
+          showsUserInterface: false,
+          cancelNotification: false,
           icon: DrawableResourceAndroidBitmap('ic_media_next'),
         ),
         const AndroidNotificationAction(
           'android.intent.action.MEDIA_STOP',
           'Close',
-          showsUserInterface: true,
+          showsUserInterface: false,
+          cancelNotification: false,
           icon: DrawableResourceAndroidBitmap('ic_media_close'),
         ),
       ],
-      // Use MediaStyleInformation for Samsung Now Bar compatibility
       styleInformation: MediaStyleInformation(
         htmlFormatContent: true,
         htmlFormatTitle: true,

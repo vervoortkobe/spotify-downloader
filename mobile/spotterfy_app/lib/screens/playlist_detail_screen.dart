@@ -8,6 +8,7 @@ import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
 import 'package:spotterfy_app/widgets/floating_status_bar.dart';
+import 'package:spotterfy_app/widgets/mini_player.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
 
@@ -112,6 +113,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     return SwipeBackWrapper(
       child: Scaffold(
       backgroundColor: const Color(0xFF07110b),
+      bottomNavigationBar: const SafeArea(top: false, child: MiniPlayer()),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -205,7 +207,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 child: ListView.builder(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 100),
+                  padding: const EdgeInsets.only(bottom: 140),
                   itemCount: _playlist.tracks.length,
                   itemBuilder: (_, i) {
                     final track = _playlist.tracks[i];

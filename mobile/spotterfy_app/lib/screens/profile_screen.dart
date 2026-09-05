@@ -46,14 +46,13 @@ class ProfileScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: SpotterfyTheme.surface,
                       borderRadius: BorderRadius.circular(40),
+                      border: Border.all(color: SpotterfyTheme.primary.withValues(alpha: 0.3), width: 2),
+                      image: (user?.photoUrl.isNotEmpty ?? false) ? DecorationImage(image: NetworkImage(user!.photoUrl), fit: BoxFit.cover) : null,
+                      boxShadow: [BoxShadow(color: SpotterfyTheme.primary.withValues(alpha: 0.2), blurRadius: 12)],
                     ),
-                    child: Center(
-                      child: Icon(
-                        Icons.person,
-                        color: SpotterfyTheme.muted,
-                        size: 40,
-                      ),
-                    ),
+                    child: (user?.photoUrl.isEmpty ?? true)
+                        ? Center(child: Icon(Icons.person, color: SpotterfyTheme.muted, size: 40))
+                        : null,
                   ),
                   const SizedBox(width: 20),
                   // Profile info

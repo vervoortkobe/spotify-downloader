@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/providers/auth_provider.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
 
 class SearchScreen extends StatelessWidget {
@@ -30,14 +33,10 @@ class SearchScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.person, size: 26),
-            color: SpotterfyTheme.muted,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ProfileScreen()),
-            ),
-          ),
+          Consumer<AuthProvider>(builder: (_, auth, _) => GestureDetector(
+            onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
+            child: Container(margin: const EdgeInsets.only(right: 12), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.5)), child: CircleAvatar(radius: 16, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18) : null)),
+          )),
         ],
       ),
       body: Padding(

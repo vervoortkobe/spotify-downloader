@@ -122,38 +122,35 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(
-          'Spotterfy',
-          style: TextStyle(
-            color: SpotterfyTheme.primary,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-          ),
+        automaticallyImplyLeading: false,
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(width: 28, height: 28, decoration: BoxDecoration(color: SpotterfyTheme.primary), child: Icon(Icons.music_note, color: Colors.black, size: 16)),
+            ),
+          ],
         ),
         actions: [
           if (auth.isAdmin)
             IconButton(
-              icon: Icon(
-                Icons.admin_panel_settings,
-                color: SpotterfyTheme.muted,
-              ),
-              onPressed: () => Navigator.push(
-                context,
-                swipeRoute(const AdminScreen()),
-              ),
+              icon: Icon(Icons.admin_panel_settings, color: SpotterfyTheme.muted, size: 22),
+              onPressed: () => Navigator.push(context, swipeRoute(const AdminScreen())),
             ),
-          IconButton(
-            icon: Icon(Icons.groups, color: SpotterfyTheme.muted),
-            onPressed: () => Navigator.push(
-              context,
-              swipeRoute(const JamScreen()),
-            ),
-          ),
-          IconButton(
-            icon: Icon(Icons.person, color: SpotterfyTheme.muted, size: 26),
-            onPressed: () => Navigator.push(
-              context,
-              swipeRoute(const ProfileScreen()),
+          IconButton(icon: Icon(Icons.groups, color: SpotterfyTheme.muted, size: 22), onPressed: () => Navigator.push(context, swipeRoute(const JamScreen()))),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
+            child: Container(
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.5)),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: SpotterfyTheme.surface,
+                backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null,
+                child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18) : null,
+              ),
             ),
           ),
         ],
@@ -365,7 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView.builder(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 80),
+        padding: const EdgeInsets.only(bottom: 140),
         itemCount: filtered.length,
         itemBuilder: (_, i) {
           final p = filtered[i];
