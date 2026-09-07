@@ -30,7 +30,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   void initState() {
     super.initState();
     _playlist = widget.playlist;
-    _maybeSyncTracks();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _maybeSyncTracks();
+      }
+    });
   }
 
   @override

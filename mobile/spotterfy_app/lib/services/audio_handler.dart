@@ -40,11 +40,10 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
     await session.configure(const AudioSessionConfiguration.music());
 
     _player.playbackEventStream.map(_toPlaybackState).pipe(playbackState);
-    _player.positionStream.listen((pos) {
-      final dur = _player.duration;
+    _player.durationStream.listen((dur) {
       if (dur != null) {
         final item = mediaItem.value;
-        if (item != null) {
+        if (item != null && item.duration != dur) {
           mediaItem.add(item.copyWith(duration: dur));
         }
       }
@@ -67,7 +66,16 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
         MediaControl.skipToNext,
         MediaControl.stop,
       ],
-      systemActions: const {MediaAction.seek, MediaAction.seekForward, MediaAction.seekBackward},
+      systemActions: const {
+        MediaAction.seek,
+        MediaAction.seekForward,
+        MediaAction.seekBackward,
+        MediaAction.play,
+        MediaAction.pause,
+        MediaAction.skipToNext,
+        MediaAction.skipToPrevious,
+        MediaAction.stop,
+      },
       androidCompactActionIndices: const [0, 1, 2],
       processingState: const {
         ProcessingState.idle: AudioProcessingState.idle,

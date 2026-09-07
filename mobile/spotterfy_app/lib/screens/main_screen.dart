@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/providers/auth_provider.dart';
+import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/widgets/mini_player.dart';
-import 'home_screen.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
-import 'downloads_screen.dart';
+import 'storage_screen.dart';
 import 'queue_screen.dart';
+import 'jam_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -17,61 +19,87 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
-  int _currentIndex = 0;
+  late TabController _tabController;
   late PageController _pageController;
 
   final List<Widget> _screens = const [
-    HomeScreen(),
-    SearchScreen(),
-    LibraryScreen(),
-    DownloadsScreen(),
-    QueueScreen(),
+    SearchScreen(), // Discover
+    LibraryScreen(), // Playlists
+    StorageScreen(), // Storage
+    QueueScreen(), // Queue
+    JamScreen(), // Chat
   ];
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: _currentIndex);
+    _tabController = TabController(length: 5, vsync: this, initialIndex: 1);
+    _pageController = PageController(initialPage: 1);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        _pageController.animateToPage(_tabController.index, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+      }
+    });
+
+    // Load playlists on startup
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthProvider>();
+      if (auth.user != null) {
+        context.read<PlaylistProvider>().loadPlaylists(auth.user!.uid);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _pageController.dispose();
     super.dispose();
-  }
-
-  void _onTap(int i) {
-    setState(() => _currentIndex = i);
-    _pageController.animateToPage(i, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SpotterfyTheme.background,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(52),
+        child: SafeArea(
+          child: Container(
+            color: SpotterfyTheme.background,
+            child: TabBar(
+              controller: _tabController,
+              onTap: (i) => _pageController.animateToPage(i, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic),
+              isScrollable: true,
+              tabAlignment: TabAlignment.center,
+              labelColor: Colors.white,
+              unselectedLabelColor: SpotterfyTheme.muted,
+              indicatorColor: SpotterfyTheme.primary,
+              indicatorWeight: 2.5,
+              dividerColor: Colors.transparent,
+              labelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: -0.2),
+              unselectedLabelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+              tabs: const [
+                Tab(text: 'Discover'),
+                Tab(text: 'Playlists'),
+                Tab(text: 'Storage'),
+                Tab(text: 'Queue'),
+                Tab(text: 'Chat'),
+              ],
+            ),
+          ),
+        ),
+      ),
       body: Stack(
         children: [
           PageView(
             controller: _pageController,
-            onPageChanged: (i) => setState(() => _currentIndex = i),
+            onPageChanged: (i) {
+              _tabController.animateTo(i, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+            },
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             children: _screens,
           ),
-          Positioned(left: 0, right: 0, bottom: 0, child: _MainMiniPlayerWrapper()),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: const Color(0xFF0f1d17).withValues(alpha: 0.95),
-        indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.15),
-        selectedIndex: _currentIndex,
-        onDestinationSelected: _onTap,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.search), selectedIcon: Icon(Icons.search), label: 'Search'),
-          NavigationDestination(icon: Icon(Icons.library_music_outlined), selectedIcon: Icon(Icons.library_music), label: 'Library'),
-          NavigationDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: 'Downloads'),
-          NavigationDestination(icon: Icon(Icons.queue_music_outlined), selectedIcon: Icon(Icons.queue_music), label: 'Queue'),
+          const Positioned(left: 0, right: 0, bottom: 0, child: _MainMiniPlayerWrapper()),
         ],
       ),
     );

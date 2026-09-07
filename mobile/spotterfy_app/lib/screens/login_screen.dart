@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
-import 'package:spotterfy_app/screens/home_screen.dart';
+import 'package:spotterfy_app/screens/main_screen.dart';
 import 'package:spotterfy_app/screens/approval_screen.dart';
 import 'package:spotterfy_app/screens/admin_screen.dart';
 
@@ -29,7 +29,7 @@ class LoginScreen extends StatelessWidget {
         } else {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            MaterialPageRoute(builder: (_) => const MainScreen()),
           );
         }
       });
@@ -109,7 +109,7 @@ class LoginScreen extends StatelessWidget {
                                       Navigator.pushReplacement(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (_) => const HomeScreen(),
+                                          builder: (_) => const MainScreen(),
                                         ),
                                       );
                                     }

@@ -106,26 +106,67 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Google avatar
-                    Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: const Color(0xFF10b981), width: 3), boxShadow: [BoxShadow(color: const Color(0xFF10b981).withValues(alpha: 0.3), blurRadius: 16)]),
-                      child: CircleAvatar(
-                        radius: 48,
-                        backgroundColor: const Color(0xFF0f1d17),
-                        backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
-                        child: photo.isEmpty ? const Icon(Icons.person, size: 48, color: Color(0xFFa1a1aa)) : null,
+                    // Google avatar and name
+                    Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFF10b981), width: 3),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF10b981).withValues(alpha: 0.3),
+                                blurRadius: 16,
+                              )
+                            ],
+                          ),
+                          child: CircleAvatar(
+                            radius: 48,
+                            backgroundColor: const Color(0xFF0f1d17),
+                            backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+                            child: photo.isEmpty ? const Icon(Icons.person, size: 48, color: Color(0xFFa1a1aa)) : null,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          user?.displayName ?? 'User',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      'Hi, $firstName',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(user?.displayName.isNotEmpty ?? false ? user!.displayName : 'User', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-                    Text(user?.email ?? '', style: const TextStyle(color: Color(0xFFa1a1aa), fontSize: 12)),
-                    const SizedBox(height: 20),
-                    Text('Hi, $firstName', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
-                    const Text('Welcome to Spotterfy', style: TextStyle(color: Color(0xFF10b981), fontSize: 18, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 12),
-                    const Text('Set up your profile to continue.\nYour display name will be visible to others.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 14, height: 1.4)),
+                    const Text(
+                      'Welcome to Spotterfy',
+                      style: TextStyle(
+                        color: Color(0xFF10b981),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Set up your profile to continue.\nYour display name will be visible to others.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFFa1a1aa),
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
+                    ),
                     const SizedBox(height: 28),
                     // Name field
                     Align(alignment: Alignment.centerLeft, child: Text('Display name', style: TextStyle(color: const Color(0xFFa1a1aa), fontSize: 12, fontWeight: FontWeight.w600))),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
@@ -47,7 +48,7 @@ class ProfileScreen extends StatelessWidget {
                       color: SpotterfyTheme.surface,
                       borderRadius: BorderRadius.circular(40),
                       border: Border.all(color: SpotterfyTheme.primary.withValues(alpha: 0.3), width: 2),
-                      image: (user?.photoUrl.isNotEmpty ?? false) ? DecorationImage(image: NetworkImage(user!.photoUrl), fit: BoxFit.cover) : null,
+                      image: (user?.photoUrl.isNotEmpty ?? false) ? DecorationImage(image: CachedNetworkImageProvider(user!.photoUrl), fit: BoxFit.cover) : null,
                       boxShadow: [BoxShadow(color: SpotterfyTheme.primary.withValues(alpha: 0.2), blurRadius: 12)],
                     ),
                     child: (user?.photoUrl.isEmpty ?? true)
@@ -224,7 +225,7 @@ class ProfileScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: playlist.coverUrl.isNotEmpty
-            ? Image.network(playlist.coverUrl, fit: BoxFit.cover)
+            ? CachedNetworkImage(imageUrl: playlist.coverUrl, fit: BoxFit.cover)
             : Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24),
       ),
       title: Text(
