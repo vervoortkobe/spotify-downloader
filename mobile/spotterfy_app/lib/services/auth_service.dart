@@ -78,6 +78,20 @@ class AuthService {
     });
   }
 
+  Future<void> updateDisplayName(String uid, String name) async {
+    await _firestore.collection('users').doc(uid).update({
+      'displayName': name,
+    });
+  }
+
+  Future<void> completeProfile(String uid, {required String displayName, String spotifyUrl = ''}) async {
+    await _firestore.collection('users').doc(uid).update({
+      'displayName': displayName,
+      'spotifyProfileUrl': spotifyUrl,
+      'hasCompletedOnboarding': true,
+    });
+  }
+
   Future<void> updateListeningStatus(
     String uid,
     String? trackId,

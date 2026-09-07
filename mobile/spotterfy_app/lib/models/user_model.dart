@@ -6,6 +6,7 @@ class UserModel {
   String spotifyProfileUrl;
   bool isAdmin;
   bool isApproved;
+  bool hasCompletedOnboarding;
   final DateTime createdAt;
   String? currentListeningTo;
   String? currentJamSession;
@@ -19,6 +20,7 @@ class UserModel {
     this.spotifyProfileUrl = '',
     this.isAdmin = false,
     this.isApproved = false,
+    this.hasCompletedOnboarding = false,
     DateTime? createdAt,
     this.currentListeningTo,
     this.currentJamSession,
@@ -33,6 +35,7 @@ class UserModel {
     spotifyProfileUrl: data['spotifyProfileUrl'] as String? ?? '',
     isAdmin: data['isAdmin'] as bool? ?? false,
     isApproved: data['isApproved'] as bool? ?? false,
+    hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
     createdAt: (data['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
     currentListeningTo: data['currentListeningTo'] as String?,
     currentJamSession: data['currentJamSession'] as String?,
@@ -46,6 +49,7 @@ class UserModel {
     'spotifyProfileUrl': spotifyProfileUrl,
     'isAdmin': isAdmin,
     'isApproved': isApproved,
+    'hasCompletedOnboarding': hasCompletedOnboarding,
     'createdAt': createdAt,
     'currentListeningTo': currentListeningTo,
     'currentJamSession': currentJamSession,
