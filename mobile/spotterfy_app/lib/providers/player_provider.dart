@@ -1,20 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/models/track_model.dart';
+import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/audio_handler.dart';
 
 class PlayerProvider extends ChangeNotifier {
-  AudioPlayer? _fallbackPlayer;
-  AudioPlayer get _player {
-    final h = audioHandler;
-    if (h != null) return h.player;
-    _fallbackPlayer ??= AudioPlayer();
-    return _fallbackPlayer!;
-  }
-
+  final AudioPlayer _player = AudioPlayer();
   TrackModel? _currentTrack;
   List<TrackModel> _queue = [];
   int _currentIndex = -1;
@@ -35,28 +30,59 @@ class PlayerProvider extends ChangeNotifier {
 
   PlayerProvider() {
     _loadPlayerState();
-    _player.positionStream.listen((pos) {
+    _player.setAudioContext(AudioContext(
+      android: AudioContextAndroid(
+        isSpeakerphoneOn: false,
+        stayAwake: true,
+        contentType: AndroidContentType.music,
+        usageType: AndroidUsageType.media,
+        audioFocus: AndroidAudioFocus.gain,
+      ),
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playback,
+        options: {AVAudioSessionOptions.mixWithOthers},
+      ),
+    ));
+    _player.setReleaseMode(ReleaseMode.stop);
+    _player.onPositionChanged.listen((pos) {
       _position = pos;
+      audioHandler?.updatePosition(pos, _duration, _isPlaying);
       notifyListeners();
     });
-    _player.durationStream.listen((dur) {
-      if (dur != null) {
-        _duration = dur;
+    _player.onDurationChanged.listen((dur) {
+      _duration = dur;
+      if (_currentTrack != null) audioHandler?.updateTrack(_currentTrack!, queue: _queue, position: _position, duration: _duration, isPlaying: _isPlaying);
+      notifyListeners();
+    });
+    _player.onPlayerStateChanged.listen((state) {
+      _isPlaying = state == PlayerState.playing;
+      audioHandler?.updatePosition(_position, _duration, _isPlaying);
+      notifyListeners();
+    });
+    _player.onPlayerComplete.listen((_) {
+      if (_queue.isNotEmpty && _currentIndex < _queue.length - 1) {
+        next();
+      } else {
+        _isPlaying = false;
+        audioHandler?.updatePosition(_position, _duration, false);
         notifyListeners();
       }
     });
-    _player.playerStateStream.listen((state) {
-      _isPlaying = state.playing;
-      notifyListeners();
-    });
-    Future.delayed(const Duration(milliseconds: 800), () {
+    // hook MediaSession seek (drag in Now Bar) -> seek audioplayers
+    Future.delayed(const Duration(milliseconds: 500), () {
       final h = audioHandler;
       if (h != null) {
-        h.playbackState.listen((state) {
-          _isPlaying = state.playing;
-          notifyListeners();
-        });
+        h.onSeekRequested = (pos) async => await seekTo(pos);
       }
+    });
+    // poll for handler late init
+    Timer.periodic(const Duration(seconds: 1), (t) {
+      final h = audioHandler;
+      if (h != null && h.onSeekRequested == null) {
+        h.onSeekRequested = (pos) async => await seekTo(pos);
+        t.cancel();
+      }
+      if (h != null) t.cancel();
     });
   }
 
@@ -81,67 +107,64 @@ class PlayerProvider extends ChangeNotifier {
     _position = Duration.zero;
     _duration = Duration.zero;
     notifyListeners();
+    await ensureAudioHandler();
+    final h = audioHandler;
+    if (h != null) {
+      await h.updateTrack(track, queue: _queue, position: Duration.zero, duration: Duration.zero, isPlaying: true);
+      h.onSeekRequested = (pos) async => await seekTo(pos);
+    }
+    final primary = track.sourceUrl.isNotEmpty ? ApiService.streamTrackUrl(track.sourceUrl) : null;
+    final fallback = ApiService.streamTrackUrl('ytsearch1:${track.title} ${track.artists} audio');
+    Future<void> warm(String url) async {
+      try {
+        await http.head(Uri.parse(url)).timeout(const Duration(seconds: 3));
+      } catch (_) {}
+    }
     try {
-      await ensureAudioHandler();
-      final h = audioHandler;
-      if (h != null) {
-        await h.playTrack(track, queue: _queue);
-      } else {
-        final url = track.sourceUrl.isNotEmpty ? track.sourceUrl : 'ytsearch1:${track.title} ${track.artists} audio';
-        final streamUrl = url.startsWith('http') ? url : 'https://spotdl.vervoortkobe.be.eu.org/api/stream?source_url=${Uri.encodeComponent(url)}';
-        await _player.setAudioSource(AudioSource.uri(Uri.parse(streamUrl)));
-        await _player.play();
-      }
+      await _player.stop();
+      final url = primary ?? fallback;
+      await warm(url);
+      await _player.play(UrlSource(url)).timeout(const Duration(seconds: 30));
       _isPlaying = true;
       notifyListeners();
     } catch (e) {
-      debugPrint('[Player] play failed: $e');
+      debugPrint('[Player] primary failed: $e');
+      try {
+        await _player.stop();
+        await warm(fallback);
+        await _player.play(UrlSource(fallback)).timeout(const Duration(seconds: 35));
+        _isPlaying = true;
+        notifyListeners();
+      } catch (e2) {
+        debugPrint('[Player] fallback failed: $e2');
+      }
     }
     _savePlayerState();
   }
 
   Future<void> togglePlayPause() async {
-    final h = audioHandler;
     if (_isPlaying) {
-      if (h != null) {
-        await h.pause();
-      } else {
-        await _player.pause();
-      }
+      await _player.pause();
+      audioHandler?.updatePosition(_position, _duration, false);
     } else {
-      if (h != null) {
-        await h.play();
-      } else {
-        await _player.play();
-      }
+      await _player.resume();
+      audioHandler?.updatePosition(_position, _duration, true);
     }
   }
 
   Future<void> pause() async {
-    final h = audioHandler;
-    if (h != null) {
-      await h.pause();
-    } else {
-      await _player.pause();
-    }
+    await _player.pause();
+    audioHandler?.updatePosition(_position, _duration, false);
   }
 
   Future<void> resume() async {
-    final h = audioHandler;
-    if (h != null) {
-      await h.play();
-    } else {
-      await _player.play();
-    }
+    await _player.resume();
+    audioHandler?.updatePosition(_position, _duration, true);
   }
 
   Future<void> seekTo(Duration position) async {
-    final h = audioHandler;
-    if (h != null) {
-      await h.seek(position);
-    } else {
-      await _player.seek(position);
-    }
+    await _player.seek(position);
+    audioHandler?.updatePosition(position, _duration, _isPlaying);
   }
 
   Future<void> next() async {
@@ -153,12 +176,7 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> previous() async {
     if (_queue.isEmpty || _currentIndex <= 0) return;
     if (_position.inSeconds > 3) {
-      final h = audioHandler;
-      if (h != null) {
-        await h.seek(Duration.zero);
-      } else {
-        await _player.seek(Duration.zero);
-      }
+      await seekTo(Duration.zero);
       return;
     }
     _currentIndex--;
@@ -166,25 +184,18 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> stop() async {
-    final h = audioHandler;
-    if (h != null) {
-      await h.stop();
-    } else {
-      await _player.stop();
-    }
+    await _player.stop();
     _isPlaying = false;
     _position = Duration.zero;
     _duration = Duration.zero;
+    audioHandler?.updatePosition(_position, _duration, false);
     notifyListeners();
   }
 
   void setQueue(List<TrackModel> tracks, {int startIndex = 0}) {
     _queue = List.from(tracks);
     _currentIndex = startIndex.clamp(0, tracks.isEmpty ? 0 : tracks.length - 1);
-    final h = audioHandler;
-    if (h != null) {
-      h.setQueue(tracks, startIndex: startIndex);
-    }
+    audioHandler?.setQueue(tracks, startIndex: startIndex);
     notifyListeners();
   }
 
@@ -220,10 +231,7 @@ class PlayerProvider extends ChangeNotifier {
 
   void addToQueue(TrackModel track) {
     _queue.add(track);
-    final h = audioHandler;
-    if (h != null) {
-      h.setQueue(_queue, startIndex: _currentIndex.clamp(0, _queue.length - 1));
-    }
+    audioHandler?.setQueue(_queue, startIndex: _currentIndex.clamp(0, _queue.length - 1));
     notifyListeners();
   }
 
@@ -233,16 +241,14 @@ class PlayerProvider extends ChangeNotifier {
     } else {
       _queue.add(track);
     }
-    final h = audioHandler;
-    if (h != null) {
-      h.setQueue(_queue, startIndex: _currentIndex.clamp(0, _queue.length - 1));
-    }
+    audioHandler?.setQueue(_queue, startIndex: _currentIndex.clamp(0, _queue.length - 1));
     notifyListeners();
   }
 
   @override
   void dispose() {
     _savePlayerState();
+    _player.dispose();
     super.dispose();
   }
 

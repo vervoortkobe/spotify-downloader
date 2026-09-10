@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:audio_service/audio_service.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import '../models/track_model.dart';
 import 'api_service.dart';
@@ -27,69 +26,19 @@ Future<void> ensureAudioHandler() async {
 }
 
 class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
-  final AudioPlayer _player = AudioPlayer();
   List<TrackModel> _tracks = [];
   int _index = -1;
+  Future<void> Function(Duration)? onSeekRequested;
 
   SpotterfyAudioHandler() {
-    _init();
+    _initSession();
   }
 
-  Future<void> _init() async {
-    final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.music());
-
-    _player.playbackEventStream.map(_toPlaybackState).pipe(playbackState);
-    _player.durationStream.listen((dur) {
-      if (dur != null) {
-        final item = mediaItem.value;
-        if (item != null && item.duration != dur) {
-          mediaItem.add(item.copyWith(duration: dur));
-        }
-      }
-    });
-
-    _player.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
-        if (_index + 1 < _tracks.length) {
-          skipToNext();
-        }
-      }
-    });
-  }
-
-  PlaybackState _toPlaybackState(PlaybackEvent event) {
-    return PlaybackState(
-      controls: [
-        MediaControl.skipToPrevious,
-        if (_player.playing) MediaControl.pause else MediaControl.play,
-        MediaControl.skipToNext,
-        MediaControl.stop,
-      ],
-      systemActions: const {
-        MediaAction.seek,
-        MediaAction.seekForward,
-        MediaAction.seekBackward,
-        MediaAction.play,
-        MediaAction.pause,
-        MediaAction.skipToNext,
-        MediaAction.skipToPrevious,
-        MediaAction.stop,
-      },
-      androidCompactActionIndices: const [0, 1, 2],
-      processingState: const {
-        ProcessingState.idle: AudioProcessingState.idle,
-        ProcessingState.loading: AudioProcessingState.loading,
-        ProcessingState.buffering: AudioProcessingState.buffering,
-        ProcessingState.ready: AudioProcessingState.ready,
-        ProcessingState.completed: AudioProcessingState.completed,
-      }[_player.processingState]!,
-      playing: _player.playing,
-      updatePosition: _player.position,
-      bufferedPosition: _player.bufferedPosition,
-      speed: _player.speed,
-      queueIndex: _index >= 0 ? _index : null,
-    );
+  Future<void> _initSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+    } catch (_) {}
   }
 
   MediaItem _toMediaItem(TrackModel t) => MediaItem(
@@ -101,84 +50,92 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
         duration: t.durationMs > 0 ? Duration(milliseconds: t.durationMs) : null,
       );
 
-  Future<void> playTrack(TrackModel track, {List<TrackModel>? queue}) async {
-    if (queue != null) {
-      _tracks = List.from(queue);
-      _index = _tracks.indexWhere((e) => e.id == track.id);
-      if (_index == -1) _index = 0;
-      this.queue.add(_tracks.map(_toMediaItem).toList());
-    } else if (_tracks.isEmpty) {
-      _tracks = [track];
-      _index = 0;
-      this.queue.add([_toMediaItem(track)]);
-    } else {
-      final idx = _tracks.indexWhere((e) => e.id == track.id);
-      if (idx >= 0) {
-        _index = idx;
-      } else {
-        _tracks.add(track);
-        _index = _tracks.length - 1;
-        this.queue.add(_tracks.map(_toMediaItem).toList());
-      }
-    }
-    final mediaItem = _toMediaItem(track);
-    this.mediaItem.add(mediaItem);
-    final url = track.sourceUrl.isNotEmpty ? ApiService.streamTrackUrl(track.sourceUrl) : ApiService.streamTrackUrl('ytsearch1:${track.title} ${track.artists} audio');
-    try {
-      await _player.setAudioSource(AudioSource.uri(Uri.parse(url)), preload: true);
-      await _player.play();
-    } catch (e) {
-      // fallback to ytsearch if sourceUrl failed
-      if (track.sourceUrl.isNotEmpty) {
-        final fb = ApiService.streamTrackUrl('ytsearch1:${track.title} ${track.artists} audio');
-        await _player.setAudioSource(AudioSource.uri(Uri.parse(fb)));
-        await _player.play();
-      } else {
-        rethrow;
-      }
-    }
-  }
-
-  @override
-  Future<void> play() => _player.play();
-
-  @override
-  Future<void> pause() => _player.pause();
-
-  @override
-  Future<void> stop() => _player.stop();
-
-  @override
-  Future<void> seek(Duration position) => _player.seek(position);
-
-  @override
-  Future<void> skipToNext() async {
-    if (_index + 1 < _tracks.length) {
-      _index++;
-      await playTrack(_tracks[_index], queue: _tracks);
-    }
-  }
-
-  @override
-  Future<void> skipToPrevious() async {
-    if ((_player.position.inSeconds) > 3) {
-      await _player.seek(Duration.zero);
-      return;
-    }
-    if (_index > 0) {
-      _index--;
-      await playTrack(_tracks[_index], queue: _tracks);
-    }
-  }
-
   void setQueue(List<TrackModel> tracks, {int startIndex = 0}) {
     _tracks = List.from(tracks);
     _index = startIndex.clamp(0, _tracks.length - 1);
     queue.add(_tracks.map(_toMediaItem).toList());
     if (_tracks.isNotEmpty) mediaItem.add(_toMediaItem(_tracks[_index]));
+    _updatePlaybackState(isPlaying: playbackState.valueOrNull?.playing ?? false, position: Duration.zero);
   }
 
-  AudioPlayer get player => _player;
-  List<TrackModel> get tracks => _tracks;
-  int get index => _index;
+  Future<void> updateTrack(TrackModel track, {List<TrackModel>? queue, required Duration position, Duration? duration, required bool isPlaying}) async {
+    if (queue != null) {
+      _tracks = List.from(queue);
+      _index = _tracks.indexWhere((e) => e.id == track.id);
+      if (_index == -1) _index = 0;
+      this.queue.add(_tracks.map(_toMediaItem).toList());
+    }
+    final item = _toMediaItem(track);
+    mediaItem.add(item.copyWith(duration: duration));
+    _updatePlaybackState(isPlaying: isPlaying, position: position);
+  }
+
+  void _updatePlaybackState({required bool isPlaying, required Duration position, Duration buffered = Duration.zero, double speed = 1.0}) {
+    final dur = mediaItem.value?.duration;
+    playbackState.add(PlaybackState(
+      controls: [
+        MediaControl.skipToPrevious,
+        if (isPlaying) MediaControl.pause else MediaControl.play,
+        MediaControl.skipToNext,
+        MediaControl.stop,
+      ],
+      systemActions: const {MediaAction.seek, MediaAction.seekForward, MediaAction.seekBackward},
+      androidCompactActionIndices: const [0, 1, 2],
+      processingState: AudioProcessingState.ready,
+      playing: isPlaying,
+      updatePosition: position,
+      bufferedPosition: buffered,
+      speed: speed,
+      queueIndex: _index >= 0 ? _index : null,
+    ));
+  }
+
+  void updatePosition(Duration pos, Duration dur, bool isPlaying) {
+    final item = mediaItem.value;
+    if (item != null && dur != Duration.zero) {
+      mediaItem.add(item.copyWith(duration: dur));
+    }
+    _updatePlaybackState(isPlaying: isPlaying, position: pos);
+  }
+
+  @override
+  Future<void> seek(Duration position) async {
+    if (onSeekRequested != null) {
+      await onSeekRequested!(position);
+    }
+    _updatePlaybackState(isPlaying: playbackState.valueOrNull?.playing ?? false, position: position);
+  }
+
+  @override
+  Future<void> play() async {
+    _updatePlaybackState(isPlaying: true, position: playbackState.valueOrNull?.updatePosition ?? Duration.zero);
+  }
+
+  @override
+  Future<void> pause() async {
+    _updatePlaybackState(isPlaying: false, position: playbackState.valueOrNull?.updatePosition ?? Duration.zero);
+  }
+
+  @override
+  Future<void> stop() async {
+    _updatePlaybackState(isPlaying: false, position: Duration.zero);
+  }
+
+  @override
+  Future<void> skipToNext() async {
+    if (_index + 1 < _tracks.length) {
+      _index++;
+      mediaItem.add(_toMediaItem(_tracks[_index]));
+      _updatePlaybackState(isPlaying: true, position: Duration.zero);
+    }
+  }
+
+  @override
+  Future<void> skipToPrevious() async {
+    if (_index > 0) {
+      _index--;
+      mediaItem.add(_toMediaItem(_tracks[_index]));
+      _updatePlaybackState(isPlaying: true, position: Duration.zero);
+    }
+  }
 }
