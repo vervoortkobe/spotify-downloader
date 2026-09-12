@@ -1,8 +1,12 @@
+// ignore_for_file: unnecessary_underscores
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
+import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/screens/profile_screen.dart';
 
 class QueueScreen extends StatelessWidget {
   const QueueScreen({super.key});
@@ -14,7 +18,14 @@ class QueueScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('Queue', style: TextStyle(color: SpotterfyTheme.text, fontSize: 22, fontWeight: FontWeight.bold)),
+        automaticallyImplyLeading: false,
+        leadingWidth: 48,
+        leading: Consumer<AuthProvider>(builder: (_, auth, __) => GestureDetector(
+          onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
+          child: Padding(padding: const EdgeInsets.only(left: 10), child: Center(child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.4), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]), child: CircleAvatar(radius: 14, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 16) : null))),
+        ))),
+        titleSpacing: 8,
+        title: Text('Queue', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
       ),
       body: Consumer<PlayerProvider>(builder: (context, player, _) {
         final q = player.queue;
@@ -25,7 +36,7 @@ class QueueScreen extends StatelessWidget {
               const SizedBox(height: 12),
               Text('Queue is empty', style: TextStyle(color: SpotterfyTheme.text, fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              Text('Play a playlist or swipe right on a track\nto add it to the queue.', textAlign: TextAlign.center, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
+              Text('Play a playlist or swipe left on a track\nto add it to the queue, right to play.', textAlign: TextAlign.center, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
             ]),
           );
         }
@@ -35,7 +46,16 @@ class QueueScreen extends StatelessWidget {
           onReorderItem: (oldIndex, newIndex) {
             final item = q.removeAt(oldIndex);
             q.insert(newIndex, item);
-            player.setQueue(q, startIndex: player.currentIndex);
+            // Adjust currentIndex to stay on same track after reorder
+            var cur = player.currentIndex;
+            if (oldIndex == cur) {
+              cur = newIndex;
+            } else if (oldIndex < cur && newIndex >= cur) {
+              cur -= 1;
+            } else if (oldIndex > cur && newIndex <= cur) {
+              cur += 1;
+            }
+            player.setQueue(q, startIndex: cur);
             HapticFeedback.lightImpact();
           },
           itemBuilder: (_, i) {

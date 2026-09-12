@@ -123,36 +123,37 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
-        titleSpacing: 16,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Container(width: 28, height: 28, decoration: BoxDecoration(color: SpotterfyTheme.primary), child: Icon(Icons.music_note, color: Colors.black, size: 16)),
-            ),
-          ],
+        leadingWidth: 48,
+        leading: GestureDetector(
+          onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 10),
+            child: Center(child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.4), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]), child: CircleAvatar(radius: 14, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 16) : null))),
+          ),
         ),
-        actions: [
-          if (auth.isAdmin)
-            IconButton(
-              icon: Icon(Icons.admin_panel_settings, color: SpotterfyTheme.muted, size: 22),
-              onPressed: () => Navigator.push(context, swipeRoute(const AdminScreen())),
-            ),
-          IconButton(icon: Icon(Icons.groups, color: SpotterfyTheme.muted, size: 22), onPressed: () => Navigator.push(context, swipeRoute(const JamScreen()))),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
-            child: Container(
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.5)),
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor: SpotterfyTheme.surface,
-                backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null,
-                child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18) : null,
-              ),
+        title: Container(
+          height: 36,
+          decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(18)),
+          child: TextField(
+            onChanged: (v) => setState(() => _searchQuery = v),
+            style: TextStyle(color: Colors.white, fontSize: 14),
+            decoration: InputDecoration(
+              prefixIcon: Icon(Icons.search, color: SpotterfyTheme.muted, size: 18),
+              prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 36),
+              hintText: 'Search playlists',
+              hintStyle: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              isDense: true,
+              suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: Icon(Icons.clear, color: SpotterfyTheme.muted, size: 16), onPressed: () => setState(() => _searchQuery = ''), padding: EdgeInsets.zero, constraints: const BoxConstraints()) : null,
             ),
           ),
+        ),
+        titleSpacing: 8,
+        actions: [
+          if (auth.isAdmin) IconButton(icon: Icon(Icons.admin_panel_settings, color: SpotterfyTheme.muted, size: 20), onPressed: () => Navigator.push(context, swipeRoute(const AdminScreen())), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+          IconButton(icon: Icon(Icons.groups, color: SpotterfyTheme.muted, size: 20), onPressed: () => Navigator.push(context, swipeRoute(const JamScreen())), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+          const SizedBox(width: 12),
         ],
       ),
       body: Column(
@@ -202,38 +203,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? 'Loading your playlists…'
                 : '${prov.playlists.length} playlist${prov.playlists.length == 1 ? '' : 's'}',
             style: const TextStyle(color: Color(0xFFa1a1aa), fontSize: 13),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            onChanged: (v) => setState(() => _searchQuery = v),
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Search your playlists',
-              hintStyle: const TextStyle(color: Color(0xFFa1a1aa)),
-              filled: true,
-              fillColor: const Color(0xFF0a1410),
-              prefixIcon: const Icon(Icons.search, color: Color(0xFF10b981)),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, color: Color(0xFFa1a1aa)),
-                      onPressed: () => setState(() => _searchQuery = ''),
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF1a3a2a)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF1a3a2a)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF10b981)),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-            ),
           ),
         ],
       ),

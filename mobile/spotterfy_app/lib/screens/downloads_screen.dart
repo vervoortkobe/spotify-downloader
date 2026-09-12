@@ -1,3 +1,4 @@
+// ignore_for_file: unnecessary_underscores
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
@@ -16,13 +17,14 @@ class DownloadsScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('Downloads', style: TextStyle(color: SpotterfyTheme.text, fontSize: 22, fontWeight: FontWeight.bold)),
-        actions: [
-          Consumer<AuthProvider>(builder: (_, auth, _) => GestureDetector(
-            onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
-            child: Container(margin: const EdgeInsets.only(right: 12), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.5)), child: CircleAvatar(radius: 16, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? const Icon(Icons.person, color: SpotterfyTheme.muted, size: 18) : null)),
-          )),
-        ],
+        automaticallyImplyLeading: false,
+        leadingWidth: 48,
+        leading: Consumer<AuthProvider>(builder: (_, auth, __) => GestureDetector(
+          onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
+          child: Padding(padding: const EdgeInsets.only(left: 10), child: Center(child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.4), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]), child: CircleAvatar(radius: 14, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 16) : null))),
+        ))),
+        titleSpacing: 8,
+        title: Text('Downloads', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
       ),
       body: Consumer<PlaylistProvider>(builder: (_, prov, _) {
         final downloaded = prov.playlists.where((p) => p.tracks.isNotEmpty).toList();
@@ -33,7 +35,7 @@ class DownloadsScreen extends StatelessWidget {
               const SizedBox(height: 12),
               Text('No downloads yet', style: TextStyle(color: SpotterfyTheme.text, fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              Text('Downloaded tracks will appear here.\nSwipe right on a track to queue, left to play.', textAlign: TextAlign.center, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
+              Text('Downloaded tracks will appear here.\nSwipe right to play, left to queue.', textAlign: TextAlign.center, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
             ]),
           );
         }

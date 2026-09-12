@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import '../models/track_model.dart';
-import 'api_service.dart';
 
 SpotterfyAudioHandler? audioHandler;
 
@@ -71,7 +70,6 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
   }
 
   void _updatePlaybackState({required bool isPlaying, required Duration position, Duration buffered = Duration.zero, double speed = 1.0}) {
-    final dur = mediaItem.value?.duration;
     playbackState.add(PlaybackState(
       controls: [
         MediaControl.skipToPrevious,

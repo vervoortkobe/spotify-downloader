@@ -28,6 +28,9 @@ class MiniPlayer extends StatelessWidget {
     return Dismissible(
       key: ValueKey('mini-${track.id}'),
       direction: DismissDirection.horizontal,
+      dismissThresholds: const {DismissDirection.startToEnd: 0.35, DismissDirection.endToStart: 0.35},
+      // RIGHT swipe (startToEnd, finger moves right) -> previous (reveal left side)
+      // LEFT swipe (endToStart, finger moves left) -> next (reveal right side)
       confirmDismiss: (dir) async {
         HapticFeedback.lightImpact();
         if (dir == DismissDirection.startToEnd) {

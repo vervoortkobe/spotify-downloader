@@ -29,29 +29,37 @@ class TrackTile extends StatelessWidget {
     return Dismissible(
       key: ValueKey('track-${track.id}'),
       direction: DismissDirection.horizontal,
+      dismissThresholds: const {DismissDirection.startToEnd: 0.35, DismissDirection.endToStart: 0.35},
+      // startToEnd = swipe RIGHT (finger moves right) -> Play Now (immediate primary action)
+      // endToStart = swipe LEFT (finger moves left) -> Add to Queue (secondary)
       background: Container(
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(color: Color(0xFF10b981), borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(color: const Color(0xFF10b981), borderRadius: BorderRadius.circular(12)),
         alignment: Alignment.centerLeft,
-        padding: EdgeInsets.only(left: 24),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.queue_music, color: Colors.white, size: 18), SizedBox(width: 6), Text('Add to Queue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12))]),
+        padding: const EdgeInsets.only(left: 24),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.play_arrow, color: Colors.white, size: 18), SizedBox(width: 6), Text('Play Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12))]),
       ),
       secondaryBackground: Container(
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(color: Color(0xFF34d399), borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(color: const Color(0xFF1a3a2a), borderRadius: BorderRadius.circular(12)),
         alignment: Alignment.centerRight,
-        padding: EdgeInsets.only(right: 24),
-        child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [Text('Play Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)), SizedBox(width: 6), Icon(Icons.play_arrow, color: Colors.white, size: 18)]),
+        padding: const EdgeInsets.only(right: 24),
+        child: const Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [Text('Add to Queue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)), SizedBox(width: 6), Icon(Icons.queue_music, color: Colors.white, size: 18)]),
       ),
       confirmDismiss: (dir) async {
         HapticFeedback.lightImpact();
         final player = context.read<PlayerProvider>();
         if (dir == DismissDirection.startToEnd) {
-          final q = [...player.queue, track];
-          player.setQueue(q, startIndex: player.queue.indexOf(player.currentTrack ?? track));
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added "${track.title}" to queue'), duration: Duration(milliseconds: 900), backgroundColor: Color(0xFF0f1d17)));
-        } else {
+          // Swipe RIGHT -> play immediately (natural forward gesture)
           player.play(track, queue: [track, ...player.queue.where((t) => t.id != track.id)]);
+        } else {
+          // Swipe LEFT -> queue at end, keep current position
+          final q = [...player.queue, track];
+          final currentIdx = player.currentIndex.clamp(0, player.queue.isEmpty ? 0 : player.queue.length - 1);
+          player.setQueue(q, startIndex: player.queue.isEmpty ? 0 : currentIdx);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added "${track.title}" to queue'), duration: const Duration(milliseconds: 900), backgroundColor: const Color(0xFF0f1d17)));
+          }
         }
         return false;
       },

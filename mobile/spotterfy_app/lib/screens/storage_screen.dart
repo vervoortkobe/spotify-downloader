@@ -1,8 +1,13 @@
+// ignore_for_file: unnecessary_underscores
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/providers/auth_provider.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/screens/profile_screen.dart';
 
 class StorageScreen extends StatefulWidget {
   const StorageScreen({super.key});
@@ -76,7 +81,18 @@ class _StorageScreenState extends State<StorageScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SpotterfyTheme.background,
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, title: Text('Storage', style: TextStyle(color: SpotterfyTheme.text, fontWeight: FontWeight.bold))),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        leadingWidth: 48,
+        leading: Consumer<AuthProvider>(builder: (_, auth, __) => GestureDetector(
+          onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
+          child: Padding(padding: const EdgeInsets.only(left: 10), child: Center(child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.4), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]), child: CircleAvatar(radius: 14, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 16) : null))),
+        ))),
+        titleSpacing: 8,
+        title: Text('Storage', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+      ),
       body: _checking
           ? Center(child: CircularProgressIndicator(color: SpotterfyTheme.primary))
           : !_granted

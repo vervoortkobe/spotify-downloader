@@ -59,8 +59,10 @@ class PlayerScreen extends StatelessWidget {
         },
         onHorizontalDragEnd: (d) {
           final v = d.primaryVelocity ?? 0;
-          if (v < -600) { HapticFeedback.lightImpact(); player.next(); }
-          else if (v > 600) { HapticFeedback.lightImpact(); player.previous(); }
+          // Swipe LEFT (negative velocity, finger moves left) -> next track (show next)
+          // Swipe RIGHT (positive velocity, finger moves right) -> previous track
+          if (v < -500) { HapticFeedback.lightImpact(); player.next(); }
+          else if (v > 500) { HapticFeedback.lightImpact(); player.previous(); }
         },
         onDoubleTap: () {
           HapticFeedback.mediumImpact();

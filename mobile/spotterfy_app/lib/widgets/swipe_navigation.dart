@@ -12,6 +12,7 @@ class SwipeBackWrapper extends StatefulWidget {
 
 class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
   double _dragDx = 0;
+  double _startDx = 0;
   bool _dragging = false;
 
   @override
@@ -23,27 +24,36 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
       behavior: HitTestBehavior.translucent,
       onHorizontalDragStart: (details) {
         if (details.globalPosition.dx < 36) {
+          _startDx = details.globalPosition.dx;
           setState(() => _dragging = true);
         }
       },
       onHorizontalDragUpdate: (details) {
         if (!_dragging) return;
-        setState(() => _dragDx = (details.globalPosition.dx).clamp(0, MediaQuery.of(context).size.width));
+        final delta = details.globalPosition.dx - _startDx;
+        // Only track rightward swipes; left swipe should cancel
+        if (delta < 0) {
+          setState(() => _dragDx = 0);
+          return;
+        }
+        setState(() => _dragDx = delta.clamp(0, MediaQuery.of(context).size.width));
       },
       onHorizontalDragEnd: (details) {
         if (!_dragging) return;
         final velocity = details.primaryVelocity ?? 0;
-        final shouldPop = _dragDx > 110 || velocity > 600;
-        if (shouldPop) {
+        // Only pop on rightward swipe: positive distance or positive velocity
+        final shouldPop = (_dragDx > 90 && velocity >= 0) || velocity > 500;
+        if (shouldPop && _dragDx > 0) {
           HapticFeedback.lightImpact();
           Navigator.of(context).pop();
         }
         setState(() {
           _dragging = false;
           _dragDx = 0;
+          _startDx = 0;
         });
       },
-      onHorizontalDragCancel: () => setState(() { _dragging = false; _dragDx = 0; }),
+      onHorizontalDragCancel: () => setState(() { _dragging = false; _dragDx = 0; _startDx = 0; }),
       child: Stack(
         children: [
           widget.child,
