@@ -1,10 +1,27 @@
+// ignore_for_file: unnecessary_import
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
+
+// Isolate helpers - must be top-level for compute()
+List<PlaylistModel> _parsePlaylistsIsolate(String cached) {
+  try {
+    final data = jsonDecode(cached) as List<dynamic>;
+    final list = data.map((d) => PlaylistModel.fromCache(d as Map<String, dynamic>)).toList();
+    list.removeWhere((p) => p.id.isEmpty);
+    return list;
+  } catch (_) {
+    return [];
+  }
+}
+
+String _encodePlaylistsIsolate(List<Map<String, dynamic>> data) {
+  return jsonEncode(data);
+}
 
 class PlaylistProvider extends ChangeNotifier {
   final PlaylistService _playlistService = PlaylistService();
@@ -64,21 +81,19 @@ class PlaylistProvider extends ChangeNotifier {
   Future<void> _saveCachedPlaylists() async {
     final prefs = await SharedPreferences.getInstance();
     final data = _playlists.map((p) => p.toCache()).toList();
-    await prefs.setString('cached_playlists_v3', jsonEncode(data));
+    // Encode on background isolate - large track arrays can be MBs
+    final encoded = await compute(_encodePlaylistsIsolate, data);
+    await prefs.setString('cached_playlists_v3', encoded);
   }
 
   Future<void> _loadCachedPlaylists() async {
     final prefs = await SharedPreferences.getInstance();
-    // Clear stale cache from old schemes that didn't store tracks
     await prefs.remove('cached_playlists');
     await prefs.remove('cached_playlists_v2');
     final cached = prefs.getString('cached_playlists_v3');
     if (cached == null) return;
-    final data = jsonDecode(cached) as List<dynamic>;
-    _playlists = data
-        .map((d) => PlaylistModel.fromCache(d as Map<String, dynamic>))
-        .toList();
-    _playlists.removeWhere((p) => p.id.isEmpty);
+    // Decode + map off UI thread
+    _playlists = await compute(_parsePlaylistsIsolate, cached);
   }
 
   bool hasPlaylistWithUrl(String spotifyUrl) {

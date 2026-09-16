@@ -33,19 +33,19 @@ class TopBar extends StatelessWidget implements PreferredSizeWidget {
       elevation: 0,
       automaticallyImplyLeading: false,
       titleSpacing: 8,
-      leadingWidth: 48,
+      leadingWidth: 52,
       leading: Consumer<AuthProvider>(builder: (_, auth, _) => GestureDetector(
         onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
         child: Padding(
           padding: const EdgeInsets.only(left: 10),
           child: Center(
             child: Container(
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.4), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]),
+              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.6), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]),
               child: CircleAvatar(
-                radius: 14,
+                radius: 16,
                 backgroundColor: SpotterfyTheme.surface,
                 backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null,
-                child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 16) : null,
+                child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18) : null,
               ),
             ),
           ),
@@ -75,7 +75,7 @@ class TopBar extends StatelessWidget implements PreferredSizeWidget {
       ),
       actions: [
         if (action != null) Padding(padding: const EdgeInsets.only(right: 8), child: action!),
-        const SizedBox(width: 4),
+        SizedBox(width: action != null ? 4 : 32),
       ],
     );
   }

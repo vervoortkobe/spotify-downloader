@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.scooby.spotterfy"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

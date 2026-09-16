@@ -5,8 +5,7 @@ import 'package:spotterfy_app/providers/jam_provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
-import 'package:spotterfy_app/widgets/swipe_navigation.dart';
-import 'package:spotterfy_app/screens/profile_screen.dart';
+import 'package:spotterfy_app/widgets/base_page.dart';
 
 class JamScreen extends StatefulWidget {
   const JamScreen({super.key});
@@ -38,40 +37,17 @@ class _JamScreenState extends State<JamScreen> {
     if (_query.isNotEmpty) {
       sessions = sessions.where((s) => s.name.toLowerCase().contains(_query)).toList();
     }
-    return Scaffold(
+    return BasePageScaffold(
       backgroundColor: const Color(0xFF07110b),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        leadingWidth: 48,
-        leading: Consumer<AuthProvider>(builder: (_, auth, __) => GestureDetector(
-          onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
-          child: Padding(padding: const EdgeInsets.only(left: 10), child: Center(child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.4), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]), child: CircleAvatar(radius: 14, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 16) : null))),
-        ))),
-        titleSpacing: 8,
-        title: Container(
-          height: 36,
-          decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(18)),
-          child: TextField(
-            controller: _searchController,
-            style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
-            decoration: InputDecoration(
-              prefixIcon: Icon(Icons.search, color: SpotterfyTheme.muted, size: 18),
-              prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 36),
-              hintText: 'Search chats',
-              hintStyle: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              isDense: true,
-              suffixIcon: _query.isNotEmpty ? IconButton(icon: Icon(Icons.clear, color: SpotterfyTheme.muted, size: 16), onPressed: () => _searchController.clear(), padding: EdgeInsets.zero, constraints: const BoxConstraints()) : null,
-            ),
-          ),
-        ),
-        actions: [
-          IconButton(icon: Icon(Icons.group_add, color: SpotterfyTheme.muted, size: 20), onPressed: () => _createSession(context), tooltip: 'New jam', padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-          const SizedBox(width: 12),
-        ],
+      searchController: _searchController,
+      searchHint: 'Search chats',
+      query: _query,
+      action: IconButton(
+        icon: Icon(Icons.group_add, color: SpotterfyTheme.muted, size: 20),
+        onPressed: () => _createSession(context),
+        tooltip: 'New jam',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
       ),
       body: sessions.isEmpty
           ? Center(

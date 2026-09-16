@@ -8,44 +8,52 @@ import 'package:spotterfy_app/screens/admin_screen.dart';
 import 'package:spotterfy_app/screens/main_screen.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  bool _precached = false;
+  bool _navigated = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_precached) {
+      _precached = true;
+      // Precache logo off critical path, don't block first frame
+      precacheImage(const AssetImage('logo/spotterfy_black_bg.png'), context);
+    }
+  }
+
+  void _maybeNavigate(AuthProvider auth) {
+    if (_navigated || auth.isLoading) return;
+    _navigated = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Widget target;
+      if (!auth.isLoggedIn) {
+        target = const LoginScreen();
+      } else if (!auth.isApproved) {
+        target = const ApprovalScreen();
+      } else if (auth.needsOnboarding) {
+        target = const OnboardingScreen();
+      } else if (auth.isAdmin) {
+        target = const AdminScreen();
+      } else {
+        target = const MainScreen();
+      }
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => target));
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-
-    if (!auth.isLoading) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
-        if (!auth.isLoggedIn) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          );
-        } else if (!auth.isApproved) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const ApprovalScreen()),
-          );
-        } else if (auth.needsOnboarding) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-          );
-        } else if (auth.isAdmin) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminScreen()),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const MainScreen()),
-          );
-        }
-      });
-    }
+    _maybeNavigate(auth);
 
     return Scaffold(
       backgroundColor: SpotterfyTheme.background,

@@ -43,28 +43,24 @@ class PlaylistService {
   }
 
   Future<void> savePlaylist(String uid, PlaylistModel playlist) async {
-    final docRef = _firestore.collection('users').doc(uid).collection('playlists').doc(playlist.id);
+    final docRef = _firestore.collection('playlists').doc(playlist.id);
     await docRef.set(playlist.toFirestore());
     await _saveTracksToCache(uid, playlist.id, playlist.tracks);
   }
 
   Future<List<PlaylistModel>> getUserPlaylists(String uid) async {
     final snap = await _firestore
-        .collection('users')
-        .doc(uid)
         .collection('playlists')
+        .where('creatorUid', isEqualTo: uid)
         .orderBy('createdAt', descending: true)
         .get();
 
     final playlists = <PlaylistModel>[];
     for (final doc in snap.docs) {
       final p = PlaylistModel.fromJson(doc.data(), doc.id);
-      // Load tracks from cache first, then Firestore (which has them embedded now)
       if (p.tracks.isEmpty) {
         final cached = await _loadTracksFromCache(uid, doc.id);
-        if (cached.isNotEmpty) {
-          p.tracks = cached;
-        }
+        if (cached.isNotEmpty) p.tracks = cached;
       }
       playlists.add(p);
     }
@@ -72,28 +68,37 @@ class PlaylistService {
   }
 
   Future<void> deletePlaylist(String uid, String playlistId) async {
-    await _firestore.collection('users').doc(uid).collection('playlists').doc(playlistId).delete();
+    await _firestore.collection('playlists').doc(playlistId).delete();
     await _deleteCache(uid, playlistId);
   }
 
   Future<void> sharePlaylist(String uid, String playlistId, String friendUid) async {
-    await _firestore.collection('users').doc(uid).collection('playlists').doc(playlistId).update({
+    await _firestore.collection('playlists').doc(playlistId).update({
       'sharedWith': FieldValue.arrayUnion([friendUid]),
     });
   }
 
   Future<List<PlaylistModel>> getSharedPlaylists(String uid) async {
     final snap = await _firestore
-        .collectionGroup('playlists')
+        .collection('playlists')
         .where('sharedWith', arrayContains: uid)
+        .get();
+    return snap.docs.map((d) => PlaylistModel.fromJson(d.data(), d.id)).toList();
+  }
+
+  Future<List<PlaylistModel>> getOtherUsersPlaylists(String uid, {int limit = 20}) async {
+    final snap = await _firestore
+        .collection('playlists')
+        .where('creatorUid', isNotEqualTo: uid)
+        .orderBy('creatorUid')
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
         .get();
     return snap.docs.map((d) => PlaylistModel.fromJson(d.data(), d.id)).toList();
   }
 
   Future<void> addTrackToPlaylist(String uid, String playlistId, TrackModel track) async {
     await _firestore
-        .collection('users')
-        .doc(uid)
         .collection('playlists')
         .doc(playlistId)
         .collection('tracks')
@@ -106,12 +111,7 @@ class PlaylistService {
     String playlistId,
     List<TrackModel> tracks,
   ) async {
-    await _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('playlists')
-        .doc(playlistId)
-        .update({
+    await _firestore.collection('playlists').doc(playlistId).update({
       'tracks': tracks.map((t) => t.toJson()).toList(),
       'lastTrackSync': DateTime.now(),
     });

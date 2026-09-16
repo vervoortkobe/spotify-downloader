@@ -7,21 +7,27 @@ import '../models/user_model.dart';
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  // google_sign_in ^7.2.0 uses singleton instance
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
   Future<UserModel?> signInWithGoogle() async {
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null;
+      // 7.x requires initialize() before authenticate()
+      try {
+        await _googleSignIn.initialize();
+      } catch (_) {
+        // already initialized or no serverClientId needed for basic scopes
+      }
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      final GoogleSignInAccount googleUser = await _googleSignIn.authenticate();
+
+      // In 7.x googleUser.authentication is sync and only has idToken
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
@@ -62,7 +68,9 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {}
     await _auth.signOut();
   }
 
@@ -79,12 +87,14 @@ class AuthService {
   }
 
   Future<void> updateDisplayName(String uid, String name) async {
-    await _firestore.collection('users').doc(uid).update({
-      'displayName': name,
-    });
+    await _firestore.collection('users').doc(uid).update({'displayName': name});
   }
 
-  Future<void> completeProfile(String uid, {required String displayName, String spotifyUrl = ''}) async {
+  Future<void> completeProfile(
+    String uid, {
+    required String displayName,
+    String spotifyUrl = '',
+  }) async {
     await _firestore.collection('users').doc(uid).update({
       'displayName': displayName,
       'spotifyProfileUrl': spotifyUrl,

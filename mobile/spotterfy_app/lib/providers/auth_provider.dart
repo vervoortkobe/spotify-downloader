@@ -4,6 +4,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/models/user_model.dart';
 import 'package:spotterfy_app/services/auth_service.dart';
 
+// Top-level for compute() - must not be inside class
+UserModel? _parseUserIsolate(String cached) {
+  try {
+    final data = jsonDecode(cached) as Map<String, dynamic>;
+    return UserModel(
+      uid: data['uid'] as String? ?? '',
+      email: data['email'] as String? ?? '',
+      displayName: data['displayName'] as String? ?? '',
+      photoUrl: data['photoUrl'] as String? ?? '',
+      spotifyProfileUrl: data['spotifyProfileUrl'] as String? ?? '',
+      isAdmin: data['isAdmin'] as bool? ?? false,
+      isApproved: data['isApproved'] as bool? ?? false,
+      hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
+      createdAt: data['createdAt'] != null ? DateTime.parse(data['createdAt'] as String) : DateTime.now(),
+      lastSpotifySync: data['lastSpotifySync'] != null ? DateTime.parse(data['lastSpotifySync'] as String) : null,
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
   UserModel? _user;
@@ -29,10 +50,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    // Load cached user immediately for fast startup
+    // Load cached user off UI thread - avoid blocking first frame
     await _loadCachedUser();
-    _isLoading = false;
-    notifyListeners();
+    // Defer first notify to next frame so Splash can build once without jank
+    Future.microtask(() {
+      _isLoading = false;
+      notifyListeners();
+    });
 
     // Listen for Firebase auth changes (overwrites cache with fresh data)
     _authService.authStateChanges.listen((firebaseUser) async {
@@ -96,23 +120,9 @@ class AuthProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final cached = prefs.getString('cached_user');
       if (cached == null) return;
-      final data = jsonDecode(cached) as Map<String, dynamic>;
-      _user = UserModel(
-        uid: data['uid'] as String? ?? '',
-        email: data['email'] as String? ?? '',
-        displayName: data['displayName'] as String? ?? '',
-        photoUrl: data['photoUrl'] as String? ?? '',
-        spotifyProfileUrl: data['spotifyProfileUrl'] as String? ?? '',
-        isAdmin: data['isAdmin'] as bool? ?? false,
-        isApproved: data['isApproved'] as bool? ?? false,
-        hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
-        createdAt: data['createdAt'] != null
-            ? DateTime.parse(data['createdAt'] as String)
-            : DateTime.now(),
-        lastSpotifySync: data['lastSpotifySync'] != null
-            ? DateTime.parse(data['lastSpotifySync'] as String)
-            : null,
-      );
+      // Offload JSON + DateTime parse to background isolate
+      final parsed = await compute(_parseUserIsolate, cached);
+      if (parsed != null) _user = parsed;
     } catch (e) {
       debugPrint('Failed to load cached user: $e');
     }

@@ -8,8 +8,8 @@ import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/playlist_card.dart';
 import 'playlist_detail_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
-import 'package:spotterfy_app/screens/profile_screen.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
+import 'package:spotterfy_app/widgets/base_page.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -28,6 +28,27 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _searchController.addListener(() => setState(() => _query = _searchController.text.trim().toLowerCase()));
+    // Auto-sync playlists: show cache instantly, then fetch remote.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensurePlaylistsLoaded();
+    });
+  }
+
+  Future<void> _ensurePlaylistsLoaded() async {
+    if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    final prov = context.read<PlaylistProvider>();
+    if (auth.user != null && prov.playlists.isEmpty && !prov.isLoading) {
+      await prov.loadPlaylists(auth.user!.uid);
+    }
+  }
+
+  Future<void> _onRefreshPlaylists() async {
+    final auth = context.read<AuthProvider>();
+    final prov = context.read<PlaylistProvider>();
+    if (auth.user != null) {
+      await prov.loadPlaylists(auth.user!.uid, forceRefresh: true);
+    }
   }
 
   @override
@@ -39,48 +60,21 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: SpotterfyTheme.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        leadingWidth: 48,
-        leading: Consumer<AuthProvider>(builder: (_, auth, __) => GestureDetector(
-          onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 10),
-            child: Center(child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.4), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]), child: CircleAvatar(radius: 14, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 16) : null))),
-          ),
-        )),
-        title: Container(
-          height: 36,
-          decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(18)),
-          child: TextField(
-            controller: _searchController,
-            style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
-            decoration: InputDecoration(
-              prefixIcon: Icon(Icons.search, color: SpotterfyTheme.muted, size: 18),
-              prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 36),
-              hintText: 'Search playlists or storage',
-              hintStyle: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              isDense: true,
-              suffixIcon: _query.isNotEmpty ? IconButton(icon: Icon(Icons.clear, color: SpotterfyTheme.muted, size: 16), onPressed: () => _searchController.clear(), padding: EdgeInsets.zero, constraints: const BoxConstraints()) : null,
-            ),
-          ),
-        ),
-        titleSpacing: 8,
-        actions: [
-          AnimatedBuilder(
-            animation: _tabController,
-            builder: (_, __) => _tabController.index == 0
-                ? IconButton(icon: Icon(Icons.add, color: SpotterfyTheme.muted, size: 20), onPressed: () => _showImportSheet(context), padding: EdgeInsets.zero, constraints: const BoxConstraints())
-                : const SizedBox(width: 8),
-          ),
-          const SizedBox(width: 12),
-        ],
+    return BasePageScaffold(
+      searchController: _searchController,
+      searchHint: 'Search playlists or storage',
+      query: _query,
+      // Extra trailing icon for Library: + to import (visible only on Playlists tab)
+      action: AnimatedBuilder(
+        animation: _tabController,
+        builder: (_, __) => _tabController.index == 0
+            ? IconButton(
+                icon: Icon(Icons.add, color: SpotterfyTheme.muted, size: 20),
+                onPressed: () => _showImportSheet(context),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              )
+            : const SizedBox(width: 8),
       ),
       body: Column(
         children: [
@@ -111,30 +105,57 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     if (_query.isNotEmpty) {
       list = list.where((p) => p.name.toLowerCase().contains(_query) || p.tracks.any((t) => t.title.toLowerCase().contains(_query))).toList();
     }
+    // Show loading spinner over cache while first sync runs
+    if (prov.isLoading && prov.playlists.isEmpty) {
+      return const Center(child: CircularProgressIndicator(color: SpotterfyTheme.primary));
+    }
     if (list.isEmpty) {
-      return Center(
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.library_music, size: 48, color: SpotterfyTheme.muted),
-          const SizedBox(height: 12),
-          Text(_query.isNotEmpty ? 'No matches' : 'No playlists yet', style: TextStyle(color: SpotterfyTheme.text, fontWeight: FontWeight.w600)),
-          if (_query.isNotEmpty) TextButton(onPressed: () => _searchController.clear(), child: Text('Clear search', style: TextStyle(color: SpotterfyTheme.primary))),
-        ]),
+      return RefreshIndicator(
+        onRefresh: _onRefreshPlaylists,
+        color: SpotterfyTheme.primary,
+        backgroundColor: SpotterfyTheme.surface,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 100, top: 32),
+          children: [
+            Center(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.library_music, size: 48, color: SpotterfyTheme.muted),
+                const SizedBox(height: 12),
+                Text(_query.isNotEmpty ? 'No matches' : 'No playlists yet', style: TextStyle(color: SpotterfyTheme.text, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Text(_query.isNotEmpty ? 'Try a different search' : 'Pull down to refresh or tap + to import', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
+                const SizedBox(height: 12),
+                if (_query.isNotEmpty)
+                  TextButton(onPressed: () => _searchController.clear(), child: Text('Clear search', style: TextStyle(color: SpotterfyTheme.primary)))
+                else
+                  OutlinedButton.icon(onPressed: _onRefreshPlaylists, icon: const Icon(Icons.refresh, size: 18), label: const Text('Refresh')),
+              ]),
+            ),
+          ],
+        ),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: list.length,
-      itemBuilder: (context, i) {
-        final p = list[i];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: PlaylistCard(
-            playlist: p,
-            onTap: () => Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p))),
-            onPlay: p.tracks.isEmpty ? null : () {},
-          ),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _onRefreshPlaylists,
+      color: SpotterfyTheme.primary,
+      backgroundColor: SpotterfyTheme.surface,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: list.length,
+        itemBuilder: (context, i) {
+          final p = list[i];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: PlaylistCard(
+              playlist: p,
+              onTap: () => Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p))),
+              onPlay: p.tracks.isEmpty ? null : () {},
+            ),
+          );
+        },
+      ),
     );
   }
 

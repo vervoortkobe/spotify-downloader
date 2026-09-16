@@ -26,13 +26,13 @@ class SpotterfyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => PlaylistProvider()),
-        ChangeNotifierProvider(create: (_) => PlayerProvider()),
-        ChangeNotifierProvider(create: (_) => JamProvider()),
-        ChangeNotifierProvider(create: (_) => AdminProvider()),
-        ChangeNotifierProvider(create: (_) => StatusProvider()),
-        ChangeNotifierProvider(create: (_) => NetworkStatsService()),
+        ChangeNotifierProvider(create: (_) => AuthProvider(), lazy: true),
+        ChangeNotifierProvider(create: (_) => PlaylistProvider(), lazy: true),
+        ChangeNotifierProvider(create: (_) => PlayerProvider(), lazy: true),
+        ChangeNotifierProvider(create: (_) => JamProvider(), lazy: true),
+        ChangeNotifierProvider(create: (_) => AdminProvider(), lazy: true),
+        ChangeNotifierProvider(create: (_) => StatusProvider(), lazy: true),
+        ChangeNotifierProvider(create: (_) => NetworkStatsService(), lazy: true),
       ],
       child: MaterialApp(
         navigatorKey: navigatorKey,
