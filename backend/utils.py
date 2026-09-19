@@ -52,6 +52,7 @@ def _warp_cli_connected() -> bool:
 
 
 def _log_warp_context(action: str):
+    import os as _os
     proxy = _get_proxy_url()
     import socket as _s
     sock_ok = False
@@ -60,18 +61,23 @@ def _log_warp_context(action: str):
     except Exception:
         pass
     cli_ok = _warp_cli_connected()
+    verbose = _os.environ.get("WARP_LOG_VERBOSE") == "1"
     if cli_ok and sock_ok and proxy:
-        print(f"[WARP Proxy] {action} - Connected (proxy mode via {proxy})", flush=True)
+        msg = f"[WARP Proxy] {action} - Connected (proxy mode via {proxy})"
     elif cli_ok and sock_ok and not proxy:
-        print(f"[WARP Proxy] {action} - Connected (tunnel mode, proxy socket ok but no env - traffic via WARP)", flush=True)
+        msg = f"[WARP Proxy] {action} - Connected (tunnel mode, proxy socket ok but no env - traffic via WARP)"
     elif cli_ok and not sock_ok:
-        print(f"[WARP Proxy] {action} - Connected (tunnel mode via WARP daemon - direct egress is already through WARP)", flush=True)
+        msg = f"[WARP Proxy] {action} - Connected (tunnel mode via WARP daemon - direct egress is already through WARP)"
     elif proxy and sock_ok:
-        print(f"[WARP Proxy] {action} - Connected via {proxy} (proxy socket ok, cli not confirming)", flush=True)
+        msg = f"[WARP Proxy] {action} - Connected via {proxy} (proxy socket ok, cli not confirming)"
     elif proxy and not sock_ok:
-        print(f"[WARP Proxy] {action} - Degraded (env {proxy} but socket down)", flush=True)
+        msg = f"[WARP Proxy] {action} - Degraded (env {proxy} but socket down)"
     else:
-        print(f"[WARP Proxy] {action} - Disconnected (direct mode, no WARP cli/daemon)", flush=True)
+        msg = f"[WARP Proxy] {action} - Disconnected (direct mode, no WARP cli/daemon)"
+    # Quiet when healthy; always warn when degraded/disconnected (or when verbose)
+    connected = cli_ok or (proxy and sock_ok)
+    if verbose or not connected:
+        print(msg, flush=True)
 
 # YouTube search result cache: avoids re-searching the same track
 _YT_CACHE: dict[str, tuple[str, str, float]] = {}

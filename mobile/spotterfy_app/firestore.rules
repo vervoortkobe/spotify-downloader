@@ -36,6 +36,13 @@ service cloud.firestore {
       }
     }
 
+    // ---- Discover cache (curated by backend daily job; app also refreshes client-side) ----
+    match /discoverCache/{docId} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+      allow delete: if false;
+    }
+
     // ---- Jam sessions ----
     match /jam_sessions/{sessionId} {
       allow read, create, update: if request.auth != null;

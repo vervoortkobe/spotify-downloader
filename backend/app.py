@@ -28,7 +28,7 @@ def _warp_cli_connected() -> bool:
     return False
 
 
-def _log_warp_startup():
+def _warp_status_message() -> str:
     import socket as _s
     proxy = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or ""
     sock_ok = False
@@ -38,19 +38,23 @@ def _log_warp_startup():
         pass
     cli_ok = _warp_cli_connected()
     if cli_ok and sock_ok and proxy:
-        print(f"[WARP Proxy] Connected (proxy mode via {proxy} on 127.0.0.1:4000 - WARP tunnel active)", flush=True)
+        return f"Connected (proxy mode via {proxy} on 127.0.0.1:4000 - WARP tunnel active)"
     elif cli_ok and not sock_ok and proxy:
-        print(f"[WARP Proxy] Connected (tunnel mode - WARP daemon Connected, proxy env {proxy} but socket not listening - egress still via WARP)", flush=True)
+        return f"Connected (tunnel mode - WARP daemon Connected, proxy env {proxy} but socket not listening - egress still via WARP)"
     elif cli_ok and not sock_ok and not proxy:
-        print("[WARP Proxy] Connected (tunnel mode - WARP daemon Connected, no proxy needed - host egress is via WARP)", flush=True)
+        return "Connected (tunnel mode - WARP daemon Connected, no proxy needed - host egress is via WARP)"
     elif cli_ok and sock_ok and not proxy:
-        print("[WARP Proxy] Connected (tunnel+proxy socket ok, traffic via WARP)", flush=True)
+        return "Connected (tunnel+proxy socket ok, traffic via WARP)"
     elif proxy and sock_ok:
-        print(f"[WARP Proxy] Connected (proxy socket ok via {proxy}, cli not confirming)", flush=True)
+        return f"Connected (proxy socket ok via {proxy}, cli not confirming)"
     elif proxy and not sock_ok:
-        print(f"[WARP Proxy] Degraded - env {proxy} but socket down and cli not connected", flush=True)
+        return f"Degraded - env {proxy} but socket down and cli not connected"
     else:
-        print("[WARP Proxy] Disconnected - no WARP cli, no proxy env/socket (direct egress)", flush=True)
+        return "Disconnected - no WARP cli, no proxy env/socket (direct egress)"
+
+
+def _log_warp_startup():
+    print(f"[WARP Proxy] {_warp_status_message()}", flush=True)
 
 
 def create_app():
@@ -71,9 +75,16 @@ def create_app():
     _rl_store: dict[tuple[str, str], list[float]] = {}
     _rl_lock = _rl_th.Lock()
     # Limits per endpoint (requests / 60s) tuned for WARP/Spotify
+    # NOTE: order matters - _endpoint_key uses first substring match, so keep
+    # "scrape-progress" before "progress" (the latter is a substring of the former).
+    # Progress endpoints are cheap in-memory reads polled every 500ms by the
+    # frontend/mobile during fetches, so they get generous buckets.
     _RL_LIMITS: dict[str, int] = {
         "scrape-playlist": 6,          # heavy Spotify+YT
         "scrape-user-playlists": 8,
+        "scrape-progress": 300,        # cheap poll (500ms) during playlist fetch
+        "scrape-result": 120,          # cheap, fetched once per completed job
+        "progress": 300,               # cheap polls: /api/progress/<id> + /api/progress/all
         "download-track": 20,
         "download-playlist-zip": 6,
         "stream": 30,
@@ -162,9 +173,14 @@ def create_app():
     import threading as _th
     def _warp_heartbeat():
         import time as _t
+        last = None
         while True:
             _t.sleep(60)
-            _log_warp_startup()
+            # Only log on state change (or when verbose) instead of every minute
+            msg = _warp_status_message()
+            if msg != last or os.environ.get("WARP_LOG_VERBOSE") == "1":
+                print(f"[WARP Proxy] {msg}", flush=True)
+                last = msg
     _th.Thread(target=_warp_heartbeat, daemon=True).start()
 
     # Daily discover refresh directly in backend (no GitHub workflow needed)

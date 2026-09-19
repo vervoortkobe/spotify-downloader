@@ -557,9 +557,7 @@ def health_check():
     else:
         warp_label = "Disconnected"
     connected = cli_ok or bool(proxy and sock_ok)
-    print(f"[Health] Received check - backend online, [WARP Proxy] {warp_label} (cli={'conn' if cli_ok else 'down'} env={'set' if proxy else 'unset'} socket={'ok' if sock_ok else 'down'})", flush=True)
     response = jsonify({"online": True, "warp": {"connected": connected, "status": warp_label}})
-    print(f"[Health] Responding: online=True warp={warp_label} connected={connected}", flush=True)
     return response
 
 
@@ -598,7 +596,6 @@ def warp_status():
         except Exception:
             pass
     connected = cli_connected or (socket_ok and proxy_works) or (socket_ok and bool(proxy_url))
-    print(f"[WARP-Status] socket={socket_ok} cli_connected={cli_connected} proxy_works={proxy_works} env={proxy_url[:30] if proxy_url else 'none'} -> connected={connected} cli={cli_text[:120]!r}", flush=True)
     return jsonify({"connected": connected, "socket": socket_ok, "cliConnected": cli_connected, "proxyWorks": proxy_works, "envProxy": bool(proxy_url)})
 
 
