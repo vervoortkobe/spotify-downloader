@@ -24,6 +24,12 @@ from audio_client import (
 from config import progress_store, scrape_job_progress, scrape_job_results, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
 from utils import get_yt_info, get_playlist_client, download_track_logic, detect_url_service, scrape_external_data, extract_info, open_audio_stream
 
+try:
+    from discover_refresh import refresh_all_discover_async, DISCOVER_URLS
+except Exception:
+    refresh_all_discover_async = None
+    DISCOVER_URLS = []
+
 routes = Blueprint("routes", __name__)
 
 
@@ -652,6 +658,20 @@ def scrape_user_playlists():
         return jsonify({"error": "Failed to fetch user playlists"}), 502
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@routes.route("/api/refresh-discover", methods=["POST"])
+def refresh_discover():
+    # Protected by optional token; if REFRESH_TOKEN env set, require it
+    expected = os.environ.get("REFRESH_TOKEN") or os.environ.get("DISCOVER_REFRESH_TOKEN")
+    if expected:
+        got = request.headers.get("X-Admin-Token") or request.headers.get("Authorization", "").replace("Bearer ", "") or (request.get_json(silent=True) or {}).get("token", "")
+        if got != expected:
+            return jsonify({"error": "unauthorized"}), 401
+    if refresh_all_discover_async is None:
+        return jsonify({"error": "discover_refresh module not available"}), 500
+    refresh_all_discover_async()
+    return jsonify({"status": "started", "count": len(DISCOVER_URLS)})
 
 
 @routes.route("/")

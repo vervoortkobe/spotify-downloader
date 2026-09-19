@@ -7,3 +7,4 @@ yt-dlp
 mutagen==1.47.0
 python-dotenv==1.0.1
 waitress==3.0.2
+firebase-admin==6.5.0

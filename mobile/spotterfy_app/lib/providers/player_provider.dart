@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart' as perm;
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/audio_handler.dart';
@@ -28,8 +29,39 @@ class PlayerProvider extends ChangeNotifier {
   bool get hasNext => _queue.isNotEmpty && _currentIndex < _queue.length - 1;
   bool get hasPrevious => _queue.isNotEmpty && _currentIndex > 0;
 
+  bool _isRadioUrl(String url) {
+    final u = url.toLowerCase();
+    return u.contains('icecast.vrtcdn.be') || u.contains('qmusic.be') || u.contains('joe.be') || u.contains('streamtheworld.com');
+  }
+
+  bool get isRadio => _currentTrack != null && (_currentTrack!.id.startsWith('radio_') || _isRadioUrl(_currentTrack!.sourceUrl));
+  Duration _radioMaxListened = Duration.zero;
+  Timer? _radioDriftTimer;
+
+  Duration get radioMaxListened => _radioMaxListened;
+
+  // Single unified queue: library, radio and on-device storage tracks share one queue,
+  // so storage songs can be queued/mixed with anything else.
+  bool _isLocalPath(String p) => p.startsWith('/') || p.startsWith('file://');
+
   PlayerProvider() {
     _loadPlayerState();
+    _requestNotificationPermission();
+    // Eager AudioService init like Noize PlayerProvider.initialize() - not lazy on first play
+    ensureAudioHandler().then((_) {
+      if (audioHandler != null) _bindHandler();
+      // If state was restored from SharedPreferences, sync it to the handler
+      // so the notification shows the last-played track
+      if (_currentTrack != null && audioHandler != null) {
+        audioHandler!.updateTrack(
+          _currentTrack!,
+          queue: _queue,
+          position: _position,
+          duration: _duration,
+          isPlaying: _isPlaying,
+        );
+      }
+    });
     _player.setAudioContext(AudioContext(
       android: AudioContextAndroid(
         isSpeakerphoneOn: false,
@@ -46,6 +78,9 @@ class PlayerProvider extends ChangeNotifier {
     _player.setReleaseMode(ReleaseMode.stop);
     _player.onPositionChanged.listen((pos) {
       _position = pos;
+      if (isRadio && _isPlaying) {
+        if (pos > _radioMaxListened) _radioMaxListened = pos;
+      }
       audioHandler?.updatePosition(pos, _duration, _isPlaying);
       notifyListeners();
     });
@@ -56,6 +91,7 @@ class PlayerProvider extends ChangeNotifier {
     });
     _player.onPlayerStateChanged.listen((state) {
       _isPlaying = state == PlayerState.playing;
+      _handleRadioDrift();
       audioHandler?.updatePosition(_position, _duration, _isPlaying);
       notifyListeners();
     });
@@ -68,27 +104,55 @@ class PlayerProvider extends ChangeNotifier {
         notifyListeners();
       }
     });
-    // hook MediaSession seek (drag in Now Bar) -> seek audioplayers
-    Future.delayed(const Duration(milliseconds: 500), () {
-      final h = audioHandler;
-      if (h != null) {
-        h.onSeekRequested = (pos) async => await seekTo(pos);
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    try {
+      // POST_NOTIFICATIONS is Android 13+ (33) only - on 11/12 it's auto-granted
+      // permission_handler returns granted on <33, so gate to avoid prompt spam on 11
+      if (await perm.Permission.notification.status.isGranted) return;
+      // Only request on 33+ where runtime prompt exists; on 11/12 the channel still shows without prompt
+      final s = await perm.Permission.notification.status;
+      if (s.isDenied || s.isPermanentlyDenied) {
+        await perm.Permission.notification.request();
       }
-    });
-    // poll for handler late init
-    Timer.periodic(const Duration(seconds: 1), (t) {
-      final h = audioHandler;
-      if (h != null && h.onSeekRequested == null) {
-        h.onSeekRequested = (pos) async => await seekTo(pos);
-        t.cancel();
-      }
-      if (h != null) t.cancel();
-    });
+    } catch (_) {}
+  }
+
+  void _bindHandler() {
+    bindAudioHandlerCallbacks(
+      onPlay: () async => await resume(),
+      onPause: () async => await pause(),
+      onSkipNext: () async => await next(),
+      onSkipPrev: () async => await previous(),
+      onSeek: (pos) async => await seekTo(pos),
+    );
+    final h = audioHandler;
+    if (h != null) h.onSeekRequested = (pos) async => await seekTo(pos);
+  }
+
+  void _handleRadioDrift() {
+    _radioDriftTimer?.cancel();
+    _radioDriftTimer = null;
+    if (!isRadio) return;
+    if (!_isPlaying) {
+      // When radio paused, progress drifts left (fall behind live) at 1x speed
+      _radioDriftTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (_position.inMilliseconds > 0) {
+          _position = Duration(milliseconds: _position.inMilliseconds - 1000);
+          if (_position.isNegative) _position = Duration.zero;
+          audioHandler?.updatePosition(_position, _duration, false);
+          notifyListeners();
+        } else {
+          _radioDriftTimer?.cancel();
+        }
+      });
+    }
   }
 
   Future<void> play(TrackModel track, {List<TrackModel>? queue}) async {
     if (queue != null) {
-      _queue = queue;
+      _queue = List.from(queue);
       _currentIndex = queue.indexWhere((e) => e.id == track.id);
       if (_currentIndex == -1) _currentIndex = 0;
     } else if (_queue.isEmpty) {
@@ -106,14 +170,41 @@ class PlayerProvider extends ChangeNotifier {
     _currentTrack = track;
     _position = Duration.zero;
     _duration = Duration.zero;
+    if (isRadio) _radioMaxListened = Duration.zero;
+    _handleRadioDrift();
     notifyListeners();
     await ensureAudioHandler();
+    _bindHandler();
     final h = audioHandler;
     if (h != null) {
       await h.updateTrack(track, queue: _queue, position: Duration.zero, duration: Duration.zero, isPlaying: true);
       h.onSeekRequested = (pos) async => await seekTo(pos);
+    } else {
+      debugPrint('[Player] audioHandler is null — notification will not show');
     }
-    final primary = track.sourceUrl.isNotEmpty ? ApiService.streamTrackUrl(track.sourceUrl) : null;
+    // Local storage files: play directly from device, no backend
+    if (_isLocalPath(track.sourceUrl)) {
+      final path = track.sourceUrl.replaceFirst('file://', '');
+      try {
+        await _player.stop();
+        await _player.play(DeviceFileSource(path)).timeout(const Duration(seconds: 30));
+        _isPlaying = true;
+        notifyListeners();
+      } catch (e) {
+        debugPrint('[Player] local file failed: $e');
+      }
+      _savePlayerState();
+      return;
+    }
+    // Radio live streams (icecast etc) play directly, not via backend proxy
+    bool isDirectRadio(String url) {
+      final u = url.toLowerCase();
+      return u.contains('icecast.vrtcdn.be') || u.contains('qmusic.be') || u.contains('joe.be') || u.contains('streamtheworld.com') || u.contains('.mp3') && u.contains('dist=') || track.id.startsWith('radio_');
+    }
+
+    final primary = track.sourceUrl.isNotEmpty
+        ? (isDirectRadio(track.sourceUrl) ? track.sourceUrl : ApiService.streamTrackUrl(track.sourceUrl))
+        : null;
     final fallback = ApiService.streamTrackUrl('ytsearch1:${track.title} ${track.artists} audio');
     Future<void> warm(String url) async {
       try {
@@ -163,17 +254,34 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> seekTo(Duration position) async {
+    if (isRadio) {
+      // Radio: only back within listened window, never forward beyond live edge
+      final clamped = Duration(
+        milliseconds: position.inMilliseconds.clamp(0, _radioMaxListened.inMilliseconds),
+      );
+      await _player.seek(clamped);
+      _position = clamped;
+      audioHandler?.updatePosition(clamped, _duration, _isPlaying);
+      notifyListeners();
+      return;
+    }
     await _player.seek(position);
     audioHandler?.updatePosition(position, _duration, _isPlaying);
   }
 
   Future<void> next() async {
+    if (isRadio) return;
     if (_queue.isEmpty || _currentIndex >= _queue.length - 1) return;
     _currentIndex++;
     await play(_queue[_currentIndex], queue: _queue);
   }
 
   Future<void> previous() async {
+    if (isRadio) {
+      // Radio: only seek back within listened window, no track switch
+      await seekTo(Duration.zero);
+      return;
+    }
     if (_queue.isEmpty || _currentIndex <= 0) return;
     if (_position.inSeconds > 3) {
       await seekTo(Duration.zero);
@@ -247,6 +355,7 @@ class PlayerProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _radioDriftTimer?.cancel();
     _savePlayerState();
     _player.dispose();
     super.dispose();

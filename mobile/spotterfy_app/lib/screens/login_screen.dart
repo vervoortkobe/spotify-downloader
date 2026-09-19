@@ -1,4 +1,3 @@
-// ignore_for_file: unnecessary_underscores
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';

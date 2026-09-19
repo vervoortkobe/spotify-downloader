@@ -72,8 +72,7 @@ class PlaylistCard extends StatelessWidget {
                 ],
               ),
             ),
-            // ignore: use_null_aware_elements
-            if (trailing != null) trailing!,
+            ?trailing,
             if (onPlay != null)
               Container(
                 decoration: BoxDecoration(color: SpotterfyTheme.primary, shape: BoxShape.circle, boxShadow: [BoxShadow(color: SpotterfyTheme.primary.withValues(alpha: 0.4), blurRadius: 10)]),

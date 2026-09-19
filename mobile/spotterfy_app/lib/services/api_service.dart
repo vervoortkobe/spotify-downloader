@@ -7,6 +7,12 @@ import 'network_stats_service.dart';
 
 class ApiService {
   static const String _baseUrl = 'https://spotdl.vervoortkobe.be.eu.org/api';
+  // Set via --dart-define=SPOTTERFY_API_KEY=xxx (must match backend SPOTTERFY_API_KEY)
+  static const String _apiKey = String.fromEnvironment('SPOTTERFY_API_KEY', defaultValue: '');
+  static Map<String, String> _headers({bool json = true}) => {
+        if (json) 'Content-Type': 'application/json',
+        if (_apiKey.isNotEmpty) 'X-Spotterfy-Key': _apiKey,
+      };
 
   static void _trackUp(String body) => NetworkStatsService.instance?.addUp(body.length);
   static void _trackDown(int bytes) => NetworkStatsService.instance?.addDown(bytes);
@@ -22,7 +28,7 @@ class ApiService {
       _trackUp(reqBody);
       final startRes = await http.post(
         Uri.parse('$_baseUrl/scrape-playlist'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _headers(),
         body: reqBody,
       );
       _trackDown(startRes.bodyBytes.length);
@@ -54,7 +60,7 @@ class ApiService {
       debugPrint('scrapePlaylist jobId=$jobId polling...');
       for (int i = 0; i < 120; i++) {
         await Future.delayed(const Duration(milliseconds: 500));
-        final progRes = await http.get(Uri.parse('$_baseUrl/scrape-progress/$jobId'));
+        final progRes = await http.get(Uri.parse('$_baseUrl/scrape-progress/$jobId'), headers: _headers(json: false));
         _trackDown(progRes.bodyBytes.length);
         if (progRes.statusCode != 200) continue;
         final prog = jsonDecode(progRes.body) as Map<String, dynamic>;
@@ -68,7 +74,7 @@ class ApiService {
         }
         if (i % 4 == 0) debugPrint('scrapePlaylist progress $i: $prog');
       }
-      final resultRes = await http.get(Uri.parse('$_baseUrl/scrape-result/$jobId'));
+      final resultRes = await http.get(Uri.parse('$_baseUrl/scrape-result/$jobId'), headers: _headers(json: false));
       _trackDown(resultRes.bodyBytes.length);
       debugPrint('scrapePlaylist result status=${resultRes.statusCode}');
       if (resultRes.statusCode != 200) {
@@ -106,7 +112,7 @@ class ApiService {
       _trackUp(reqBody);
       final response = await http.post(
         Uri.parse('$_baseUrl/scrape-user-playlists'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _headers(),
         body: reqBody,
       );
       _trackDown(response.bodyBytes.length);
@@ -135,7 +141,7 @@ class ApiService {
       _trackUp(reqBody);
       final response = await http.post(
         Uri.parse('$_baseUrl/download-track'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _headers(),
         body: reqBody,
       );
       _trackDown(response.bodyBytes.length);

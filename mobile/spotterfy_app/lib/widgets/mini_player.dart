@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +7,7 @@ import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/animated_equalizer.dart';
 import 'package:spotterfy_app/main.dart';
 
 class MiniPlayer extends StatelessWidget {
@@ -42,14 +45,14 @@ class MiniPlayer extends StatelessWidget {
       },
       background: Container(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(20)),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 28),
         child: Icon(Icons.skip_previous, color: SpotterfyTheme.primary, size: 20),
       ),
       secondaryBackground: Container(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(20)),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 28),
         child: Icon(Icons.skip_next, color: SpotterfyTheme.primary, size: 20),
@@ -70,7 +73,7 @@ class MiniPlayer extends StatelessWidget {
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           decoration: BoxDecoration(
             color: SpotterfyTheme.card,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, -4)),
             ],
@@ -86,24 +89,22 @@ class MiniPlayer extends StatelessWidget {
                 decoration: BoxDecoration(color: SpotterfyTheme.muted.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 8, 10),
+                padding: const EdgeInsets.fromLTRB(16, 6, 12, 8),
                 child: Row(
                   children: [
                     Hero(
                       tag: 'mini-cover-${track.id}',
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                         child: Container(
                           width: 52,
                           height: 52,
                           color: SpotterfyTheme.surface,
-                          child: track.cover.isNotEmpty
-                              ? Image.network(track.cover, fit: BoxFit.cover, errorBuilder: (_, _, _) => Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24))
-                              : Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24),
+                          child: _MiniCover(track: track),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,7 +124,7 @@ class MiniPlayer extends StatelessWidget {
                         ],
                       ),
                     ),
-                    IconButton(onPressed: () => player.previous(), icon: Icon(Icons.skip_previous, color: SpotterfyTheme.muted, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                    IconButton(onPressed: () => player.previous(), icon: Icon(Icons.skip_previous, color: Colors.white, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
                     const SizedBox(width: 2),
                     GestureDetector(
                       onLongPress: () => HapticFeedback.lightImpact(),
@@ -133,7 +134,7 @@ class MiniPlayer extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 2),
-                    IconButton(onPressed: () => player.next(), icon: Icon(Icons.skip_next, color: SpotterfyTheme.muted, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                    IconButton(onPressed: () => player.next(), icon: Icon(Icons.skip_next, color: Colors.white, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
                     const SizedBox(width: 4),
                     if (showQueueButton && player.queue.length > 1)
                       GestureDetector(
@@ -150,18 +151,21 @@ class MiniPlayer extends StatelessWidget {
                   ],
                 ),
               ),
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
-                child: SizedBox(
-                  height: 2,
-                  child: Stack(children: [
-                    Container(color: SpotterfyTheme.muted.withValues(alpha: 0.2)),
-                    FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: progress.clamp(0.0, 1.0),
-                      child: Container(color: SpotterfyTheme.primary, height: 2),
-                    ),
-                  ]),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: SizedBox(
+                    height: 3,
+                    child: Stack(children: [
+                      Container(color: SpotterfyTheme.muted.withValues(alpha: 0.25)),
+                      FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: progress.clamp(0.0, 1.0),
+                        child: Container(color: SpotterfyTheme.primary, height: 3),
+                      ),
+                    ]),
+                  ),
                 ),
               ),
             ],
@@ -209,11 +213,13 @@ class MiniPlayer extends StatelessWidget {
                       ),
                       child: Row(
                         children: [
-                          Icon(
-                            isCurrent ? Icons.music_note : Icons.play_arrow,
-                            color: isCurrent ? SpotterfyTheme.primary : SpotterfyTheme.muted,
-                            size: 20,
-                          ),
+                          isCurrent && player.isPlaying
+                              ? const AnimatedEqualizer(size: 18, color: SpotterfyTheme.primary)
+                              : Icon(
+                                  isCurrent ? Icons.music_note : Icons.play_arrow,
+                                  color: isCurrent ? SpotterfyTheme.primary : Colors.white,
+                                  size: 20,
+                                ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -232,7 +238,7 @@ class MiniPlayer extends StatelessWidget {
                           ),
                           if (index != player.currentIndex)
                             IconButton(
-                              icon: Icon(Icons.close, color: SpotterfyTheme.muted, size: 18),
+                              icon: Icon(Icons.close, color: Colors.white, size: 18),
                               onPressed: () {
                                 HapticFeedback.lightImpact();
                                 player.removeFromQueue(index);
@@ -256,5 +262,44 @@ class MiniPlayer extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _MiniCover extends StatelessWidget {
+  final dynamic track;
+  const _MiniCover({required this.track});
+
+  @override
+  Widget build(BuildContext context) {
+    if (track.cover != null && (track.cover as String).isNotEmpty) {
+      return Image.network(track.cover as String, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24));
+    }
+    // Storage: try embedded cover from file
+    final String src = track.sourceUrl as String? ?? '';
+    final bool isStorage = (track.id as String).startsWith('storage_') || src.startsWith('/') || src.startsWith('file://');
+    if (isStorage && src.isNotEmpty) {
+      final path = src.replaceFirst('file://', '');
+      return FutureBuilder<Uint8List?>(
+        future: _loadStorageCover(path),
+        builder: (_, snap) {
+          if (snap.hasData && snap.data != null) {
+            return Image.memory(snap.data!, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24));
+          }
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.5)));
+          }
+          return const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24);
+        },
+      );
+    }
+    return const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24);
+  }
+
+  Future<Uint8List?> _loadStorageCover(String path) async {
+    try {
+      final meta = readMetadata(File(path), getImage: true);
+      if (meta.pictures.isNotEmpty) return meta.pictures.first.bytes;
+    } catch (_) {}
+    return null;
   }
 }

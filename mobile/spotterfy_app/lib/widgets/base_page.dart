@@ -1,4 +1,3 @@
-// ignore_for_file: unnecessary_underscores
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
@@ -57,99 +56,117 @@ class BasePageScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isSearch = searchController != null;
-    return Scaffold(
-      backgroundColor: backgroundColor ?? SpotterfyTheme.background,
-      appBar: AppBar(
+    // Unified dark gradient like Jam/Chat page + Onboarding waves base
+    const gradientBg = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [Color(0xFF0d1f14), Color(0xFF07110b), Color(0xFF050a07)],
+    );
+    return Container(
+      decoration: const BoxDecoration(gradient: gradientBg),
+      child: Scaffold(
         backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        leadingWidth: 52,
-        leading: Consumer<AuthProvider>(
-          builder: (_, auth, __) => GestureDetector(
-            onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 10),
-              child: Center(
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: SpotterfyTheme.card, width: 1.6),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.25),
-                        blurRadius: 5,
-                      )
-                    ],
-                  ),
-                  child: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: SpotterfyTheme.surface,
-                    backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false)
-                        ? NetworkImage(auth.user!.photoUrl)
-                        : null,
-                    child: (auth.user?.photoUrl.isEmpty ?? true)
-                        ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18)
-                        : null,
+        // keep pages visually identical; ignore per-page backgroundColor and use gradient
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          automaticallyImplyLeading: false,
+          leadingWidth: 56,
+          leading: Consumer<AuthProvider>(
+            builder: (context, auth, child) => GestureDetector(
+              onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: SpotterfyTheme.card, width: 1.6),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 5,
+                        )
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: SpotterfyTheme.surface,
+                      backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false)
+                          ? NetworkImage(auth.user!.photoUrl)
+                          : null,
+                      child: (auth.user?.photoUrl.isEmpty ?? true)
+                          ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18)
+                          : null,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-        titleSpacing: 8,
-        title: isSearch
-            ? Container(
-                height: 36,
-                decoration: BoxDecoration(
-                  color: SpotterfyTheme.card,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: TextField(
-                  controller: searchController,
-                  onChanged: onSearchChanged,
-                  onSubmitted: onSearchSubmitted,
-                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
-                  decoration: InputDecoration(
-                    prefixIcon: Icon(Icons.search, color: SpotterfyTheme.muted, size: 18),
-                    prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 36),
-                    hintText: searchHint,
-                    hintStyle: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                    isDense: true,
-                    suffixIcon: query.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(Icons.clear, color: SpotterfyTheme.muted, size: 16),
-                            onPressed: () {
-                              searchController!.clear();
-                              onSearchChanged?.call('');
-                              onSearchSubmitted?.call('');
-                            },
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          )
-                        : null,
+          titleSpacing: 12,
+          title: isSearch
+              ? Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: SpotterfyTheme.card,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: TextField(
+                    controller: searchController,
+                    onChanged: onSearchChanged,
+                    onSubmitted: onSearchSubmitted,
+                    style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
+                    decoration: InputDecoration(
+                      prefixIcon: Icon(Icons.search, color: SpotterfyTheme.muted, size: 18),
+                      prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 36),
+                      hintText: searchHint,
+                      hintStyle: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      isDense: true,
+                      suffixIcon: query.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(Icons.clear, color: SpotterfyTheme.muted, size: 16),
+                              onPressed: () {
+                                searchController!.clear();
+                                onSearchChanged?.call('');
+                                onSearchSubmitted?.call('');
+                              },
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            )
+                          : null,
+                    ),
+                  ),
+                )
+              : Text(
+                  title!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
                   ),
                 ),
-              )
-            : Text(
-                title!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                ),
-              ),
-        // Unified trailing padding: 32px when no action, else action + 4 + 8 pad
-        actions: [
-          if (action != null) Padding(padding: const EdgeInsets.only(right: 8), child: action!),
-          SizedBox(width: action != null ? 4 : 32),
-        ],
-        bottom: bottom,
+          // Discover/Search have no trailing icon -> let search bar use full width (extra right padding only 12)
+          // Library/Chat keep 48 for + / group_add so left edge stays same but right gives space
+          actions: action != null
+              ? [
+                  SizedBox(
+                    width: 48,
+                    child: Center(child: Padding(padding: const EdgeInsets.only(right: 4), child: action)),
+                  ),
+                ]
+              : const [
+                  SizedBox(width: 12),
+                ],
+          bottom: bottom,
+        ),
+        body: body,
+        floatingActionButton: floatingActionButton,
       ),
-      body: body,
-      floatingActionButton: floatingActionButton,
     );
   }
 }

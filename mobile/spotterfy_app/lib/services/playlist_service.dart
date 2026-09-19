@@ -123,4 +123,64 @@ class PlaylistService {
       'lastSpotifySync': DateTime.now(),
     });
   }
+
+  // --- Discover cache (Firestore, populated by backend daily job) ---
+  String _stableId(String clean) {
+    var h = 5381;
+    for (final c in clean.codeUnits) {
+      h = ((h << 5) + h) + c;
+    }
+    return (h & 0x7fffffff).toString();
+  }
+
+  Future<List<PlaylistModel>> getDiscoverPlaylists(List<String> spotifyUrls) async {
+    if (spotifyUrls.isEmpty) return [];
+    final cleanUrls = spotifyUrls.map((u) => u.split('?').first).toList();
+    // Firestore whereIn max 10, genre+artist 5 each so safe
+    final snap = await _firestore.collection('discoverCache').where('spotifyUrl', whereIn: cleanUrls).get();
+    final byUrl = {for (final d in snap.docs) (d.data()['spotifyUrl'] as String? ?? ''): PlaylistModel.fromJson(d.data(), d.id)};
+    return cleanUrls.map((u) => byUrl[u]).whereType<PlaylistModel>().toList();
+  }
+
+  Stream<List<PlaylistModel>> streamDiscoverPlaylists(List<String> spotifyUrls) {
+    if (spotifyUrls.isEmpty) return Stream.value([]);
+    final cleanUrls = spotifyUrls.map((u) => u.split('?').first).toList();
+    return _firestore.collection('discoverCache').where('spotifyUrl', whereIn: cleanUrls).snapshots().map((snap) {
+      final byUrl = {for (final d in snap.docs) (d.data()['spotifyUrl'] as String? ?? ''): PlaylistModel.fromJson(d.data(), d.id)};
+      return cleanUrls.map((u) => byUrl[u]).whereType<PlaylistModel>().toList();
+    });
+  }
+
+  Future<void> cacheDiscoverPlaylist(PlaylistModel playlist) async {
+    final clean = (playlist.spotifyUrl.isNotEmpty ? playlist.spotifyUrl : playlist.id).split('?').first;
+    // Query-first to find existing doc id, else create with stable id
+    final existing = await _firestore.collection('discoverCache').where('spotifyUrl', isEqualTo: clean).limit(1).get();
+    final docId = existing.docs.isNotEmpty ? existing.docs.first.id : _stableId(clean);
+    await _firestore.collection('discoverCache').doc(docId).set({
+      ...playlist.toFirestore(),
+      'spotifyUrl': clean,
+      'lastScrapedAt': FieldValue.serverTimestamp(),
+      'trackCount': playlist.tracks.length,
+    }, SetOptions(merge: true));
+  }
+
+  Future<PlaylistModel?> fetchDiscoverPlaylistWithCache(String spotifyUrl, {required Future<PlaylistModel?> Function() fetcher}) async {
+    final clean = spotifyUrl.split('?').first;
+    // Query by field (covers both legacy hashCode docs and new md5 docs)
+    final q = await _firestore.collection('discoverCache').where('spotifyUrl', isEqualTo: clean).limit(1).get();
+    if (q.docs.isNotEmpty) {
+      final doc = q.docs.first;
+      final data = doc.data();
+      final ts = (data['lastScrapedAt'] as Timestamp?);
+      final ageHours = ts == null ? 999 : DateTime.now().difference(ts.toDate()).inHours;
+      if (ageHours < 12) return PlaylistModel.fromJson(data, doc.id);
+      if (ageHours < 48) {
+        fetcher().then((fresh) { if (fresh != null) cacheDiscoverPlaylist(fresh); });
+        return PlaylistModel.fromJson(data, doc.id);
+      }
+    }
+    final fresh = await fetcher();
+    if (fresh != null) await cacheDiscoverPlaylist(fresh);
+    return fresh;
+  }
 }

@@ -1,13 +1,17 @@
-// ignore_for_file: unnecessary_underscores
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
+import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/playlist_detail_screen.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
+import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
+import 'package:spotterfy_app/services/playlist_service.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -36,6 +40,14 @@ class _SearchScreenState extends State<SearchScreen> {
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2O09Hg?si=7056b2b4c9a44633",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3tjkZi?si=6bdf9e673dfb4f3c",
   ];
+  static const _radioStations = [
+    {"logo": "https://play-lh.googleusercontent.com/0IsJvPieGJZ6gvvUMWTuU-46gIPJATFX6mirRyS8YxRMFd5bR6COv7pD853HtN_bWBfOaBsn6nkenmQ_qUlViw", "name": "Radio 2 Antwerpen", "streaming_url": "https://icecast.vrtcdn.be/ra2ant-high.mp3?dist=belgiefm"},
+    {"logo": "https://play-lh.googleusercontent.com/3xmVTnZ39XVejn53qNev0BODoBS-WX6yLdkcI220QCFYLxblGAHjdtlAFzTPhkfkYipQwRZP4WwFvhL_ae2cLQ", "name": "MNM", "streaming_url": "https://icecast.vrtcdn.be/mnm-high.mp3?dist=belgiefm"},
+    {"logo": "https://play-lh.googleusercontent.com/pqPqoFgR_HJkb5BFw87xpDn6E174M0eQaouclw1B-JiVwDBs6I1Y_YW4a3UJ-kTWnN7rAjNkMHxwCZc06PaN", "name": "Qmusic", "streaming_url": "https://audio-streaming.qmusic.be/qmusic.mp3?aw_0_req.userConsentV2=&dist=belgiefm&gdpr=1&pname=redirect-service"},
+    {"logo": "https://play-lh.googleusercontent.com/r-P2EpdnaY4rOPtGlRn8h-SGiQWhQkzX3fha5ETTT5XTrr7JXd9gk4HXz4WrFxAbfjqYX6W0V2hVEXpso7Oz=s0-br30", "name": "Studio Brussel", "streaming_url": "https://icecast.vrtcdn.be/stubru-high.mp3?dist=belgiefm"},
+    {"logo": "https://play-lh.googleusercontent.com/mH1dOcR6icJHvMYumxc9vEKKtG42baoHjQ9N1-rAvElp5qQluweafMe1U9OjP8CXihwTZiFQVqA-FMJlRNErWQ", "name": "JOE", "streaming_url": "https://audio-streaming.joe.be/joe.mp3?aw_0_req.userConsentV2=&dist=belgiefm&gdpr=1&pname=redirect-service"},
+    {"logo": "https://play-lh.googleusercontent.com/9uazPQF3S9NogGkV3VVJhiABPjJsHO6krSMvwf5pU9f1C4ZecYiEGnbEhspFZleZikc1uvnQPOj7TE4ovYX7", "name": "Nostalgie", "streaming_url": "https://29073.live.streamtheworld.com/NOSTALGIEWHATAFEELINGAAC.aac?dist=radioplayer&rp_source=1&__cb=45378569020822&___cb=425693790515817"},
+  ];
 
   static const _genreFallbackNames = [
     'Top Hits',
@@ -52,81 +64,147 @@ class _SearchScreenState extends State<SearchScreen> {
     'This Is Artist Mix 5',
   ];
 
+  final PlaylistService _discoverService = PlaylistService();
   List<PlaylistModel> _genrePlaylists = [];
   List<PlaylistModel> _artistPlaylists = [];
-  bool _loadingGenres = true;
-  bool _loadingArtists = true;
+  bool _loadingCache = true;
+  final Set<String> _fetching = {};
+  bool _isOnline = true;
+  StreamSubscription<List<ConnectivityResult>>? _connSub;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(() => setState(() => _query = _searchController.text.trim().toLowerCase()));
-    _loadDiscoverPlaylists();
+    _initConnectivity();
+    _loadDiscoverFromCache();
   }
 
-  Future<void> _loadDiscoverPlaylists() async {
-    // Load genres and artists in parallel
-    await Future.wait([_loadGenrePlaylists(), _loadArtistPlaylists()]);
+  Future<void> _initConnectivity() async {
+    try {
+      final res = await Connectivity().checkConnectivity();
+      _isOnline = !(res.contains(ConnectivityResult.none) || res.isEmpty);
+      if (mounted) setState(() {});
+    } catch (_) {}
+    _connSub = Connectivity().onConnectivityChanged.listen((res) {
+      final online = !(res.contains(ConnectivityResult.none) || res.isEmpty);
+      if (online != _isOnline && mounted) setState(() => _isOnline = online);
+    });
   }
 
-  Future<void> _loadGenrePlaylists() async {
-    setState(() => _loadingGenres = true);
-    final results = await Future.wait(_genreUrls.asMap().entries.map((e) async {
-      final idx = e.key;
-      final url = e.value;
-      try {
-        final scraped = await ApiService.scrapePlaylist(url);
-        if (scraped != null) {
-          // Use scraped data, keep original spotifyUrl for identity
-          return scraped;
-        }
-      } catch (_) {}
-      // Fallback placeholder if scrape fails / offline
+  Future<void> _loadDiscoverFromCache() async {
+    setState(() => _loadingCache = true);
+    try {
+      final genres = await _discoverService.getDiscoverPlaylists(_genreUrls);
+      final artists = await _discoverService.getDiscoverPlaylists(_artistUrls);
+      if (!mounted) return;
+      setState(() {
+        _genrePlaylists = _mergeWithPlaceholders(_genreUrls, genres, _genreFallbackNames, isGenre: true);
+        _artistPlaylists = _mergeWithPlaceholders(_artistUrls, artists, _artistFallbackNames, isGenre: false);
+        _loadingCache = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _genrePlaylists = _placeholders(_genreUrls, _genreFallbackNames);
+        _artistPlaylists = _placeholders(_artistUrls, _artistFallbackNames);
+        _loadingCache = false;
+      });
+    }
+  }
+
+  List<PlaylistModel> _placeholders(List<String> urls, List<String> fallbackNames) {
+    return List.generate(urls.length, (i) {
+      final url = urls[i].split('?').first;
       return PlaylistModel(
         id: url.hashCode.toString(),
-        name: _genreFallbackNames[idx % _genreFallbackNames.length],
+        name: fallbackNames[i % fallbackNames.length],
         coverUrl: '',
         tracks: [],
         creatorUid: 'placeholder_discover',
         source: 'spotify',
         spotifyUrl: url,
       );
-    }));
-    if (!mounted) return;
-    setState(() {
-      _genrePlaylists = results;
-      _loadingGenres = false;
     });
   }
 
-  Future<void> _loadArtistPlaylists() async {
-    setState(() => _loadingArtists = true);
-    final results = await Future.wait(_artistUrls.asMap().entries.map((e) async {
-      final idx = e.key;
-      final url = e.value;
-      try {
-        final scraped = await ApiService.scrapePlaylist(url);
-        if (scraped != null) return scraped;
-      } catch (_) {}
+  List<PlaylistModel> _mergeWithPlaceholders(List<String> urls, List<PlaylistModel> cached, List<String> fallbackNames, {required bool isGenre}) {
+    final byUrl = {for (final p in cached) p.spotifyUrl.split('?').first: p};
+    return List.generate(urls.length, (i) {
+      final clean = urls[i].split('?').first;
+      final hit = byUrl[clean];
+      if (hit != null) return hit;
       return PlaylistModel(
-        id: url.hashCode.toString(),
-        name: _artistFallbackNames[idx % _artistFallbackNames.length],
+        id: clean.hashCode.toString(),
+        name: fallbackNames[i % fallbackNames.length],
         coverUrl: '',
         tracks: [],
         creatorUid: 'placeholder_discover',
         source: 'spotify',
-        spotifyUrl: url,
+        spotifyUrl: clean,
       );
-    }));
-    if (!mounted) return;
-    setState(() {
-      _artistPlaylists = results;
-      _loadingArtists = false;
     });
+  }
+
+  Future<void> _playRadioStation(Map<String, String> station) async {
+    if (!_isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Radio requires internet connection')));
+      return;
+    }
+    final playerProv = context.read<PlayerProvider>();
+    final track = TrackModel(
+      id: 'radio_${station['name']!.replaceAll(' ', '_').toLowerCase()}',
+      title: station['name']!,
+      artists: 'Live Radio',
+      album: 'Radio',
+      cover: station['logo']!,
+      sourceUrl: station['streaming_url']!,
+    );
+    await playerProv.play(track);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing ${station['name']}')));
+  }
+
+  Future<void> _openDiscoverPlaylist(BuildContext context, PlaylistModel p) async {
+    if (p.tracks.isNotEmpty) {
+      if (!context.mounted) return;
+      Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p)));
+      return;
+    }
+    final url = p.spotifyUrl.split('?').first;
+    if (url.isEmpty) return;
+    if (_fetching.contains(url)) return;
+    setState(() => _fetching.add(url));
+    final scaffold = ScaffoldMessenger.of(context);
+    scaffold.showSnackBar(const SnackBar(content: Text('Loading playlist…'), duration: Duration(seconds: 2)));
+    try {
+      final fresh = await _discoverService.fetchDiscoverPlaylistWithCache(
+        url,
+        fetcher: () => ApiService.scrapePlaylist(url),
+      );
+      if (!mounted) return;
+      setState(() => _fetching.remove(url));
+      if (fresh == null) {
+        scaffold.showSnackBar(const SnackBar(content: Text('Failed to load playlist. Try again later.')));
+        return;
+      }
+      setState(() {
+        final gIdx = _genrePlaylists.indexWhere((e) => e.spotifyUrl.split('?').first == url);
+        if (gIdx >= 0) _genrePlaylists[gIdx] = fresh;
+        final aIdx = _artistPlaylists.indexWhere((e) => e.spotifyUrl.split('?').first == url);
+        if (aIdx >= 0) _artistPlaylists[aIdx] = fresh;
+      });
+      if (!context.mounted) return;
+      Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: fresh)));
+    } catch (e) {
+      if (mounted) setState(() => _fetching.remove(url));
+      scaffold.showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
   }
 
   @override
   void dispose() {
+    _connSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -142,8 +220,9 @@ class _SearchScreenState extends State<SearchScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _section(context, 'Top genres', _genrePlaylists, _query, isLoading: _loadingGenres),
-            _section(context, 'Top artists', _artistPlaylists, _query, isLoading: _loadingArtists),
+            _section(context, 'Top Genres', _genrePlaylists, _query, isLoading: _loadingCache, clickableTitle: false),
+            _section(context, 'Top Artists', _artistPlaylists, _query, isLoading: _loadingCache, clickableTitle: false),
+            _radioSection(context, _query),
             _otherUsersSection(context, _query),
           ],
         ),
@@ -151,29 +230,86 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _section(BuildContext context, String title, List<PlaylistModel> data, String query, {bool isLoading = false}) {
+  Widget _radioSection(BuildContext context, String query) {
+    if (!_isOnline) return const SizedBox.shrink();
+    const cardW = 110.0;
+    const coverH = 92.0;
+    const listH = 144.0;
+    var stations = _radioStations;
+    if (query.isNotEmpty) {
+      stations = stations.where((s) => s['name']!.toLowerCase().contains(query)).toList();
+      if (stations.isEmpty) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(padding: EdgeInsets.fromLTRB(16, 14, 16, 8), child: Text('Radio Stations', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800))),
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('No matches for "$query"', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12))),
+          ],
+        );
+      }
+    }
+    final display = stations.take(6).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(padding: EdgeInsets.fromLTRB(16, 14, 16, 8), child: Text('Radio Stations', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800))),
+        SizedBox(
+          height: listH,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: display.length,
+            itemBuilder: (_, i) {
+              final s = display[i];
+              return GestureDetector(
+                onTap: () => _playRadioStation(s),
+                child: Container(
+                  width: cardW,
+                  margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
+                  decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                      child: Image.network(s['logo']!, height: coverH, width: cardW, fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(height: coverH, color: SpotterfyTheme.surface, child: const Center(child: Icon(Icons.radio, color: Colors.white70)))),
+                    ),
+                    Padding(padding: const EdgeInsets.all(7), child: Text(s['name']!, style: TextStyle(color: SpotterfyTheme.text, fontSize: 11, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                  ]),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _section(BuildContext context, String title, List<PlaylistModel> data, String query, {bool isLoading = false, bool clickableTitle = true}) {
+    // Smaller cards to fit extra Radio row
+    const cardW = 110.0;
+    const coverH = 92.0;
+    const listH = 144.0;
     if (isLoading && data.isEmpty) {
-      // Shimmer-like placeholder while scraping
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(children: [Text(title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Row(children: [Text(title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 17, fontWeight: FontWeight.w800)), if (clickableTitle) ...[const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]]),
           ),
           SizedBox(
-            height: 170,
+            height: listH,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: 5,
               itemBuilder: (_, i) => Container(
-                width: 140,
-                margin: EdgeInsets.only(right: i == 4 ? 0 : 12),
+                width: cardW,
+                margin: EdgeInsets.only(right: i == 4 ? 0 : 10),
                 decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Container(height: 110, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(12)))),
-                  Padding(padding: const EdgeInsets.all(8), child: Container(height: 12, width: 90, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(6)))),
+                  Container(height: coverH, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(12)))),
+                  Padding(padding: const EdgeInsets.all(8), child: Container(height: 10, width: 80, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(6)))),
                 ]),
               ),
             ),
@@ -189,8 +325,8 @@ class _SearchScreenState extends State<SearchScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(children: [Text(title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Row(children: [Text(title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 17, fontWeight: FontWeight.w800)), if (clickableTitle) ...[const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]]),
           ),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('No matches for "$query"', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12))),
         ],
@@ -200,29 +336,40 @@ class _SearchScreenState extends State<SearchScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: GestureDetector(
-            onTap: () => Navigator.push(context, swipeRoute(_SectionPage(title: title, playlists: filtered))),
-            child: Row(children: [Text(title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]),
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: clickableTitle
+              ? GestureDetector(
+                  onTap: () => Navigator.push(context, swipeRoute(_SectionPage(title: title, playlists: filtered, onTap: (p) => _openDiscoverPlaylist(context, p)))),
+                  child: Row(children: [Text(title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 17, fontWeight: FontWeight.w800)), const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]),
+                )
+              : Row(children: [Text(title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 17, fontWeight: FontWeight.w800))]),
         ),
         SizedBox(
-          height: 170,
+          height: listH,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: display.length,
             itemBuilder: (_, i) {
               final p = display[i];
+              final isFetching = _fetching.contains(p.spotifyUrl.split('?').first);
               return GestureDetector(
-                onTap: () => Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p))),
+                onTap: () => _openDiscoverPlaylist(context, p),
                 child: Container(
-                  width: 140,
-                  margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 12),
+                  width: cardW,
+                  margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
                   decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), child: p.coverUrl.isNotEmpty ? Image.network(p.coverUrl, height: 110, width: 140, fit: BoxFit.cover) : Container(height: 110, color: SpotterfyTheme.surface, child: Icon(Icons.music_note, color: SpotterfyTheme.muted))),
-                    Padding(padding: const EdgeInsets.all(8), child: Text(p.name, style: TextStyle(color: SpotterfyTheme.text, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                      child: Stack(children: [
+                        p.coverUrl.isNotEmpty
+                            ? Image.network(p.coverUrl, height: coverH, width: cardW, fit: BoxFit.cover)
+                            : Container(height: coverH, color: SpotterfyTheme.surface, child: Center(child: Icon(title == 'Radio Stations' ? Icons.radio : Icons.music_note, color: SpotterfyTheme.muted, size: 22))),
+                        if (isFetching) Container(height: coverH, width: cardW, color: Colors.black38, child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))),
+                      ]),
+                    ),
+                    Padding(padding: const EdgeInsets.all(7), child: Text(p.name, style: TextStyle(color: SpotterfyTheme.text, fontSize: 11, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis)),
                   ]),
                 ),
               );
@@ -244,9 +391,11 @@ class _SearchScreenState extends State<SearchScreen> {
       ));
 
   Widget _otherUsersSection(BuildContext context, String query) {
+    const cardW = 110.0;
+    const coverH = 92.0;
+    const listH = 144.0;
     final prov = context.watch<PlaylistProvider>();
     final auth = context.watch<AuthProvider>();
-    // Strictly other users – never show own playlists
     var list = prov.playlists.where((p) => p.creatorUid != auth.user?.uid && p.creatorUid.isNotEmpty).toList();
     list.sort((a, b) => (b.lastTrackSync ?? b.createdAt).compareTo(a.lastTrackSync ?? a.createdAt));
     final bool isPlaceholder = list.isEmpty;
@@ -262,22 +411,21 @@ class _SearchScreenState extends State<SearchScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: GestureDetector(
-            onTap: () {
-              // Don't navigate to grid if we're showing placeholders with no real data
-              final realList = prov.playlists.where((p) => p.creatorUid != auth.user?.uid && p.creatorUid.isNotEmpty).toList();
-              final target = realList.isEmpty ? display : realList.where((p) => query.isEmpty || p.name.toLowerCase().contains(query)).toList();
-              Navigator.push(context, swipeRoute(_SectionPage(title: "Other users' playlists", playlists: target)));
-            },
-            child: Row(children: [Text("Other users' playlists", style: TextStyle(color: SpotterfyTheme.text, fontSize: 18, fontWeight: FontWeight.w800)), const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]),
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: GestureDetector(
+              onTap: () {
+                final realList = prov.playlists.where((p) => p.creatorUid != auth.user?.uid && p.creatorUid.isNotEmpty).toList();
+                final target = realList.isEmpty ? display : realList.where((p) => query.isEmpty || p.name.toLowerCase().contains(query)).toList();
+                Navigator.push(context, swipeRoute(_SectionPage(title: "New Playlists", playlists: target, onTap: (p) => Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p))))));
+              },
+              child: Row(children: [Text("New Playlists", style: TextStyle(color: SpotterfyTheme.text, fontSize: 17, fontWeight: FontWeight.w800)), const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]),
+            ),
         ),
         if (display.isEmpty)
           Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('No matches for "$query"', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)))
         else
           SizedBox(
-            height: 170,
+            height: listH,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -294,12 +442,12 @@ class _SearchScreenState extends State<SearchScreen> {
                     Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p)));
                   },
                   child: Container(
-                    width: 140,
-                    margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 12),
+                    width: cardW,
+                    margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
                     decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), child: p.coverUrl.isNotEmpty ? Image.network(p.coverUrl, height: 110, width: 140, fit: BoxFit.cover) : Container(height: 110, color: SpotterfyTheme.surface, child: Icon(Icons.music_note, color: SpotterfyTheme.muted))),
-                      Padding(padding: const EdgeInsets.all(8), child: Text(p.name, style: TextStyle(color: SpotterfyTheme.text, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                      ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), child: p.coverUrl.isNotEmpty ? Image.network(p.coverUrl, height: coverH, width: cardW, fit: BoxFit.cover) : Container(height: coverH, color: SpotterfyTheme.surface, child: Center(child: Icon(Icons.music_note, color: SpotterfyTheme.muted)))),
+                      Padding(padding: const EdgeInsets.all(7), child: Text(p.name, style: TextStyle(color: SpotterfyTheme.text, fontSize: 11, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis)),
                     ]),
                   ),
                 );
@@ -319,7 +467,8 @@ class _SearchScreenState extends State<SearchScreen> {
 class _SectionPage extends StatelessWidget {
   final String title;
   final List<PlaylistModel> playlists;
-  const _SectionPage({required this.title, required this.playlists});
+  final Future<void> Function(PlaylistModel)? onTap;
+  const _SectionPage({required this.title, required this.playlists, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -333,8 +482,14 @@ class _SectionPage extends StatelessWidget {
         itemBuilder: (_, i) {
           final p = playlists[i];
           return GestureDetector(
-            onTap: () => Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p))),
-            child: Container(decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), child: p.coverUrl.isNotEmpty ? Image.network(p.coverUrl, fit: BoxFit.cover, width: double.infinity) : Container(color: SpotterfyTheme.surface, child: Icon(Icons.music_note, color: SpotterfyTheme.muted)))) , Padding(padding: const EdgeInsets.all(8), child: Text(p.name, style: TextStyle(color: SpotterfyTheme.text, fontWeight: FontWeight.w600, fontSize: 12), maxLines: 2))]),
+            onTap: () async {
+              if (onTap != null) {
+                await onTap!(p);
+              } else {
+                Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p)));
+              }
+            },
+            child: Container(decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), child: p.coverUrl.isNotEmpty ? Image.network(p.coverUrl, fit: BoxFit.cover, width: double.infinity) : Container(color: SpotterfyTheme.surface, child: Center(child: Icon(Icons.music_note, color: SpotterfyTheme.muted))))), Padding(padding: const EdgeInsets.all(8), child: Text(p.name, style: TextStyle(color: SpotterfyTheme.text, fontWeight: FontWeight.w600, fontSize: 12), maxLines: 2))]),
             ),
           );
         },

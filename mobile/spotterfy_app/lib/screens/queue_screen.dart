@@ -1,4 +1,3 @@
-// ignore_for_file: unnecessary_underscores
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -20,7 +19,7 @@ class QueueScreen extends StatelessWidget {
         elevation: 0,
         automaticallyImplyLeading: false,
         leadingWidth: 52,
-        leading: Consumer<AuthProvider>(builder: (_, auth, __) => GestureDetector(
+        leading: Consumer<AuthProvider>(builder: (context, auth, child) => GestureDetector(
           onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
           child: Padding(padding: const EdgeInsets.only(left: 10), child: Center(child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.6), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]), child: CircleAvatar(radius: 16, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18) : null))),
         ))),

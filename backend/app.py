@@ -61,7 +61,99 @@ def create_app():
         "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001,http://192.168.1.5:3000,http://192.168.1.5:3001",
     )
     allowed_origins = [url.strip() for url in frontend_urls.split(",") if url.strip()]
-    CORS(app, origins=allowed_origins)
+    CORS(app, origins=allowed_origins, allow_headers=["Content-Type", "Authorization", "X-Spotterfy-Key", "X-App-Token", "X-Admin-Token"])
+
+    # --- Rate limiting + App-key header (only your apps) ---
+    import time as _time
+    import threading as _rl_th
+    from flask import request as _req, jsonify as _jsonify, g as _g
+    # In-memory sliding window: { (ip, endpoint_key): [timestamps] }
+    _rl_store: dict[tuple[str, str], list[float]] = {}
+    _rl_lock = _rl_th.Lock()
+    # Limits per endpoint (requests / 60s) tuned for WARP/Spotify
+    _RL_LIMITS: dict[str, int] = {
+        "scrape-playlist": 6,          # heavy Spotify+YT
+        "scrape-user-playlists": 8,
+        "download-track": 20,
+        "download-playlist-zip": 6,
+        "stream": 30,
+        "stream-track": 30,
+        "default": 60,
+    }
+    # Exempt from key/rate
+    _EXEMPT_PATHS = {"/api/health", "/api/warp-status", "/", "/api/refresh-discover"}
+
+    def _client_ip() -> str:
+        xf = _req.headers.get("X-Forwarded-For", "")
+        if xf:
+            return xf.split(",")[0].strip()
+        return _req.remote_addr or "unknown"
+
+    def _endpoint_key(path: str) -> str:
+        p = path.lower()
+        for k in _RL_LIMITS:
+            if k in p:
+                return k
+        return "default"
+
+    @app.before_request
+    def _check_app_key_and_rate_limit():
+        path = _req.path or ""
+        # Only protect /api/* and not exempt
+        if not path.startswith("/api/"):
+            return None
+        if any(path == e or path.startswith(e + "/") or path.startswith(e + "?") for e in _EXEMPT_PATHS):
+            # /api/refresh-discover has its own REFRESH_TOKEN check, skip app-key
+            if path.startswith("/api/refresh-discover"):
+                return None
+            # health/warp still exempt from key but still rate-limited lightly
+            if path in ("/api/health", "/api/warp-status"):
+                pass
+            else:
+                # exempt paths bypass
+                if path in _EXEMPT_PATHS:
+                    return None
+        # 1) Mandatory app header if SPOTTERFY_API_KEY is set
+        # Stream endpoints are exempt from header (audioplayers UrlSource can't set custom header) but still rate-limited
+        _HEADER_EXEMPT = {"/api/health", "/api/warp-status", "/", "/api/stream", "/api/stream-track"}
+        required_key = os.environ.get("SPOTTERFY_API_KEY") or os.environ.get("APP_API_KEY") or os.environ.get("API_KEY")
+        if required_key:
+            got = _req.headers.get("X-Spotterfy-Key") or _req.headers.get("X-App-Token") or ""
+            is_header_exempt = any(path == e or path.startswith(e + "?") or path.startswith(e + "/") for e in _HEADER_EXEMPT)
+            if not is_header_exempt:
+                if got != required_key:
+                    return _jsonify({"error": "missing or invalid X-Spotterfy-Key"}), 401
+        # 2) Rate limiting (sliding window 60s)
+        # Allow disabling via RATE_LIMIT_DISABLE=1
+        if os.environ.get("RATE_LIMIT_DISABLE") == "1":
+            return None
+        ip = _client_ip()
+        key = _endpoint_key(path)
+        limit = _RL_LIMITS.get(key, _RL_LIMITS["default"])
+        now = _time.time()
+        window = 60.0
+        bucket = (ip, key)
+        with _rl_lock:
+            lst = _rl_store.get(bucket, [])
+            # prune
+            lst = [t for t in lst if now - t < window]
+            if len(lst) >= limit:
+                retry = int(window - (now - lst[0])) + 1
+                return _jsonify({"error": "rate_limited", "retry_after": retry, "limit": limit, "window": "60s"}), 429, {"Retry-After": str(retry)}
+            lst.append(now)
+            _rl_store[bucket] = lst
+        # add rate headers
+        _g._rl_remaining = limit - len(lst)
+        return None
+
+    @app.after_request
+    def _add_rate_headers(resp):
+        try:
+            if hasattr(_g, "_rl_remaining"):
+                resp.headers["X-RateLimit-Remaining"] = str(_g._rl_remaining)
+        except Exception:
+            pass
+        return resp
 
     from routes import routes
     app.register_blueprint(routes)
@@ -74,6 +166,35 @@ def create_app():
             _t.sleep(60)
             _log_warp_startup()
     _th.Thread(target=_warp_heartbeat, daemon=True).start()
+
+    # Daily discover refresh directly in backend (no GitHub workflow needed)
+    if os.environ.get("DISCOVER_REFRESH_DISABLE") != "1":
+        def _discover_scheduler():
+            import time as _t
+            import datetime as _dt
+            # wait a bit for Flask to be ready, then do initial warm if needed
+            _t.sleep(10)
+            while True:
+                try:
+                    from discover_refresh import refresh_all_discover
+                    # Run once on startup if discoverCache empty/stale (best-effort)
+                    print("[DiscoverScheduler] Running daily refresh...", flush=True)
+                    refresh_all_discover()
+                except Exception as e:
+                    print(f"[DiscoverScheduler] refresh failed: {e}", flush=True)
+                # sleep until next 04:00 UTC
+                try:
+                    now = _dt.datetime.utcnow()
+                    nxt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                    if nxt <= now:
+                        nxt += _dt.timedelta(days=1)
+                    secs = (nxt - now).total_seconds()
+                    print(f"[DiscoverScheduler] next run at {nxt.isoformat()}Z in {int(secs)}s", flush=True)
+                    _t.sleep(secs)
+                except Exception:
+                    _t.sleep(24 * 3600)
+        _th.Thread(target=_discover_scheduler, daemon=True).start()
+        print("[DiscoverScheduler] enabled (daily 00:00 UTC, disable with DISCOVER_REFRESH_DISABLE=1)", flush=True)
 
     return app
 
