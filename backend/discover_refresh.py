@@ -17,6 +17,10 @@ DISCOVER_URLS = [
 ]
 
 def _init_firestore():
+    # Diagnostic (never logs values): proves whether the host actually injects the credential.
+    _gac = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or os.environ.get("FIREBASE_SERVICE_ACCOUNT_PATH")
+    _saj = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+    print(f"[DiscoverRefresh] env: GOOGLE_APPLICATION_CREDENTIALS={'set' if _gac else 'unset'}, FIREBASE_SERVICE_ACCOUNT_JSON={'set(len=%d)' % len(_saj) if _saj else 'unset'}", flush=True)
     try:
         import firebase_admin
         from firebase_admin import credentials, firestore
