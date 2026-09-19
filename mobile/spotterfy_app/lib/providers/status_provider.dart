@@ -6,44 +6,30 @@ import 'dart:convert';
 class StatusProvider extends ChangeNotifier {
   bool? backendOnline;
   bool? warpConnected;
-  Timer? _warpTimer;
+  Timer? _statusTimer;
 
   static const String _baseUrl = 'https://spotdl.vervoortkobe.be.eu.org/api';
 
   StatusProvider() {
-    checkAll();
-    _warpTimer = Timer.periodic(const Duration(seconds: 30), (_) => checkWarp());
+    checkStatus();
+    _statusTimer = Timer.periodic(const Duration(seconds: 30), (_) => checkStatus());
   }
 
-  Future<void> checkAll() async {
-    await Future.wait([checkHealth(), checkWarp()]);
-  }
-
-  Future<void> checkHealth() async {
+  /// Single poll: /api/health carries both backend and warp state.
+  Future<void> checkStatus() async {
     try {
       final res = await http.get(Uri.parse('$_baseUrl/health')).timeout(const Duration(seconds: 4));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
-        backendOnline = data['online'] == true || res.statusCode == 200;
+        backendOnline = data['online'] == true;
+        final warp = data['warp'] as Map<String, dynamic>?;
+        warpConnected = warp?['connected'] == true;
       } else {
         backendOnline = false;
-      }
-    } catch (_) {
-      backendOnline = false;
-    }
-    notifyListeners();
-  }
-
-  Future<void> checkWarp() async {
-    try {
-      final res = await http.get(Uri.parse('$_baseUrl/warp-status')).timeout(const Duration(seconds: 4));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        warpConnected = data['connected'] == true;
-      } else {
         warpConnected = false;
       }
     } catch (_) {
+      backendOnline = false;
       warpConnected = false;
     }
     notifyListeners();
@@ -51,7 +37,7 @@ class StatusProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    _warpTimer?.cancel();
+    _statusTimer?.cancel();
     super.dispose();
   }
 }

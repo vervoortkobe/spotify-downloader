@@ -7,7 +7,6 @@ import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
-import 'package:spotterfy_app/widgets/floating_status_bar.dart';
 import 'package:spotterfy_app/widgets/mini_player.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
@@ -147,7 +146,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       ),
       body: Column(
         children: [
-          const FloatingStatusBar(),
           if (_playlist.tracks.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),

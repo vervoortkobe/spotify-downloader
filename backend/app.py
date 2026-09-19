@@ -92,7 +92,7 @@ def create_app():
         "default": 60,
     }
     # Exempt from key/rate
-    _EXEMPT_PATHS = {"/api/health", "/api/warp-status", "/", "/api/refresh-discover"}
+    _EXEMPT_PATHS = {"/api/health", "/"}
 
     def _client_ip() -> str:
         xf = _req.headers.get("X-Forwarded-For", "")
@@ -114,11 +114,8 @@ def create_app():
         if not path.startswith("/api/"):
             return None
         if any(path == e or path.startswith(e + "/") or path.startswith(e + "?") for e in _EXEMPT_PATHS):
-            # /api/refresh-discover has its own REFRESH_TOKEN check, skip app-key
-            if path.startswith("/api/refresh-discover"):
-                return None
-            # health/warp still exempt from key but still rate-limited lightly
-            if path in ("/api/health", "/api/warp-status"):
+            # health is exempt from key but still rate-limited lightly
+            if path == "/api/health":
                 pass
             else:
                 # exempt paths bypass
@@ -126,7 +123,7 @@ def create_app():
                     return None
         # 1) Mandatory app header if SPOTTERFY_API_KEY is set
         # Stream endpoints are exempt from header (audioplayers UrlSource can't set custom header) but still rate-limited
-        _HEADER_EXEMPT = {"/api/health", "/api/warp-status", "/", "/api/stream", "/api/stream-track"}
+        _HEADER_EXEMPT = {"/api/health", "/", "/api/stream", "/api/stream-track"}
         required_key = os.environ.get("SPOTTERFY_API_KEY") or os.environ.get("APP_API_KEY") or os.environ.get("API_KEY")
         if required_key:
             got = _req.headers.get("X-Spotterfy-Key") or _req.headers.get("X-App-Token") or ""

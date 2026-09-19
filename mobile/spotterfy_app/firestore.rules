@@ -14,6 +14,11 @@ service cloud.firestore {
       allow update: if request.auth != null &&
         (request.auth.uid == userId || isAdmin());
       allow delete: if request.auth != null && isAdmin();
+
+      // Monthly data-usage history, written by the owner's app
+      match /dataUsage/{monthId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // ---- Top-level playlists: playlists/{id} with creatorUid ----

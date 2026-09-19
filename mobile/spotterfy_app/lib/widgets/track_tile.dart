@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
+import 'package:spotterfy_app/widgets/storage_cover.dart';
 
 class TrackTile extends StatelessWidget {
   final TrackModel track;
@@ -12,6 +13,8 @@ class TrackTile extends StatelessWidget {
   final bool isSelected;
   final bool isPlaying;
   final double progress;
+  /// Local file path for embedded cover art (storage tracks with empty [track.cover]).
+  final String? coverPath;
 
   const TrackTile({
     super.key,
@@ -21,6 +24,7 @@ class TrackTile extends StatelessWidget {
     this.isSelected = false,
     this.isPlaying = false,
     this.progress = 0,
+    this.coverPath,
   });
 
   @override
@@ -98,12 +102,14 @@ class TrackTile extends StatelessWidget {
                     child: Icon(Icons.music_note, color: Colors.grey[600]),
                   ),
                 )
-              : Container(
-                  width: 48,
-                  height: 48,
-                  color: Color(0xFF1a1a2e),
-                  child: Icon(Icons.music_note, color: Colors.grey[600]),
-                ),
+              : (coverPath != null
+                  ? StorageCover(path: coverPath!, size: 48, iconSize: 24, radius: 6)
+                  : Container(
+                      width: 48,
+                      height: 48,
+                      color: Color(0xFF1a1a2e),
+                      child: Icon(Icons.music_note, color: Colors.grey[600]),
+                    )),
         ),
         title: Text(
           track.title,

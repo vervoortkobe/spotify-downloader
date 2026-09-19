@@ -21,3 +21,21 @@ export let API_URL = getApiUrl()
 export const refreshApiUrl = () => {
   API_URL = getApiUrl()
 }
+
+// Backend app key (must match backend SPOTTERFY_API_KEY). Sent on every
+// backend call; exempt endpoints (health, stream, ...) simply ignore it.
+const API_KEY = process.env.NEXT_PUBLIC_SPOTTERFY_API_KEY ?? ""
+
+export const apiHeaders = (json = true): HeadersInit => ({
+  ...(json ? { "Content-Type": "application/json" } : {}),
+  ...(API_KEY ? { "X-Spotterfy-Key": API_KEY } : {}),
+})
+
+/** fetch() wrapper that always attaches the backend app key. */
+export const apiFetch = (url: string, init?: RequestInit): Promise<Response> => {
+  const headers = new Headers(init?.headers)
+  if (API_KEY && !headers.has("X-Spotterfy-Key")) {
+    headers.set("X-Spotterfy-Key", API_KEY)
+  }
+  return fetch(url, { ...init, headers })
+}

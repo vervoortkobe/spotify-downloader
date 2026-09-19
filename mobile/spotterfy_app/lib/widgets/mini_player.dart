@@ -1,6 +1,5 @@
-import 'dart:io';
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:flutter/material.dart';
+import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
@@ -70,7 +69,7 @@ class MiniPlayer extends StatelessWidget {
           player.togglePlayPause();
         },
         child: Container(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
           decoration: BoxDecoration(
             color: SpotterfyTheme.card,
             borderRadius: BorderRadius.circular(20),
@@ -272,34 +271,14 @@ class _MiniCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (track.cover != null && (track.cover as String).isNotEmpty) {
-      return Image.network(track.cover as String, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24));
+      return Image.network(track.cover as String, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24));
     }
-    // Storage: try embedded cover from file
+    // Storage: embedded cover from file (cached + memoized, never flashes)
     final String src = track.sourceUrl as String? ?? '';
     final bool isStorage = (track.id as String).startsWith('storage_') || src.startsWith('/') || src.startsWith('file://');
     if (isStorage && src.isNotEmpty) {
-      final path = src.replaceFirst('file://', '');
-      return FutureBuilder<Uint8List?>(
-        future: _loadStorageCover(path),
-        builder: (_, snap) {
-          if (snap.hasData && snap.data != null) {
-            return Image.memory(snap.data!, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24));
-          }
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.5)));
-          }
-          return const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24);
-        },
-      );
+      return StorageCover(path: src.replaceFirst('file://', ''), size: 52, iconSize: 24, radius: 12);
     }
     return const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24);
-  }
-
-  Future<Uint8List?> _loadStorageCover(String path) async {
-    try {
-      final meta = readMetadata(File(path), getImage: true);
-      if (meta.pictures.isNotEmpty) return meta.pictures.first.bytes;
-    } catch (_) {}
-    return null;
   }
 }

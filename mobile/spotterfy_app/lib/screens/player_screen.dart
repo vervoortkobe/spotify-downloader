@@ -1,6 +1,5 @@
-import 'dart:io';
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:flutter/material.dart';
+import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
@@ -345,33 +344,13 @@ class _PlayerCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (track.cover.isNotEmpty) {
-      return Image.network(track.cover, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64));
+      return Image.network(track.cover, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64));
     }
     final src = track.sourceUrl;
     final isStorage = track.id.startsWith('storage_') || src.startsWith('/') || src.startsWith('file://');
     if (isStorage && src.isNotEmpty) {
-      final path = src.replaceFirst('file://', '');
-      return FutureBuilder<Uint8List?>(
-        future: _loadStorageCover(path),
-        builder: (_, snap) {
-          if (snap.hasData && snap.data != null) {
-            return Image.memory(snap.data!, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64));
-          }
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: SizedBox(width: 32, height: 32, child: CircularProgressIndicator(strokeWidth: 2)));
-          }
-          return const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64);
-        },
-      );
+      return StorageCover(path: src.replaceFirst('file://', ''), size: 280, iconSize: 64, radius: 16);
     }
     return const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64);
-  }
-
-  Future<Uint8List?> _loadStorageCover(String path) async {
-    try {
-      final meta = readMetadata(File(path), getImage: true);
-      if (meta.pictures.isNotEmpty) return meta.pictures.first.bytes;
-    } catch (_) {}
-    return null;
   }
 }

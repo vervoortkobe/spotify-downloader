@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -8,8 +6,8 @@ import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
-import 'package:spotterfy_app/widgets/animated_equalizer.dart';
 import 'package:spotterfy_app/widgets/playlist_card.dart';
+import 'package:spotterfy_app/widgets/track_tile.dart';
 import 'playlist_detail_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
@@ -27,7 +25,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   final _searchController = TextEditingController();
   String _query = '';
   final List<String> _folderStack = [];
-  final Map<String, Uint8List?> _coverCache = {};
 
   @override
   void initState() {
@@ -90,7 +87,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
             unselectedLabelColor: SpotterfyTheme.muted,
             indicatorColor: SpotterfyTheme.primary,
             dividerColor: Colors.transparent,
-            tabs: const [Tab(text: 'Playlists'), Tab(text: 'Storage')],
+            tabs: const [Tab(text: 'Imported'), Tab(text: 'Storage')],
           ),
           Expanded(
             child: TabBarView(
@@ -243,15 +240,27 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               detailFiles = List<File>.from(detailFiles)..sort((a, b) => a.path.split('/').last.toLowerCase().compareTo(b.path.split('/').last.toLowerCase()));
               return Column(children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
                   child: Row(children: [
                     IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => setState(() => _folderStack.removeLast())),
                     Expanded(child: Text(folderName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis)),
                     Text('${detailFiles.length} songs', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
                     const SizedBox(width: 8),
-                    IconButton(icon: Icon(Icons.play_arrow_rounded, color: SpotterfyTheme.primary, size: 28), onPressed: detailFiles.isEmpty ? null : () async { await context.read<PlayerProvider>().play(folderTracks.first, queue: folderTracks); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing $folderName'))); }),
                   ]),
                 ),
+                if (detailFiles.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () async { await context.read<PlayerProvider>().play(folderTracks.first, queue: folderTracks); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing $folderName'))); },
+                        icon: const Icon(Icons.play_arrow, color: Colors.white),
+                        label: Text('Play • ${detailFiles.length} tracks', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10b981), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                      ),
+                    ),
+                  ),
                 Expanded(
                   child: (detailFiles.isEmpty && subfolders.isEmpty)
                       ? Center(child: Text('No matches', style: TextStyle(color: SpotterfyTheme.muted)))
@@ -276,13 +285,15 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                             final j = i - subfolders.length;
                             final f = detailFiles[j];
                             final t = folderTracks[j];
-                            final isPlaying = context.watch<PlayerProvider>().currentTrack?.id == t.id;
-                            return ListTile(
-                              leading: _buildStorageCover(f.path, isPlaying),
-                              title: Text(t.title, style: TextStyle(color: isPlaying ? SpotterfyTheme.primary : Colors.white, fontSize: 13, fontWeight: isPlaying ? FontWeight.w600 : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
-                              subtitle: Text(folderName, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11), maxLines: 1),
-                              trailing: isPlaying ? const AnimatedEqualizer(size: 18, color: SpotterfyTheme.primary) : const Icon(Icons.play_arrow, color: Colors.white, size: 20),
-                              onTap: () async { await context.read<PlayerProvider>().play(t, queue: folderTracks); },
+                            final player = context.watch<PlayerProvider>();
+                            final isSelected = player.currentTrack?.id == t.id;
+                            final isPlaying = isSelected && player.isPlaying;
+                            return TrackTile(
+                              track: t,
+                              coverPath: f.path,
+                              isSelected: isSelected,
+                              isPlaying: isPlaying,
+                              onPlay: () async { await context.read<PlayerProvider>().play(t, queue: folderTracks); },
                             );
                           },
                         ),
@@ -339,35 +350,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
       final name = path.split('/').last.replaceAll(RegExp(r'\.(mp3|m4a|opus|flac|wav|ogg|aac)$', caseSensitive: false), '');
       return TrackModel(id: 'storage_${path.hashCode}', title: name.isEmpty ? 'Unknown' : name, artists: folderName, album: 'Local', cover: '', sourceUrl: path);
     }).toList()..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-  }
-
-  Future<Uint8List?> _getCover(String path) async {
-    if (_coverCache.containsKey(path)) return _coverCache[path];
-    try {
-      final meta = readMetadata(File(path), getImage: true);
-      Uint8List? bytes;
-      if (meta.pictures.isNotEmpty) bytes = meta.pictures.first.bytes;
-      _coverCache[path] = bytes;
-      return bytes;
-    } catch (_) {
-      _coverCache[path] = null;
-      return null;
-    }
-  }
-
-  Widget _buildStorageCover(String path, bool isPlaying) {
-    return FutureBuilder<Uint8List?>(
-      future: _getCover(path),
-      builder: (_, snap) {
-        if (snap.hasData && snap.data != null) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.memory(snap.data!, width: 48, height: 48, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => Container(width: 48, height: 48, color: SpotterfyTheme.surface, child: Icon(Icons.audio_file, color: SpotterfyTheme.muted))),
-          );
-        }
-        return Container(width: 48, height: 48, decoration: BoxDecoration(color: isPlaying ? SpotterfyTheme.primary.withValues(alpha: 0.2) : SpotterfyTheme.surface, borderRadius: BorderRadius.circular(8), border: isPlaying ? Border.all(color: SpotterfyTheme.primary, width: 1.2) : null), child: Icon(Icons.audio_file, color: isPlaying ? SpotterfyTheme.primary : SpotterfyTheme.muted));
-      },
-    );
   }
 
   Future<bool> _hasStoragePerm() async {

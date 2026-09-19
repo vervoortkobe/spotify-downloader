@@ -9,11 +9,9 @@ services:
       - FRONTEND_URL
       - SPOTTERFY_API_KEY
       - RATE_LIMIT_DISABLE
-      - REFRESH_TOKEN
-      - DISCOVER_REFRESH_TOKEN
       - DISCOVER_REFRESH_DISABLE
       - FIREBASE_SERVICE_ACCOUNT_JSON
-      - WARP_LOG_VERBOSE
+      - WARP_SVC_LOG_LEVEL
     cap_add:
       - NET_ADMIN
     devices:
@@ -30,4 +28,5 @@ services:
       - backend
     environment:
       - NEXT_PUBLIC_API_URL
+      - NEXT_PUBLIC_SPOTTERFY_API_KEY: ${SPOTTERFY_API_KEY}
     restart: unless-stopped

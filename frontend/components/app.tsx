@@ -26,7 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { toast, Toaster } from "react-hot-toast"
 import Image from "next/image"
 import type { Track, ServiceTheme } from "@/lib/types"
-import { API_URL, refreshApiUrl } from "@/lib/api"
+import { API_URL, refreshApiUrl, apiFetch } from "@/lib/api"
 import { serviceTheme, serviceLabels, serviceIcons, detectServiceFromUrl } from "@/lib/themes"
 
 type RoadmapVersion = {
@@ -158,25 +158,28 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
   useEffect(() => {
     refreshApiUrl()
 
-    const checkHealth = async () => {
+    const checkStatus = async () => {
       console.log(`[Health] Polling backend health at ${API_URL}/api/health...`)
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 4000)
-        const res = await fetch(`${API_URL}/api/health`, { signal: controller.signal })
+        const res = await apiFetch(`${API_URL}/api/health`, { signal: controller.signal })
         clearTimeout(timeoutId)
         if (res.ok) {
           const data = await res.json()
           if (data.online) {
             setBackendOnline(true)
+            setWarpConnected(data.warp?.connected ?? false)
             console.log("[Health] Backend is online!")
             return
           }
         }
         setBackendOnline(false)
+        setWarpConnected(false)
         console.log("[Health] Backend returned non-OK status or not online.")
       } catch (e: any) {
         setBackendOnline(false)
+        setWarpConnected(false)
         if (e?.name === "AbortError") {
           console.warn("[Health] Health check request timed out.")
         } else {
@@ -185,28 +188,10 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       }
     }
 
-    const checkWarp = async () => {
-      try {
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 4000)
-        const res = await fetch(`${API_URL}/api/warp-status`, { signal: controller.signal })
-        clearTimeout(timeoutId)
-        if (res.ok) {
-          const data = await res.json()
-          setWarpConnected(data.connected)
-        } else {
-          setWarpConnected(false)
-        }
-      } catch {
-        setWarpConnected(false)
-      }
-    }
+    checkStatus()
 
-    checkHealth()
-    checkWarp()
-
-    const warpInterval = setInterval(checkWarp, 30000)
-    return () => clearInterval(warpInterval)
+    const statusInterval = setInterval(checkStatus, 30000)
+    return () => clearInterval(statusInterval)
   }, [])
 
   const [downloadProgress, setDownloadProgress] = useState(0)
@@ -322,7 +307,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
 
       const progressInterval = setInterval(async () => {
         try {
-          const res = await fetch(`${API_URL}/api/scrape-progress/${jobId}`)
+          const res = await apiFetch(`${API_URL}/api/scrape-progress/${jobId}`)
           if (res.status === 429) return // rate-limited: skip this tick, keep polling
           if (!res.ok) {
             if (res.status !== 404) return // transient error: skip this tick, keep polling
@@ -350,7 +335,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
               clearInterval(fetchTimerRef.current)
               fetchTimerRef.current = null
             }
-            const resultRes = await fetch(`${API_URL}/api/scrape-result/${jobId}`)
+            const resultRes = await apiFetch(`${API_URL}/api/scrape-result/${jobId}`)
             if (!resultRes.ok) throw new Error("Failed to fetch scrape result")
             const resultData = await resultRes.json()
 
@@ -378,7 +363,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
               clearInterval(fetchTimerRef.current)
               fetchTimerRef.current = null
             }
-            const errorResult = await fetch(`${API_URL}/api/scrape-result/${jobId}`).catch(
+            const errorResult = await apiFetch(`${API_URL}/api/scrape-result/${jobId}`).catch(
               () => null
             )
             const errMsg = errorResult?.ok ? (await errorResult.json()).error : "Scraping failed"
@@ -517,7 +502,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
     setActiveAbortController(null)
 
     try {
-      await fetch(`${API_URL}/api/cancel-track/${trackId}`, { method: "POST" })
+      await apiFetch(`${API_URL}/api/cancel-track/${trackId}`, { method: "POST" })
     } catch (e) {
       console.error("Failed to notify backend about track cancellation", e)
     }
@@ -563,7 +548,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
     }
     setIsResolvingUrl(true)
     try {
-      const res = await fetch(`${API_URL}/api/resolve-youtube-url`, {
+      const res = await apiFetch(`${API_URL}/api/resolve-youtube-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ youtubeUrl: url }),
@@ -725,7 +710,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       if (!activePlaylistJobId) {
         return
       }
-      await fetch(`${API_URL}/api/cancel-playlist/${activePlaylistJobId}`, { method: "POST" })
+      await apiFetch(`${API_URL}/api/cancel-playlist/${activePlaylistJobId}`, { method: "POST" })
       toast.success("Playlist download cancelled", { id: "download-toast" })
     } catch (e) {
       console.error("Failed to notify backend about playlist cancellation", e)
@@ -745,7 +730,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       clearTrackProgressInterval()
       trackProgressIntervalRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`${API_URL}/api/progress/${track.id}`)
+          const res = await apiFetch(`${API_URL}/api/progress/${track.id}`)
           if (res.ok) {
             const data = await res.json()
             setTrackProgress((prev) => ({ ...prev, [track.id]: data.progress || 0 }))
@@ -754,7 +739,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       }, 500)
 
       const sourceUrl = urlOverrides[track.id] || track.sourceUrl || ""
-      const response = await fetch(`${API_URL}/api/download-track`, {
+      const response = await apiFetch(`${API_URL}/api/download-track`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...track, sourceUrl }),
@@ -798,7 +783,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       clearTrackProgressInterval()
 
       if (err.name === "AbortError" || trackCancelRequestedRef.current.has(track.id)) {
-        fetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
+        apiFetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
         toast(`Cancelled: ${track.title}`, { icon: <X className="h-4 w-4 text-zinc-400" /> })
         setTrackProgress((prev) => {
           const newState = { ...prev }
@@ -854,7 +839,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           setActiveAbortController(controller)
 
           const sourceUrl = urlOverrides[track.id] || track.sourceUrl || ""
-          const response = await fetch(`${API_URL}/api/download-track`, {
+          const response = await apiFetch(`${API_URL}/api/download-track`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...track, sourceUrl }),
@@ -885,7 +870,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
           window.URL.revokeObjectURL(url)
         } catch (err: any) {
           if (err.name === "AbortError" || trackCancelRequestedRef.current.has(track.id)) {
-            fetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
+            apiFetch(`${API_URL}/api/cancel-track/${track.id}`, { method: "POST" }).catch(() => {})
             toast(`Cancelled: ${track.title}`, { icon: <X className="h-4 w-4 text-zinc-400" /> })
             setTrackProgress((prev) => {
               const newState = { ...prev }
@@ -953,7 +938,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       clearPlaylistProgressInterval()
       playlistProgressIntervalRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`${API_URL}/api/progress/all`)
+          const res = await apiFetch(`${API_URL}/api/progress/all`)
           if (res.ok) {
             const data = await res.json()
             setTrackProgress((prev) => {
@@ -970,7 +955,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
         } catch (e) {}
       }, 1000)
 
-      const res = await fetch(`${API_URL}/api/download-playlist-zip`, {
+      const res = await apiFetch(`${API_URL}/api/download-playlist-zip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -998,7 +983,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
       setActivePlaylistJobId(job_id)
 
       if (playlistCancelRequestedRef.current) {
-        await fetch(`${API_URL}/api/cancel-playlist/${job_id}`, { method: "POST" }).catch(() => {})
+        await apiFetch(`${API_URL}/api/cancel-playlist/${job_id}`, { method: "POST" }).catch(() => {})
         setTrackProgress({})
         setPlaylistDownloadProgress(0)
         toast.success("Playlist download cancelled", { id: "download-toast" })
@@ -1016,7 +1001,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
         }
 
         try {
-          const statusRes = await fetch(`${API_URL}/api/job-status/${job_id}`, {
+          const statusRes = await apiFetch(`${API_URL}/api/job-status/${job_id}`, {
             signal: playlistStatusAbortRef.current?.signal,
           })
           if (!statusRes.ok) {
@@ -1127,7 +1112,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
     }, 1000)
 
     try {
-      const startRes = await fetch(`${API_URL}/api/scrape-playlist`, {
+      const startRes = await apiFetch(`${API_URL}/api/scrape-playlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1164,7 +1149,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
     toast.loading("Checking for playlist changes...", { id: "refresh-toast" })
 
     try {
-      const startRes = await fetch(`${API_URL}/api/scrape-playlist`, {
+      const startRes = await apiFetch(`${API_URL}/api/scrape-playlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1183,13 +1168,13 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
 
     const checkInterval = setInterval(async () => {
       try {
-        const res = await fetch(`${API_URL}/api/scrape-progress/${progressJobId}`)
+        const res = await apiFetch(`${API_URL}/api/scrape-progress/${progressJobId}`)
         if (!res.ok) return
         const data = await res.json()
 
         if (data.status === "complete") {
           clearInterval(checkInterval)
-          const resultRes = await fetch(`${API_URL}/api/scrape-result/${progressJobId}`)
+          const resultRes = await apiFetch(`${API_URL}/api/scrape-result/${progressJobId}`)
           if (!resultRes.ok) throw new Error("Failed to fetch fresh tracks")
           const resultData = await resultRes.json()
           const newTracks: Track[] = resultData.tracks || []

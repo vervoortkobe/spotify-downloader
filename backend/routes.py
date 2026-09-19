@@ -24,12 +24,6 @@ from audio_client import (
 from config import progress_store, scrape_job_progress, scrape_job_results, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
 from utils import get_yt_info, get_playlist_client, download_track_logic, detect_url_service, scrape_external_data, extract_info, open_audio_stream
 
-try:
-    from discover_refresh import refresh_all_discover_async, DISCOVER_URLS
-except Exception:
-    refresh_all_discover_async = None
-    DISCOVER_URLS = []
-
 routes = Blueprint("routes", __name__)
 
 
@@ -561,44 +555,6 @@ def health_check():
     return response
 
 
-@routes.route("/api/warp-status")
-def warp_status():
-    import socket
-    import subprocess
-    proxy_url = os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or ""
-    socket_ok = False
-    try:
-        s = socket.socket()
-        s.settimeout(2)
-        s.connect(("127.0.0.1", 4000))
-        s.close()
-        socket_ok = True
-    except Exception:
-        pass
-    cli_text = ""
-    try:
-        r = subprocess.run(["warp-cli", "--accept-tos", "status"], capture_output=True, text=True, timeout=3)
-        cli_text = (r.stdout or "") + (r.stderr or "")
-        if not cli_text.strip():
-            r2 = subprocess.run(["warp-cli", "status"], capture_output=True, text=True, timeout=3)
-            cli_text = (r2.stdout or "") + (r2.stderr or "")
-    except Exception as e:
-        cli_text = str(e)
-    cli_connected = "connected" in cli_text.lower()
-    proxy_works = False
-    if socket_ok:
-        try:
-            prox = {"http": "http://127.0.0.1:4000", "https": "http://127.0.0.1:4000"}
-            pr = requests.get("https://www.cloudflare.com/cdn-cgi/trace", proxies=prox, timeout=5)
-            proxy_works = pr.status_code == 200 and "warp=on" in pr.text.lower()
-            if not proxy_works and pr.status_code == 200:
-                proxy_works = True
-        except Exception:
-            pass
-    connected = cli_connected or (socket_ok and proxy_works) or (socket_ok and bool(proxy_url))
-    return jsonify({"connected": connected, "socket": socket_ok, "cliConnected": cli_connected, "proxyWorks": proxy_works, "envProxy": bool(proxy_url)})
-
-
 @routes.route("/api/scrape-user-playlists", methods=["POST"])
 def scrape_user_playlists():
     try:
@@ -655,20 +611,6 @@ def scrape_user_playlists():
         return jsonify({"error": "Failed to fetch user playlists"}), 502
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@routes.route("/api/refresh-discover", methods=["POST"])
-def refresh_discover():
-    # Protected by optional token; if REFRESH_TOKEN env set, require it
-    expected = os.environ.get("REFRESH_TOKEN") or os.environ.get("DISCOVER_REFRESH_TOKEN")
-    if expected:
-        got = request.headers.get("X-Admin-Token") or request.headers.get("Authorization", "").replace("Bearer ", "") or (request.get_json(silent=True) or {}).get("token", "")
-        if got != expected:
-            return jsonify({"error": "unauthorized"}), 401
-    if refresh_all_discover_async is None:
-        return jsonify({"error": "discover_refresh module not available"}), 500
-    refresh_all_discover_async()
-    return jsonify({"status": "started", "count": len(DISCOVER_URLS)})
 
 
 @routes.route("/")

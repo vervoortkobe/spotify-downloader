@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/screens/data_usage_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -65,6 +67,21 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 8),
               _settingsItem(Icons.audiotrack, 'Audio Quality', () {}),
               _settingsItem(Icons.graphic_eq, 'Equalizer', () {}),
+              const SizedBox(height: 24),
+
+              // Network section
+              Text(
+                'Network',
+                style: TextStyle(
+                  color: SpotterfyTheme.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _settingsItem(Icons.data_usage, 'Data Usage', () {
+                Navigator.push(context, swipeRoute(const DataUsageScreen()));
+              }),
               const SizedBox(height: 24),
 
               // About section

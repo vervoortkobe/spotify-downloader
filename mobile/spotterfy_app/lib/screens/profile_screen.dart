@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
+import 'package:spotterfy_app/providers/status_provider.dart';
+import 'package:spotterfy_app/services/network_stats_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
@@ -103,6 +105,19 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
 
+              // Connection section
+              Text(
+                'Connection',
+                style: TextStyle(
+                  color: SpotterfyTheme.text,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _connectionTile(context),
+              const SizedBox(height: 32),
+
               // Your Playlists section
               Text(
                 'Your Playlists',
@@ -160,6 +175,7 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   );
                   if (confirmed == true) {
+                    await NetworkStatsService.instance?.setUserId(null);
                     await auth.signOut();
                     if (context.mounted) {
                       Navigator.pushReplacement(
@@ -183,6 +199,61 @@ class ProfileScreen extends StatelessWidget {
       total += (p.tracks?.length ?? 0) as int;
     }
     return '$total';
+  }
+
+  Widget _connectionTile(BuildContext context) {
+    final net = context.watch<NetworkStatsService>();
+    final warp = context.watch<StatusProvider>().warpConnected;
+    final connTitle = !net.online
+        ? 'Internet — Offline'
+        : (net.isCellular ? 'Internet — Mobile data' : 'Internet — Wi-Fi');
+    final connIcon = !net.online
+        ? Icons.signal_wifi_off
+        : (net.isCellular ? Icons.signal_cellular_alt : Icons.wifi);
+    final connColor = !net.online ? Colors.red : SpotterfyTheme.primary;
+    final warpTitle = warp == null
+        ? 'WARP — Checking…'
+        : (warp ? 'WARP — Connected' : 'WARP — Off');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: SpotterfyTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          _connectionRow(icon: connIcon, title: connTitle, color: connColor),
+          const Divider(color: SpotterfyTheme.card, height: 12),
+          _connectionRow(
+            icon: warp == true ? Icons.shield : Icons.shield_outlined,
+            title: warpTitle,
+            color: warp == true ? SpotterfyTheme.primary : SpotterfyTheme.muted,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _connectionRow({required IconData icon, required String title, required Color color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                color: SpotterfyTheme.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _statItem(String label, String value) {

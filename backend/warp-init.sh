@@ -21,25 +21,19 @@ if [ ! -c /dev/net/tun ]; then
 fi
 
 echo "[WARP] Starting Cloudflare WARP daemon..."
-# WARP_LOG_VERBOSE sets the warp-svc daemon log level (default warn - the
-# daemon is VERY chatty at info/debug with tunnel stats / route-change spam).
-# Accepts: trace|debug|info|warn|error|off (legacy 1/true = debug).
-_WARP_LOG_LEVEL=$(printf '%s' "${WARP_LOG_VERBOSE:-}" | tr '[:upper:]' '[:lower:]')
+# warp-svc daemon shares the container log (see it via docker/Portainer logs).
+# Level via WARP_SVC_LOG_LEVEL (default error, so the usual tunnel-stats and
+# route-change spam stays hidden): trace|debug|info|warn|error|off.
+_WARP_LOG_LEVEL=$(printf '%s' "${WARP_SVC_LOG_LEVEL:-error}" | tr '[:upper:]' '[:lower:]')
 case "$_WARP_LOG_LEVEL" in
   1|true|debug) _WARP_LOG_LEVEL="debug" ;;
   trace|info|warn|error|off) ;;
   warning) _WARP_LOG_LEVEL="warn" ;;
-  *) _WARP_LOG_LEVEL="warn" ;;
+  *) _WARP_LOG_LEVEL="error" ;;
 esac
-# Daemon logs go to a file, not the shared container terminal: warp-svc is
-# extremely chatty and doesn't always honor RUST_LOG. Check the file when
-# debugging WARP; override path with WARP_DAEMON_LOG_FILE.
-_WARP_LOG_FILE="${WARP_DAEMON_LOG_FILE:-/var/log/warp-svc.log}"
-mkdir -p "$(dirname "$_WARP_LOG_FILE")"
-: > "$_WARP_LOG_FILE"
-RUST_LOG="$_WARP_LOG_LEVEL" warp-svc >>"$_WARP_LOG_FILE" 2>&1 &
+echo "[WARP] Daemon log level: $_WARP_LOG_LEVEL"
+RUST_LOG="$_WARP_LOG_LEVEL" warp-svc &
 WARP_PID=$!
-echo "[WARP] Daemon output -> $_WARP_LOG_FILE (level $_WARP_LOG_LEVEL)"
 
 # Wait for the daemon to be ready
 echo "[WARP] Waiting for WARP daemon to respond..."

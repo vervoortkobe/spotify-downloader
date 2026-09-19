@@ -1,7 +1,25 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+
+/// One month of usage (bytes), wifi + cellular split.
+class MonthUsage {
+  final String month; // YYYY-MM
+  final int wifi;
+  final int cellular;
+  const MonthUsage({required this.month, required this.wifi, required this.cellular});
+  int get total => wifi + cellular;
+
+  String get shortLabel {
+    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final parts = month.split('-');
+    if (parts.length != 2) return month;
+    final m = int.tryParse(parts[1]) ?? 1;
+    return names[(m - 1).clamp(0, 11)];
+  }
+}
 
 class NetworkStatsService extends ChangeNotifier {
   static NetworkStatsService? instance;
@@ -20,6 +38,12 @@ class NetworkStatsService extends ChangeNotifier {
   int _deltaDown = 0;
   int _deltaUp = 0;
 
+  // ---- Cloud history (users/{uid}/dataUsage/{YYYY-MM}) ----
+  String? _uid;
+  DateTime _lastCloudPush = DateTime.fromMillisecondsSinceEpoch(0);
+  List<MonthUsage> _history = [];
+  bool _historyLoading = false;
+
   static String _currentMonth() {
     final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}';
@@ -34,6 +58,7 @@ class NetworkStatsService extends ChangeNotifier {
 
   bool get online => _online;
   String get connType => _connType;
+  bool get isCellular => _connType == 'cellular';
   int get downBytes => _downBytes;
   int get upBytes => _upBytes;
   int get downSpeed => _downSpeed;
@@ -45,6 +70,16 @@ class NetworkStatsService extends ChangeNotifier {
   int get wifiUp => _wifiUp;
   int get cellularDown => _cellularDown;
   int get cellularUp => _cellularUp;
+  String get month => _month;
+  bool get historyLoading => _historyLoading;
+
+  /// History for the graph: past months from Firestore + live current month.
+  List<MonthUsage> get history {
+    final list = _history.where((h) => h.month != _month).toList();
+    list.add(MonthUsage(month: _month, wifi: totalWifi, cellular: totalCellular));
+    list.sort((a, b) => a.month.compareTo(b.month));
+    return list.length > 6 ? list.sublist(list.length - 6) : list;
+  }
 
   NetworkStatsService() {
     instance = this;
@@ -119,8 +154,87 @@ class NetworkStatsService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Roll over to a new month if the app stayed alive past midnight.
+  /// Pushes the finished month's final totals first so history stays complete.
+  Future<void> _ensureCurrentMonth() async {
+    final now = _currentMonth();
+    if (now == _month) return;
+    await _pushCloud(force: true);
+    _wifiDown = 0; _wifiUp = 0; _cellularDown = 0; _cellularUp = 0;
+    _month = now;
+    await _persist();
+    notifyListeners();
+  }
+
+  /// Bind the signed-in user so monthly totals sync to Firestore.
+  /// Pass null on sign-out to stop cloud sync (local counting continues).
+  Future<void> setUserId(String? uid) async {
+    if (uid == _uid) {
+      if (uid != null && _history.isEmpty && !_historyLoading) await loadHistory();
+      return;
+    }
+    await _pushCloud(force: true);
+    _uid = (uid == null || uid.isEmpty) ? null : uid;
+    _history = [];
+    if (_uid != null) await loadHistory();
+    notifyListeners();
+  }
+
+  Future<void> loadHistory() async {
+    final uid = _uid;
+    if (uid == null) return;
+    _historyLoading = true;
+    notifyListeners();
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('dataUsage')
+          .orderBy(FieldPath.documentId, descending: true)
+          .limit(6)
+          .get();
+      _history = snap.docs.map((d) {
+        final data = d.data();
+        final wd = (data['wifiDown'] as num? ?? 0).toInt();
+        final wu = (data['wifiUp'] as num? ?? 0).toInt();
+        final cd = (data['cellularDown'] as num? ?? 0).toInt();
+        final cu = (data['cellularUp'] as num? ?? 0).toInt();
+        return MonthUsage(month: d.id, wifi: wd + wu, cellular: cd + cu);
+      }).toList();
+    } catch (e) {
+      debugPrint('dataUsage history load failed: $e');
+    }
+    _historyLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> _pushCloud({bool force = false}) async {
+    final uid = _uid;
+    if (uid == null) return;
+    final now = DateTime.now();
+    if (!force && now.difference(_lastCloudPush).inSeconds < 30) return;
+    _lastCloudPush = now;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('dataUsage')
+          .doc(_month)
+          .set({
+        'wifiDown': _wifiDown,
+        'wifiUp': _wifiUp,
+        'cellularDown': _cellularDown,
+        'cellularUp': _cellularUp,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('dataUsage cloud push failed: $e');
+    }
+  }
+
   void addDown(int bytes) {
     if (!_online || bytes <= 0) return;
+    _ensureCurrentMonth();
     _downBytes += bytes;
     _deltaDown += bytes;
     if (_connType == 'cellular') {
@@ -129,11 +243,13 @@ class NetworkStatsService extends ChangeNotifier {
       _wifiDown += bytes;
     }
     _persist();
+    _pushCloud();
     notifyListeners();
   }
 
   void addUp(int bytes) {
     if (!_online || bytes <= 0) return;
+    _ensureCurrentMonth();
     _upBytes += bytes;
     _deltaUp += bytes;
     if (_connType == 'cellular') {
@@ -142,6 +258,7 @@ class NetworkStatsService extends ChangeNotifier {
       _wifiUp += bytes;
     }
     _persist();
+    _pushCloud();
     notifyListeners();
   }
 
