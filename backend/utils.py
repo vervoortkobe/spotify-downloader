@@ -57,7 +57,6 @@ _WARP_WARN_COOLDOWN_S = 600.0
 
 
 def _log_warp_context(action: str):
-    import os as _os
     import time as _t
     proxy = _get_proxy_url()
     import socket as _s
@@ -67,7 +66,6 @@ def _log_warp_context(action: str):
     except Exception:
         pass
     cli_ok = _warp_cli_connected()
-    verbose = _os.environ.get("WARP_LOG_VERBOSE") == "1"
     if cli_ok and sock_ok and proxy:
         msg = f"[WARP Proxy] {action} - Connected (proxy mode via {proxy})"
     elif cli_ok and sock_ok and not proxy:
@@ -80,15 +78,10 @@ def _log_warp_context(action: str):
         msg = f"[WARP Proxy] {action} - Degraded (env {proxy} but socket down)"
     else:
         msg = f"[WARP Proxy] {action} - Disconnected (direct mode, no WARP cli/daemon)"
-    # Quiet when healthy. Degraded/disconnected warnings are rate-limited to
-    # one per cooldown per status (per-track calls would spam otherwise).
+    # Always quiet when healthy. Degraded/disconnected warnings are
+    # rate-limited to one per cooldown per status (per-track calls would spam).
     connected = cli_ok or (proxy and sock_ok)
     if connected:
-        if verbose:
-            print(msg, flush=True)
-        return
-    if verbose:
-        print(msg, flush=True)
         return
     key = "degraded" if (proxy and not sock_ok) else "disconnected"
     now = _t.monotonic()

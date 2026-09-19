@@ -176,9 +176,9 @@ def create_app():
         last = None
         while True:
             _t.sleep(60)
-            # Only log on state change (or when verbose) instead of every minute
+            # Only log on state change instead of every minute
             msg = _warp_status_message()
-            if msg != last or os.environ.get("WARP_LOG_VERBOSE") == "1":
+            if msg != last:
                 print(f"[WARP Proxy] {msg}", flush=True)
                 last = msg
     _th.Thread(target=_warp_heartbeat, daemon=True).start()

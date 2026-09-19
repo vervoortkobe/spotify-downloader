@@ -21,7 +21,17 @@ if [ ! -c /dev/net/tun ]; then
 fi
 
 echo "[WARP] Starting Cloudflare WARP daemon..."
-warp-svc &
+# WARP_LOG_VERBOSE sets the warp-svc daemon log level (default warn - the
+# daemon is VERY chatty at info/debug with tunnel stats / route-change spam).
+# Accepts: trace|debug|info|warn|error|off (legacy 1/true = debug).
+_WARP_LOG_LEVEL=$(printf '%s' "${WARP_LOG_VERBOSE:-}" | tr '[:upper:]' '[:lower:]')
+case "$_WARP_LOG_LEVEL" in
+  1|true|debug) _WARP_LOG_LEVEL="debug" ;;
+  trace|info|warn|error|off) ;;
+  warning) _WARP_LOG_LEVEL="warn" ;;
+  *) _WARP_LOG_LEVEL="warn" ;;
+esac
+RUST_LOG="$_WARP_LOG_LEVEL" warp-svc &
 WARP_PID=$!
 
 # Wait for the daemon to be ready
