@@ -7,6 +7,13 @@ services:
       - "5000:5000"
     environment:
       - FRONTEND_URL
+      - SPOTTERFY_API_KEY
+      - RATE_LIMIT_DISABLE
+      - REFRESH_TOKEN
+      - DISCOVER_REFRESH_TOKEN
+      - DISCOVER_REFRESH_DISABLE
+      - FIREBASE_SERVICE_ACCOUNT_JSON
+      - WARP_LOG_VERBOSE
     cap_add:
       - NET_ADMIN
     devices:

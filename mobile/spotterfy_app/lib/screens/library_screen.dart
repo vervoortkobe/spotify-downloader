@@ -26,7 +26,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   late TabController _tabController;
   final _searchController = TextEditingController();
   String _query = '';
-  String? _openedFolderPath;
+  final List<String> _folderStack = [];
   final Map<String, Uint8List?> _coverCache = {};
 
   @override
@@ -220,27 +220,32 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                 return groups[p]!.any((f) => f.path.toLowerCase().contains(q));
               }).toList();
             }
-            // Inline folder detail (keeps MiniPlayer visible, not a new route)
-            if (_openedFolderPath != null && groups.containsKey(_openedFolderPath)) {
-              final folderPath = _openedFolderPath!;
-              final folderFilesAll = groups[folderPath]!;
+            // Inline folder detail with subfolder drill-down (keeps MiniPlayer visible, not a new route)
+            if (_folderStack.isNotEmpty) {
+              final folderPath = _folderStack.last;
+              final rawSubs = groups.keys.where((q) => q != folderPath && File(q).parent.path == folderPath).toList()
+                ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+              if (groups.containsKey(folderPath) || rawSubs.isNotEmpty) {
+              final folderFilesAll = groups[folderPath] ?? const <File>[];
               final folderName = folderPath.split('/').last.isEmpty ? 'Music' : folderPath.split('/').last;
               var detailFiles = folderFilesAll;
+              var subfolders = rawSubs;
               if (_query.isNotEmpty) {
-                detailFiles = folderFilesAll.where((f) => f.path.toLowerCase().contains(_query.toLowerCase())).toList();
+                final q = _query.toLowerCase();
+                detailFiles = folderFilesAll.where((f) => f.path.toLowerCase().contains(q)).toList();
+                subfolders = rawSubs.where((s) {
+                  if (s.split('/').last.toLowerCase().contains(q)) return true;
+                  return files.any((f) => (f.path == s || f.path.startsWith('$s/')) && f.path.toLowerCase().contains(q));
+                }).toList();
               }
-              final folderTracks = detailFiles.map((f) {
-                final path = f.path;
-                final name = path.split('/').last.replaceAll(RegExp(r'\.(mp3|m4a|opus|flac|wav|ogg|aac)$', caseSensitive: false), '');
-                return TrackModel(id: 'storage_${path.hashCode}', title: name.isEmpty ? 'Unknown' : name, artists: folderName, album: 'Local', cover: '', sourceUrl: path);
-              }).toList()..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+              final folderTracks = _tracksForFiles(detailFiles, folderName);
               // Keep sorted files aligned with sorted tracks for cover lookup
               detailFiles = List<File>.from(detailFiles)..sort((a, b) => a.path.split('/').last.toLowerCase().compareTo(b.path.split('/').last.toLowerCase()));
               return Column(children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                   child: Row(children: [
-                    IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => setState(() => _openedFolderPath = null)),
+                    IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => setState(() => _folderStack.removeLast())),
                     Expanded(child: Text(folderName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis)),
                     Text('${detailFiles.length} songs', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
                     const SizedBox(width: 8),
@@ -248,14 +253,29 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                   ]),
                 ),
                 Expanded(
-                  child: detailFiles.isEmpty
+                  child: (detailFiles.isEmpty && subfolders.isEmpty)
                       ? Center(child: Text('No matches', style: TextStyle(color: SpotterfyTheme.muted)))
                       : ListView.builder(
                           padding: const EdgeInsets.only(bottom: 100),
-                          itemCount: detailFiles.length,
+                          itemCount: subfolders.length + detailFiles.length,
                           itemBuilder: (_, i) {
-                            final f = detailFiles[i];
-                            final t = folderTracks[i];
+                            if (i < subfolders.length) {
+                              final subPath = subfolders[i];
+                              final subName = subPath.split('/').last;
+                              final subCount = files.where((f) => f.path == subPath || f.path.startsWith('$subPath/')).length;
+                              final cur = context.watch<PlayerProvider>().currentTrack;
+                              final isActive = cur != null && cur.id.startsWith('storage_') && cur.sourceUrl.startsWith('$subPath/');
+                              return ListTile(
+                                leading: Container(width: 48, height: 48, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.folder, color: isActive ? SpotterfyTheme.primary : SpotterfyTheme.muted)),
+                                title: Text(subName, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text('$subCount ${subCount == 1 ? 'song' : 'songs'}', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11), maxLines: 1),
+                                trailing: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
+                                onTap: () => setState(() => _folderStack.add(subPath)),
+                              );
+                            }
+                            final j = i - subfolders.length;
+                            final f = detailFiles[j];
+                            final t = folderTracks[j];
                             final isPlaying = context.watch<PlayerProvider>().currentTrack?.id == t.id;
                             return ListTile(
                               leading: _buildStorageCover(f.path, isPlaying),
@@ -268,6 +288,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                         ),
                 ),
               ]);
+              }
             }
             if (filteredFolders.isEmpty) {
               return Center(child: Text('No matches for "$_query"', style: TextStyle(color: SpotterfyTheme.muted)));
@@ -280,16 +301,12 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                 final folderFiles = groups[folderPath]!;
                 final folderName = folderPath.split('/').last.isEmpty ? 'Music' : folderPath.split('/').last;
                 final count = folderFiles.length;
-                final folderTracks = folderFiles.map((f) {
-                  final path = f.path;
-                  final name = path.split('/').last.replaceAll(RegExp(r'\.(mp3|m4a|opus|flac|wav|ogg|aac)$', caseSensitive: false), '');
-                  return TrackModel(id: 'storage_${path.hashCode}', title: name.isEmpty ? 'Unknown' : name, artists: folderName, album: 'Local', cover: '', sourceUrl: path);
-                }).toList()..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+                final folderTracks = _tracksForFiles(folderFiles, folderName);
                 final isActiveFolder = folderFiles.any((f) => context.watch<PlayerProvider>().currentTrack?.id == 'storage_${f.path.hashCode}');
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: GestureDetector(
-                    onTap: () => setState(() => _openedFolderPath = folderPath),
+                    onTap: () => setState(() { _folderStack..clear()..add(folderPath); }),
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(color: isActiveFolder ? SpotterfyTheme.card : SpotterfyTheme.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: isActiveFolder ? SpotterfyTheme.primary.withValues(alpha: 0.6) : SpotterfyTheme.card, width: isActiveFolder ? 1.2 : 0.8)),
@@ -314,6 +331,14 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
         );
       },
     );
+  }
+
+  List<TrackModel> _tracksForFiles(List<File> files, String folderName) {
+    return files.map((f) {
+      final path = f.path;
+      final name = path.split('/').last.replaceAll(RegExp(r'\.(mp3|m4a|opus|flac|wav|ogg|aac)$', caseSensitive: false), '');
+      return TrackModel(id: 'storage_${path.hashCode}', title: name.isEmpty ? 'Unknown' : name, artists: folderName, album: 'Local', cover: '', sourceUrl: path);
+    }).toList()..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
   }
 
   Future<Uint8List?> _getCover(String path) async {
