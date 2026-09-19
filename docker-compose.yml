@@ -11,7 +11,7 @@ services:
       - RATE_LIMIT_DISABLE
       - DISCOVER_REFRESH_DISABLE
       - FIREBASE_SERVICE_ACCOUNT_JSON
-      - WARP_SVC_LOG_LEVEL
+      - WARP_SVC_LOGS
     cap_add:
       - NET_ADMIN
     devices:

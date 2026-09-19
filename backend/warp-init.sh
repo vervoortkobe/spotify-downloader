@@ -21,18 +21,18 @@ if [ ! -c /dev/net/tun ]; then
 fi
 
 echo "[WARP] Starting Cloudflare WARP daemon..."
-# warp-svc daemon shares the container log (see it via docker/Portainer logs).
-# Level via WARP_SVC_LOG_LEVEL (default error, so the usual tunnel-stats and
-# route-change spam stays hidden): trace|debug|info|warn|error|off.
-_WARP_LOG_LEVEL=$(printf '%s' "${WARP_SVC_LOG_LEVEL:-error}" | tr '[:upper:]' '[:lower:]')
-case "$_WARP_LOG_LEVEL" in
-  1|true|debug) _WARP_LOG_LEVEL="debug" ;;
-  trace|info|warn|error|off) ;;
-  warning) _WARP_LOG_LEVEL="warn" ;;
-  *) _WARP_LOG_LEVEL="error" ;;
+# WARP_SVC_LOGS toggles the warp-svc daemon output in the container log
+# (default off - the daemon is extremely chatty). Set to 1/true/on to stream
+# its logs (e.g. when debugging WARP itself).
+case "$(printf '%s' "${WARP_SVC_LOGS:-}" | tr '[:upper:]' '[:lower:]')" in
+  1|true|on|yes)
+    echo "[WARP] Daemon logging enabled"
+    warp-svc &
+    ;;
+  *)
+    warp-svc >/dev/null 2>&1 &
+    ;;
 esac
-echo "[WARP] Daemon log level: $_WARP_LOG_LEVEL"
-RUST_LOG="$_WARP_LOG_LEVEL" warp-svc &
 WARP_PID=$!
 
 # Wait for the daemon to be ready

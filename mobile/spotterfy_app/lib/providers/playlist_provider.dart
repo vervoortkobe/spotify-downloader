@@ -52,14 +52,34 @@ class PlaylistProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final remotePlaylists = await _playlistService.getUserPlaylists(uid);
-      // Merge: prefer remote, but keep locally-cached playlists that were
-      // never synced to the cloud (e.g. import while offline / permission denied).
+      // Merge: prefer remote, but keep locally-cached playlists that are
+      // missing remotely (created offline, sync failed, or deleted in console).
       final merged = <PlaylistModel>[...remotePlaylists];
       final remoteIds = remotePlaylists.map((p) => p.id).toSet();
+      final missingRemote = <PlaylistModel>[];
       for (final c in cached) {
-        if (!remoteIds.contains(c.id)) merged.add(c);
+        if (!remoteIds.contains(c.id)) {
+          merged.add(c);
+          // Only restore our own playlists (rules reject anything else).
+          if (c.creatorUid == uid) missingRemote.add(c);
+        }
       }
       _playlists = merged;
+      // Periodic reconciliation: push anything missing remotely back to the
+      // cloud, so a console-deleted playlist is restored from the device cache.
+      // Runs on every load (app start, pull-to-refresh). Best-effort per item.
+      for (final m in missingRemote) {
+        try {
+          if (m.tracks.isEmpty) {
+            final fileTracks = await _playlistService.loadCachedTracks(uid, m.id);
+            if (fileTracks.isNotEmpty) m.tracks = fileTracks;
+          }
+          await _playlistService.savePlaylist(uid, m);
+          debugPrint('restored missing playlist to cloud: ${m.id} (${m.tracks.length} tracks)');
+        } catch (e) {
+          debugPrint('restore to cloud failed for ${m.id}: $e');
+        }
+      }
       _error = null;
       try {
         _sharedPlaylists = await _playlistService.getSharedPlaylists(uid);

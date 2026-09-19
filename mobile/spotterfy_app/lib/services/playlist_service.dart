@@ -25,6 +25,11 @@ class PlaylistService {
     }
   }
 
+  /// Public accessor for the per-playlist on-device track file (used to
+  /// backfill tracks before restoring a playlist that is missing remotely).
+  Future<List<TrackModel>> loadCachedTracks(String uid, String playlistId) =>
+      _loadTracksFromCache(uid, playlistId);
+
   Future<List<TrackModel>> _loadTracksFromCache(String uid, String playlistId) async {
     try {
       final file = await _cacheFile(uid, playlistId);
