@@ -31,8 +31,15 @@ case "$_WARP_LOG_LEVEL" in
   warning) _WARP_LOG_LEVEL="warn" ;;
   *) _WARP_LOG_LEVEL="warn" ;;
 esac
-RUST_LOG="$_WARP_LOG_LEVEL" warp-svc &
+# Daemon logs go to a file, not the shared container terminal: warp-svc is
+# extremely chatty and doesn't always honor RUST_LOG. Check the file when
+# debugging WARP; override path with WARP_DAEMON_LOG_FILE.
+_WARP_LOG_FILE="${WARP_DAEMON_LOG_FILE:-/var/log/warp-svc.log}"
+mkdir -p "$(dirname "$_WARP_LOG_FILE")"
+: > "$_WARP_LOG_FILE"
+RUST_LOG="$_WARP_LOG_LEVEL" warp-svc >>"$_WARP_LOG_FILE" 2>&1 &
 WARP_PID=$!
+echo "[WARP] Daemon output -> $_WARP_LOG_FILE (level $_WARP_LOG_LEVEL)"
 
 # Wait for the daemon to be ready
 echo "[WARP] Waiting for WARP daemon to respond..."

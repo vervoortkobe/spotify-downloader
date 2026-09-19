@@ -70,8 +70,8 @@ def _stable_doc_id(url: str) -> str:
 # We store doc id as md5, and query via where spotifyUrl == clean, so id mismatch doesn't matter.
 
 def scrape_and_store_one(url: str, db) -> bool:
-    from audio_client import get_playlist_client, SpotifyDownAPIError
-    from utils import get_yt_info
+    from audio_client import SpotifyDownAPIError
+    from utils import get_yt_info, get_playlist_client
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     clean = url.split("?")[0]
