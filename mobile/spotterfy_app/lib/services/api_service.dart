@@ -17,8 +17,9 @@ class ApiService {
   static void _trackUp(String body) => NetworkStatsService.instance?.addUp(body.length);
   static void _trackDown(int bytes) => NetworkStatsService.instance?.addDown(bytes);
 
-  /// Strip an owner suffix the backend (or service) may have appended, so only
-  /// the playlist title is shown/saved. Handles both "Title - Owner" and
+  /// Strip an owner suffix for STORAGE only (Firebase save path).
+  /// The UI keeps the raw title so the author stays visible; only the
+  /// persisted copy is cleaned. Handles both "Title - Owner" and
   /// "Title by Owner" (case-insensitive), using the known owner when available.
   static String cleanPlaylistName(String raw, [String owner = '']) {
     var name = raw.trim();
@@ -63,10 +64,8 @@ class ApiService {
             .toList();
         return PlaylistModel(
           id: cleanUrl.hashCode.toString(),
-          name: cleanPlaylistName(
-            playlistData['playlistName'] as String? ?? 'Playlist',
-            playlistData['playlistOwner'] as String? ?? '',
-          ),
+          // Raw title for display — stripping happens only on save (toFirestore).
+          name: (playlistData['playlistName'] as String? ?? 'Playlist').trim(),
           owner: playlistData['playlistOwner'] as String? ?? '',
           tracks: tracks,
           creatorUid: '',
@@ -114,10 +113,8 @@ class ApiService {
       debugPrint('scrapePlaylist success tracks=${tracks.length} playlistName=${result['playlistName']}');
       return PlaylistModel(
         id: cleanUrl.hashCode.toString(),
-        name: cleanPlaylistName(
-          result['playlistName'] as String? ?? 'Playlist',
-          result['playlistOwner'] as String? ?? '',
-        ),
+        // Raw title for display — stripping happens only on save (toFirestore).
+        name: (result['playlistName'] as String? ?? 'Playlist').trim(),
         owner: result['playlistOwner'] as String? ?? '',
         tracks: tracks,
         creatorUid: '',

@@ -64,7 +64,9 @@ class PlaylistCard extends StatelessWidget {
                   ),
                   SizedBox(height: 4),
                   Text(
-                    '${playlist.tracks.length} tracks • ${playlist.source}',
+                    playlist.owner.isNotEmpty
+                        ? '${playlist.tracks.length} tracks • ${playlist.source} • by ${playlist.owner}'
+                        : '${playlist.tracks.length} tracks • ${playlist.source}',
                     style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

@@ -50,8 +50,23 @@ class PlaylistModel {
     lastTrackSync: (json['lastTrackSync'] as dynamic)?.toDate(),
   );
 
+  /// Name as persisted in Firebase: raw display title minus a trailing
+  /// " - Owner" / " by Owner" suffix so imports are saved clean.
+  String get storageName {
+    var n = name.trim();
+    if (owner.isNotEmpty) {
+      final dash = ' - $owner';
+      if (n.endsWith(dash)) return n.substring(0, n.length - dash.length).trim();
+      final by = ' by $owner';
+      if (n.toLowerCase().endsWith(by.toLowerCase())) {
+        return n.substring(0, n.length - by.length).trim();
+      }
+    }
+    return n;
+  }
+
   Map<String, dynamic> toFirestore() => {
-    'name': name,
+    'name': storageName,
     'owner': owner,
     'coverUrl': coverUrl,
     'tracks': tracks.map((t) => t.toJson()).toList(),
