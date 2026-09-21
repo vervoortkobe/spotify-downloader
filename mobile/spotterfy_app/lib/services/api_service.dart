@@ -17,6 +17,24 @@ class ApiService {
   static void _trackUp(String body) => NetworkStatsService.instance?.addUp(body.length);
   static void _trackDown(int bytes) => NetworkStatsService.instance?.addDown(bytes);
 
+  /// Strip an owner suffix the backend (or service) may have appended, so only
+  /// the playlist title is shown/saved. Handles both "Title - Owner" and
+  /// "Title by Owner" (case-insensitive), using the known owner when available.
+  static String cleanPlaylistName(String raw, [String owner = '']) {
+    var name = raw.trim();
+    if (owner.isNotEmpty) {
+      final dash = ' - $owner';
+      if (name.endsWith(dash)) {
+        return name.substring(0, name.length - dash.length).trim();
+      }
+      final by = ' by $owner';
+      if (name.toLowerCase().endsWith(by.toLowerCase())) {
+        return name.substring(0, name.length - by.length).trim();
+      }
+    }
+    return name;
+  }
+
   static Future<PlaylistModel?> scrapePlaylist(
     String url, {
     String service = 'auto',
@@ -45,7 +63,11 @@ class ApiService {
             .toList();
         return PlaylistModel(
           id: cleanUrl.hashCode.toString(),
-          name: playlistData['playlistName'] as String? ?? 'Playlist',
+          name: cleanPlaylistName(
+            playlistData['playlistName'] as String? ?? 'Playlist',
+            playlistData['playlistOwner'] as String? ?? '',
+          ),
+          owner: playlistData['playlistOwner'] as String? ?? '',
           tracks: tracks,
           creatorUid: '',
           source: service == 'auto' ? 'spotify' : service,
@@ -92,7 +114,11 @@ class ApiService {
       debugPrint('scrapePlaylist success tracks=${tracks.length} playlistName=${result['playlistName']}');
       return PlaylistModel(
         id: cleanUrl.hashCode.toString(),
-        name: result['playlistName'] as String? ?? 'Playlist',
+        name: cleanPlaylistName(
+          result['playlistName'] as String? ?? 'Playlist',
+          result['playlistOwner'] as String? ?? '',
+        ),
+        owner: result['playlistOwner'] as String? ?? '',
         tracks: tracks,
         creatorUid: '',
         source: service == 'auto' ? 'spotify' : service,

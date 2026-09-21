@@ -113,23 +113,17 @@ class PlayerScreen extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-            SliderTheme(
-              data: SliderThemeData(
-                trackHeight: 4,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                activeTrackColor: SpotterfyTheme.primary,
-                inactiveTrackColor: SpotterfyTheme.card,
-                thumbColor: SpotterfyTheme.primary,
-              ),
-              child: Slider(
-                value: sliderVal.clamp(0.0, 1.0),
-                onChanged: (v) {
-                  // Radio: can only seek back within listened window, not forward beyond live
-                  final raw = Duration(milliseconds: (v * dur.inMilliseconds).round());
-                  final newPos = isRadio ? Duration(milliseconds: raw.inMilliseconds.clamp(0, player.radioMaxListened.inMilliseconds)) : raw;
-                  player.seekTo(newPos);
-                },
-              ),
+            _SeekBar(
+              progress: sliderVal.clamp(0.0, 1.0),
+              buffered: dur.inMilliseconds > 0
+                  ? (player.buffered.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
+                  : 0.0,
+              onSeek: (v) {
+                // Radio: can only seek back within listened window, not forward beyond live
+                final raw = Duration(milliseconds: (v * dur.inMilliseconds).round());
+                final newPos = isRadio ? Duration(milliseconds: raw.inMilliseconds.clamp(0, player.radioMaxListened.inMilliseconds)) : raw;
+                player.seekTo(newPos);
+              },
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -158,14 +152,7 @@ class PlayerScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (!isRadio)
-                  IconButton(
-                    onPressed: () => player.previous(),
-                    icon: Icon(
-                      Icons.skip_previous,
-                      color: SpotterfyTheme.text,
-                      size: 32,
-                    ),
-                  )
+                  _CircleControlButton(icon: Icons.skip_previous, onTap: () => player.previous())
                 else
                   const SizedBox(width: 48),
                 const SizedBox(width: 28),
@@ -188,14 +175,7 @@ class PlayerScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 28),
                 if (!isRadio)
-                  IconButton(
-                    onPressed: () => player.next(),
-                    icon: Icon(
-                      Icons.skip_next,
-                      color: SpotterfyTheme.text,
-                      size: 32,
-                    ),
-                  )
+                  _CircleControlButton(icon: Icons.skip_next, onTap: () => player.next())
                 else
                   const SizedBox(width: 48),
               ],
@@ -333,6 +313,97 @@ class PlayerScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Smaller translucent-white circle sibling of the big green play button.
+class _CircleControlButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _CircleControlButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.12),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        ),
+        child: Icon(icon, color: Colors.white, size: 26),
+      ),
+    );
+  }
+}
+
+/// Seek bar with a gray buffered (fetched) layer under the green progress.
+class _SeekBar extends StatelessWidget {
+  final double progress;
+  final double buffered;
+  final ValueChanged<double> onSeek;
+  const _SeekBar({required this.progress, required this.buffered, required this.onSeek});
+
+  void _seekByOffset(BuildContext context, Offset local, double width) {
+    if (width <= 0) return;
+    onSeek((local.dx / width).clamp(0.0, 1.0));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragDown: (d) {
+        final box = context.findRenderObject() as RenderBox?;
+        if (box != null) _seekByOffset(context, box.globalToLocal(d.globalPosition), box.size.width);
+      },
+      onHorizontalDragUpdate: (d) {
+        final box = context.findRenderObject() as RenderBox?;
+        if (box != null) _seekByOffset(context, box.globalToLocal(d.globalPosition), box.size.width);
+      },
+      child: SizedBox(
+        height: 28,
+        child: Center(
+          child: SizedBox(
+            height: 4,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LayoutBuilder(
+                builder: (_, constraints) => Stack(children: [
+                  Container(color: SpotterfyTheme.card),
+                  FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: buffered.clamp(0.0, 1.0),
+                    child: Container(color: Colors.white.withValues(alpha: 0.35)),
+                  ),
+                  FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: progress.clamp(0.0, 1.0),
+                    child: Container(color: SpotterfyTheme.primary),
+                  ),
+                  Positioned(
+                    left: (constraints.maxWidth * progress.clamp(0.0, 1.0) - 8).clamp(0.0, constraints.maxWidth - 16),
+                    top: -6,
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: SpotterfyTheme.primary,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: SpotterfyTheme.primary.withValues(alpha: 0.4), blurRadius: 6)],
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

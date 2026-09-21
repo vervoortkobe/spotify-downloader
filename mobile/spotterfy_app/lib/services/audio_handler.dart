@@ -37,48 +37,46 @@ bool _isRadioTrack(TrackModel t) {
       u.contains('streamtheworld.com');
 }
 
+bool _initAttempted = false;
+
 Future<void> ensureAudioHandler() async {
   if (audioHandler != null) return;
   if (_initCompleter != null) {
     await _initCompleter!.future;
-    if (audioHandler != null) return;
-    // Previous attempt failed — fall through to retry
+    return;
   }
+  // AudioService.init() can only be called once per process — a second call
+  // always throws '_cacheManager == null'. So never retry in the same
+  // process; just_audio playback already works without the notification.
+  if (_initAttempted) {
+    debugPrint('[AudioService] already attempted, skipping re-init');
+    return;
+  }
+  _initAttempted = true;
   _initCompleter = Completer<SpotterfyAudioHandler?>();
-  // Retry up to 3 times with increasing delay — the Activity may not be ready
-  // on the first attempt (e.g., when PlayerProvider constructor fires early)
-  for (int attempt = 0; attempt < 3; attempt++) {
-    try {
-      if (attempt > 0) {
-        debugPrint('[AudioService] retry attempt $attempt...');
-        await Future.delayed(Duration(milliseconds: 500 * attempt));
-      }
-      debugPrint('[AudioService] init start...');
-      final handler = await AudioService.init(
-        builder: () => SpotterfyAudioHandler(),
-        config: const AudioServiceConfig(
-          androidNotificationChannelId: 'com.scooby.spotterfy.channel.audio',
-          androidNotificationChannelName: 'Spotterfy Playback',
-          androidNotificationChannelDescription: 'Music playback controls',
-          androidStopForegroundOnPause: false,
-          androidShowNotificationBadge: true,
-          androidNotificationOngoing: false,
-          // MUST be monochrome drawable with alpha - mipmap adaptive icon fails on Android 13+/16
-          androidNotificationIcon: 'drawable/ic_notification',
-        ),
-      );
-      audioHandler = handler;
-      _initCompleter!.complete(handler);
-      debugPrint('[AudioService] init ok handler=$audioHandler');
-      return;
-    } catch (e, st) {
-      debugPrint('[AudioService] init attempt $attempt failed: $e\n$st');
-    }
+  try {
+    debugPrint('[AudioService] init start...');
+    final handler = await AudioService.init(
+      builder: () => SpotterfyAudioHandler(),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.scooby.spotterfy.channel.audio',
+        androidNotificationChannelName: 'Spotterfy Playback',
+        androidNotificationChannelDescription: 'Music playback controls',
+        androidStopForegroundOnPause: false,
+        androidShowNotificationBadge: true,
+        androidNotificationOngoing: false,
+        // MUST be monochrome drawable with alpha - mipmap adaptive icon fails on Android 13+/16
+        androidNotificationIcon: 'drawable/ic_notification',
+      ),
+    );
+    audioHandler = handler;
+    _initCompleter!.complete(handler);
+    debugPrint('[AudioService] init ok handler=$audioHandler');
+  } catch (e, st) {
+    debugPrint('[AudioService] init failed (notification disabled, playback continues): $e\n$st');
+    _initCompleter!.complete(null);
+    _initCompleter = null;
   }
-  // All retries failed — reset so future calls can try again
-  _initCompleter!.complete(null);
-  _initCompleter = null;
-  debugPrint('[AudioService] all init attempts failed');
 }
 
 class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {

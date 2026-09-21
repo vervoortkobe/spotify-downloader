@@ -88,6 +88,7 @@ def _run_scrape_job(input_url, service, progress_job_id):
 
         scrape_job_progress[progress_job_id].update({'status': 'scraping'})
         tracks: list[dict] = []
+        playlist_owner = ""
 
         if service == "spotify":
             client = get_playlist_client()
@@ -109,7 +110,9 @@ def _run_scrape_job(input_url, service, progress_job_id):
                 playlist_name = f"{track.title} - {track.artists}"
             else:
                 metadata = client.get_playlist_metadata(item_id)
-                playlist_name = f"{metadata.name} - {metadata.owner or 'Unknown'}"
+                # Title only - owner travels in its own field (no " - Owner" suffix)
+                playlist_name = metadata.name
+                playlist_owner = metadata.owner or ""
                 raw_tracks = list(client.iter_playlist_tracks(item_id))
 
                 scrape_job_progress[progress_job_id].update({'total': len(raw_tracks), 'completed': 0})
@@ -175,6 +178,7 @@ def _run_scrape_job(input_url, service, progress_job_id):
         scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'current': len(tracks), 'status': 'complete'})
         scrape_job_results[progress_job_id] = {
             'playlistName': playlist_name,
+            'playlistOwner': playlist_owner if service == "spotify" and url_type != "track" else "",
             'tracks': tracks,
         }
 

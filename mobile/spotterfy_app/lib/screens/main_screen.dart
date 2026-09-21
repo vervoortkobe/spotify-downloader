@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
@@ -20,6 +21,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 2;
   int _slideDir = 1;
+  double _dragDx = 0;
 
   @override
   void initState() {
@@ -56,15 +58,24 @@ class _MainScreenState extends State<MainScreen> {
       body: Stack(
         children: [
           AnimatedSwitcher(
-            duration: const Duration(milliseconds: 280),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
+            duration: const Duration(milliseconds: 320),
+            reverseDuration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutQuint,
+            switchOutCurve: Curves.easeInQuad,
+            layoutBuilder: (currentChild, previousChildren) => Stack(
+              children: [...previousChildren, ?currentChild],
+            ),
             transitionBuilder: (child, animation) {
-              final slide = Tween<Offset>(begin: Offset(0.3 * _slideDir, 0), end: Offset.zero).animate(animation);
+              final slide = Tween<Offset>(begin: Offset(0.22 * _slideDir, 0), end: Offset.zero).animate(animation);
+              final fade = Tween<double>(begin: 0.4, end: 1.0).animate(animation);
+              final scale = Tween<double>(begin: 0.985, end: 1.0).animate(animation);
               return ClipRect(
                 child: SlideTransition(
                   position: slide,
-                  child: FadeTransition(opacity: animation, child: child),
+                  child: FadeTransition(
+                    opacity: fade,
+                    child: ScaleTransition(scale: scale, child: child),
+                  ),
                 ),
               );
             },
@@ -77,14 +88,20 @@ class _MainScreenState extends State<MainScreen> {
         ],
       ),
       bottomNavigationBar: GestureDetector(
-        // Swipe left/right on the navbar to switch tabs (swipe left -> next tab)
+        // Swipe left/right on the navbar to switch tabs (swipe left -> next tab).
+        // Tracks drag distance too, so slow deliberate swipes work, not just flicks.
+        onHorizontalDragStart: (_) => _dragDx = 0,
+        onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
         onHorizontalDragEnd: (details) {
           final v = details.primaryVelocity ?? 0;
-          if (v < -400) {
+          if (v < -400 || _dragDx < -72) {
+            HapticFeedback.lightImpact();
             _goToTab(_currentIndex + 1);
-          } else if (v > 400) {
+          } else if (v > 400 || _dragDx > 72) {
+            HapticFeedback.lightImpact();
             _goToTab(_currentIndex - 1);
           }
+          _dragDx = 0;
         },
         child: NavigationBar(
           backgroundColor: const Color(0xFF121212),

@@ -48,8 +48,9 @@ class PlaylistService {
   }
 
   Future<void> savePlaylist(String uid, PlaylistModel playlist) async {
+    if (playlist.creatorUid.isEmpty) playlist.creatorUid = uid;
     final docRef = _firestore.collection('playlists').doc(playlist.id);
-    await docRef.set(playlist.toFirestore());
+    await docRef.set(playlist.toFirestore(), SetOptions(merge: true));
     await _saveTracksToCache(uid, playlist.id, playlist.tracks);
   }
 
@@ -116,10 +117,39 @@ class PlaylistService {
     String playlistId,
     List<TrackModel> tracks,
   ) async {
-    await _firestore.collection('playlists').doc(playlistId).update({
-      'tracks': tracks.map((t) => t.toJson()).toList(),
-      'lastTrackSync': DateTime.now(),
-    });
+    final docRef = _firestore.collection('playlists').doc(playlistId);
+    try {
+      await docRef.update({
+        'tracks': tracks.map((t) => t.toJson()).toList(),
+        'lastTrackSync': DateTime.now(),
+      });
+    } on FirebaseException catch (e) {
+      // Legacy docs saved with creatorUid:'' fail the update rule
+      // (resource.data.creatorUid != uid). Reclaim by re-creating the doc
+      // with correct ownership; otherwise keep local cache only.
+      if (e.code == 'permission-denied') {
+        try {
+          final existing = await docRef.get();
+          final data = existing.data();
+          final owner = (data?['creatorUid'] as String?) ?? '';
+          if (!existing.exists || owner.isEmpty) {
+            await docRef.set({
+              'creatorUid': uid,
+              'name': (data?['name'] as String?) ?? 'Playlist',
+              'tracks': tracks.map((t) => t.toJson()).toList(),
+              'createdAt': data?['createdAt'] ?? FieldValue.serverTimestamp(),
+              'lastTrackSync': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          } else {
+            rethrow;
+          }
+        } catch (_) {
+          rethrow;
+        }
+      } else {
+        rethrow;
+      }
+    }
     await _saveTracksToCache(uid, playlistId, tracks);
   }
 

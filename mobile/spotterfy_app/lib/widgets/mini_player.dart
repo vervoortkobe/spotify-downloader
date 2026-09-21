@@ -23,6 +23,7 @@ class MiniPlayer extends StatelessWidget {
     final pos = player.position;
     final dur = player.duration;
     final progress = dur.inMilliseconds > 0 ? pos.inMilliseconds / dur.inMilliseconds : 0.0;
+    final bufferedFrac = dur.inMilliseconds > 0 ? player.buffered.inMilliseconds / dur.inMilliseconds : 0.0;
     final queueLen = player.queue.length;
     final idx = player.queue.indexOf(track);
     final queuePos = queueLen > 0 && idx >= 0 ? '${idx + 1}/$queueLen' : '';
@@ -158,6 +159,11 @@ class MiniPlayer extends StatelessWidget {
                     height: 3,
                     child: Stack(children: [
                       Container(color: SpotterfyTheme.muted.withValues(alpha: 0.25)),
+                      FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: bufferedFrac.clamp(0.0, 1.0),
+                        child: Container(color: Colors.white.withValues(alpha: 0.35), height: 3),
+                      ),
                       FractionallySizedBox(
                         alignment: Alignment.centerLeft,
                         widthFactor: progress.clamp(0.0, 1.0),

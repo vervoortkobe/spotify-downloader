@@ -1,22 +1,27 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart' as perm;
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/audio_handler.dart';
+import 'package:spotterfy_app/providers/equalizer_provider.dart';
 
 class PlayerProvider extends ChangeNotifier {
-  final AudioPlayer _player = AudioPlayer();
+  // just_audio player with the shared EQ pipeline (equalizer + loudness).
+  // Audio focus/session config lives in SpotterfyAudioHandler._initSession.
+  late final AudioPlayer _player;
   TrackModel? _currentTrack;
   List<TrackModel> _queue = [];
   int _currentIndex = -1;
   bool _isPlaying = false;
+  bool _completed = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Duration _buffered = Duration.zero;
 
   TrackModel? get currentTrack => _currentTrack;
   List<TrackModel> get queue => _queue;
@@ -24,7 +29,7 @@ class PlayerProvider extends ChangeNotifier {
   bool get isPlaying => _isPlaying;
   Duration get position => _position;
   Duration get duration => _duration;
-  AudioPlayer get player => _player;
+  Duration get buffered => _buffered;
   bool get hasQueue => _queue.isNotEmpty;
   bool get hasNext => _queue.isNotEmpty && _currentIndex < _queue.length - 1;
   bool get hasPrevious => _queue.isNotEmpty && _currentIndex > 0;
@@ -45,38 +50,18 @@ class PlayerProvider extends ChangeNotifier {
   bool _isLocalPath(String p) => p.startsWith('/') || p.startsWith('file://');
 
   PlayerProvider() {
+    _player = AudioPlayer(
+      audioPipeline: AudioPipeline(
+        androidAudioEffects: [androidEqualizer, androidLoudnessEnhancer],
+      ),
+    );
     _loadPlayerState();
     _requestNotificationPermission();
-    // Eager AudioService init like Noize PlayerProvider.initialize() - not lazy on first play
-    ensureAudioHandler().then((_) {
-      if (audioHandler != null) _bindHandler();
-      // If state was restored from SharedPreferences, sync it to the handler
-      // so the notification shows the last-played track
-      if (_currentTrack != null && audioHandler != null) {
-        audioHandler!.updateTrack(
-          _currentTrack!,
-          queue: _queue,
-          position: _position,
-          duration: _duration,
-          isPlaying: _isPlaying,
-        );
-      }
-    });
-    _player.setAudioContext(AudioContext(
-      android: AudioContextAndroid(
-        isSpeakerphoneOn: false,
-        stayAwake: true,
-        contentType: AndroidContentType.music,
-        usageType: AndroidUsageType.media,
-        audioFocus: AndroidAudioFocus.gain,
-      ),
-      iOS: AudioContextIOS(
-        category: AVAudioSessionCategory.playback,
-        options: {AVAudioSessionOptions.mixWithOthers},
-      ),
-    ));
-    _player.setReleaseMode(ReleaseMode.stop);
-    _player.onPositionChanged.listen((pos) {
+    // NOTE: do NOT init AudioService here. The constructor runs before
+    // MainActivity is attached, which burns our single AudioService.init()
+    // attempt (it can only be called once per process). Init lazily on
+    // first play() instead, when the Activity is guaranteed ready.
+    _player.positionStream.listen((pos) {
       _position = pos;
       if (isRadio && _isPlaying) {
         if (pos > _radioMaxListened) _radioMaxListened = pos;
@@ -84,25 +69,33 @@ class PlayerProvider extends ChangeNotifier {
       audioHandler?.updatePosition(pos, _duration, _isPlaying);
       notifyListeners();
     });
-    _player.onDurationChanged.listen((dur) {
+    _player.durationStream.listen((dur) {
+      // Live radio has no duration (null) - keep the previous value.
+      if (dur == null) return;
       _duration = dur;
       if (_currentTrack != null) audioHandler?.updateTrack(_currentTrack!, queue: _queue, position: _position, duration: _duration, isPlaying: _isPlaying);
       notifyListeners();
     });
-    _player.onPlayerStateChanged.listen((state) {
-      _isPlaying = state == PlayerState.playing;
+    _player.bufferedPositionStream.listen((buf) {
+      _buffered = buf;
+      audioHandler?.updateBuffered(buf);
+      notifyListeners();
+    });
+    _player.playerStateStream.listen((state) {
+      _isPlaying = state.playing;
+      _completed = state.processingState == ProcessingState.completed;
+      if (_completed) {
+        if (_queue.isNotEmpty && _currentIndex < _queue.length - 1) {
+          next();
+          return;
+        } else {
+          _isPlaying = false;
+          audioHandler?.updatePosition(_position, _duration, false);
+        }
+      }
       _handleRadioDrift();
       audioHandler?.updatePosition(_position, _duration, _isPlaying);
       notifyListeners();
-    });
-    _player.onPlayerComplete.listen((_) {
-      if (_queue.isNotEmpty && _currentIndex < _queue.length - 1) {
-        next();
-      } else {
-        _isPlaying = false;
-        audioHandler?.updatePosition(_position, _duration, false);
-        notifyListeners();
-      }
     });
   }
 
@@ -170,6 +163,7 @@ class PlayerProvider extends ChangeNotifier {
     _currentTrack = track;
     _position = Duration.zero;
     _duration = Duration.zero;
+    _buffered = Duration.zero;
     if (isRadio) _radioMaxListened = Duration.zero;
     _handleRadioDrift();
     notifyListeners();
@@ -187,7 +181,9 @@ class PlayerProvider extends ChangeNotifier {
       final path = track.sourceUrl.replaceFirst('file://', '');
       try {
         await _player.stop();
-        await _player.play(DeviceFileSource(path)).timeout(const Duration(seconds: 30));
+        await _player.setFilePath(path).timeout(const Duration(seconds: 30));
+        await _player.play().timeout(const Duration(seconds: 30));
+        _completed = false;
         _isPlaying = true;
         notifyListeners();
       } catch (e) {
@@ -215,7 +211,9 @@ class PlayerProvider extends ChangeNotifier {
       await _player.stop();
       final url = primary ?? fallback;
       await warm(url);
-      await _player.play(UrlSource(url)).timeout(const Duration(seconds: 30));
+      await _player.setAudioSource(AudioSource.uri(Uri.parse(url))).timeout(const Duration(seconds: 30));
+      await _player.play().timeout(const Duration(seconds: 30));
+      _completed = false;
       _isPlaying = true;
       notifyListeners();
     } catch (e) {
@@ -223,7 +221,9 @@ class PlayerProvider extends ChangeNotifier {
       try {
         await _player.stop();
         await warm(fallback);
-        await _player.play(UrlSource(fallback)).timeout(const Duration(seconds: 35));
+        await _player.setAudioSource(AudioSource.uri(Uri.parse(fallback))).timeout(const Duration(seconds: 35));
+        await _player.play().timeout(const Duration(seconds: 35));
+        _completed = false;
         _isPlaying = true;
         notifyListeners();
       } catch (e2) {
@@ -233,12 +233,21 @@ class PlayerProvider extends ChangeNotifier {
     _savePlayerState();
   }
 
+  Future<void> _startPlayback() async {
+    // just_audio resumes from the completed state otherwise - restart instead.
+    if (_completed) {
+      await _player.seek(Duration.zero);
+      _completed = false;
+    }
+    await _player.play();
+  }
+
   Future<void> togglePlayPause() async {
     if (_isPlaying) {
       await _player.pause();
       audioHandler?.updatePosition(_position, _duration, false);
     } else {
-      await _player.resume();
+      await _startPlayback();
       audioHandler?.updatePosition(_position, _duration, true);
     }
   }
@@ -249,7 +258,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> resume() async {
-    await _player.resume();
+    await _startPlayback();
     audioHandler?.updatePosition(_position, _duration, true);
   }
 

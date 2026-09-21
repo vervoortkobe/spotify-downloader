@@ -161,6 +161,9 @@ class PlaylistProvider extends ChangeNotifier {
 
   Future<void> savePlaylist(String uid, PlaylistModel playlist) async {
     debugPrint('savePlaylist called: uid=$uid, playlist.id=${playlist.id}, playlist.name=${playlist.name}, tracks=${playlist.tracks.length}');
+    // scrapePlaylist() returns creatorUid:'' — rules require
+    // request.resource.data.creatorUid == auth.uid, so stamp ownership here.
+    if (playlist.creatorUid.isEmpty) playlist.creatorUid = uid;
     // Optimistically add locally so it appears in the app immediately / offline.
     final idx = _playlists.indexWhere((p) => p.id == playlist.id);
     if (idx >= 0) {
@@ -189,6 +192,7 @@ class PlaylistProvider extends ChangeNotifier {
   }
 
   Future<void> updatePlaylist(String uid, PlaylistModel playlist) async {
+    if (playlist.creatorUid.isEmpty) playlist.creatorUid = uid;
     final idx = _playlists.indexWhere((p) => p.id == playlist.id);
     if (idx >= 0) {
       _playlists[idx] = playlist;
@@ -224,7 +228,14 @@ class PlaylistProvider extends ChangeNotifier {
   }
 
   Future<void> syncPlaylistTracks(String uid, String playlistId, List<TrackModel> tracks) async {
-    await _playlistService.updatePlaylistTracks(uid, playlistId, tracks);
+    try {
+      await _playlistService.updatePlaylistTracks(uid, playlistId, tracks);
+    } catch (e) {
+      // Permission-denied happens for legacy docs whose creatorUid is empty
+      // or belongs to another uid — keep local state, don't crash callers.
+      debugPrint('syncPlaylistTracks failed (non-fatal): $e');
+      return;
+    }
     final idx = _playlists.indexWhere((p) => p.id == playlistId);
     if (idx >= 0) {
       _playlists[idx].tracks = tracks;

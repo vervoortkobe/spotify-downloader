@@ -8,7 +8,7 @@ class PlaylistModel {
   List<TrackModel> tracks;
   final String source;
   final String spotifyUrl;
-  final String creatorUid;
+  String creatorUid;
   final List<String> sharedWith;
   final bool isCustom;
   final bool isUsersOwn;

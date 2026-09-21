@@ -84,11 +84,17 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
       final auth = context.read<AuthProvider>();
       if (auth.user != null) {
-        await context.read<PlaylistProvider>().syncPlaylistTracks(
-          auth.user!.uid,
-          _playlist.id,
-          scraped.tracks,
-        );
+        try {
+          await context.read<PlaylistProvider>().syncPlaylistTracks(
+            auth.user!.uid,
+            _playlist.id,
+            scraped.tracks,
+          );
+        } catch (e) {
+          // Cloud sync is best-effort (e.g. legacy doc without creatorUid) —
+          // local tracks are already updated above, so don't crash.
+          debugPrint('syncPlaylistTracks failed (non-fatal): $e');
+        }
       }
 
       if (showFeedback && mounted) {

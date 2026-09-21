@@ -38,6 +38,32 @@ class NetworkStatsService extends ChangeNotifier {
   int _deltaDown = 0;
   int _deltaUp = 0;
 
+  // ---- Connectivity banner (transition-driven) ----
+  bool _bannerVisible = false;
+  String _bannerMessage = '';
+  bool _bannerIsOffline = false;
+  bool _firstConnEvent = true;
+  Timer? _bannerTimer;
+
+  bool get bannerVisible => _bannerVisible;
+  String get bannerMessage => _bannerMessage;
+  bool get bannerIsOffline => _bannerIsOffline;
+
+  void _showBanner(String message, {required bool offline}) {
+    _bannerTimer?.cancel();
+    _bannerMessage = message;
+    _bannerIsOffline = offline;
+    _bannerVisible = true;
+    notifyListeners();
+    if (!offline) {
+      // Reconnected notice is transient; offline stays until back online.
+      _bannerTimer = Timer(const Duration(seconds: 3), () {
+        _bannerVisible = false;
+        notifyListeners();
+      });
+    }
+  }
+
   // ---- Cloud history (users/{uid}/dataUsage/{YYYY-MM}) ----
   String? _uid;
   DateTime _lastCloudPush = DateTime.fromMillisecondsSinceEpoch(0);
@@ -102,6 +128,10 @@ class NetworkStatsService extends ChangeNotifier {
   }
 
   Future<void> _updateConnectivity() async {
+    final wasOnline = _online;
+    final wasType = _connType;
+    final isFirst = _firstConnEvent;
+    _firstConnEvent = false;
     try {
       final results = await Connectivity().checkConnectivity();
       if (results.contains(ConnectivityResult.mobile)) {
@@ -110,6 +140,8 @@ class NetworkStatsService extends ChangeNotifier {
         _connType = 'wifi';
       } else if (results.contains(ConnectivityResult.none)) {
         _online = false;
+        // Persistent banner when going offline (also on boot if starting offline).
+        if (wasOnline || isFirst) _showBanner('Disconnected from the internet!', offline: true);
         notifyListeners();
         return;
       } else {
@@ -121,6 +153,22 @@ class NetworkStatsService extends ChangeNotifier {
       _online = true;
     }
     notifyListeners();
+    // Transient banner only on real transitions, never for the initial check.
+    if (!isFirst && (!wasOnline || wasType != _connType)) {
+      if (!wasOnline) {
+        _showBanner(
+          _connType == 'cellular'
+              ? 'Connected to the internet using mobile data!'
+              : 'Connected to the internet using Wi-Fi!',
+          offline: false,
+        );
+      } else {
+        _showBanner(
+          _connType == 'cellular' ? 'Switched to mobile data!' : 'Switched to Wi-Fi!',
+          offline: false,
+        );
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -186,14 +234,14 @@ class NetworkStatsService extends ChangeNotifier {
     _historyLoading = true;
     notifyListeners();
     try {
+      // No orderBy — doc IDs are YYYY-MM so we sort client-side. This avoids
+      // the FAILED_PRECONDITION "query requires an index" for order by __name__.
       final snap = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .collection('dataUsage')
-          .orderBy(FieldPath.documentId, descending: true)
-          .limit(6)
           .get();
-      _history = snap.docs.map((d) {
+      final all = snap.docs.map((d) {
         final data = d.data();
         final wd = (data['wifiDown'] as num? ?? 0).toInt();
         final wu = (data['wifiUp'] as num? ?? 0).toInt();
@@ -201,6 +249,8 @@ class NetworkStatsService extends ChangeNotifier {
         final cu = (data['cellularUp'] as num? ?? 0).toInt();
         return MonthUsage(month: d.id, wifi: wd + wu, cellular: cd + cu);
       }).toList();
+      all.sort((a, b) => b.month.compareTo(a.month));
+      _history = all.length > 6 ? all.sublist(0, 6) : all;
     } catch (e) {
       debugPrint('dataUsage history load failed: $e');
     }
@@ -265,6 +315,7 @@ class NetworkStatsService extends ChangeNotifier {
   @override
   void dispose() {
     _speedTimer?.cancel();
+    _bannerTimer?.cancel();
     super.dispose();
   }
 }

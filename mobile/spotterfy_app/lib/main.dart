@@ -4,6 +4,7 @@ import 'theme/app_theme.dart';
 import 'services/firebase_service.dart' as fb;
 import 'providers/auth_provider.dart';
 import 'providers/playlist_provider.dart';
+import 'providers/equalizer_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/jam_provider.dart';
 import 'providers/admin_provider.dart';
@@ -28,6 +29,7 @@ class SpotterfyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider(), lazy: true),
         ChangeNotifierProvider(create: (_) => PlaylistProvider(), lazy: true),
+        ChangeNotifierProvider(create: (_) => EqualizerProvider(), lazy: true),
         ChangeNotifierProvider(create: (_) => PlayerProvider(), lazy: true),
         ChangeNotifierProvider(create: (_) => JamProvider(), lazy: true),
         ChangeNotifierProvider(create: (_) => AdminProvider(), lazy: true),

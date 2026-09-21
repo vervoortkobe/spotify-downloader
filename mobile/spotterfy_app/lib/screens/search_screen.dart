@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:ui';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
@@ -92,9 +95,19 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
-  Future<void> _loadDiscoverFromCache() async {
+  static const _discoverFetchInterval = Duration(hours: 24);
+
+  /// Loads Discover lists: on-device snapshot if fetched <24h ago, else a
+  /// single Firestore read (persisted afterwards). Never refetches just from
+  /// visiting the page — use [force] (refetch button) to refresh on demand.
+  Future<void> _loadDiscoverFromCache({bool force = false}) async {
     setState(() => _loadingCache = true);
     try {
+      if (!force && await _usePersistedDiscover()) {
+        if (!mounted) return;
+        setState(() => _loadingCache = false);
+        return;
+      }
       final genres = await _discoverService.getDiscoverPlaylists(_genreUrls);
       final artists = await _discoverService.getDiscoverPlaylists(_artistUrls);
       if (!mounted) return;
@@ -103,6 +116,7 @@ class _SearchScreenState extends State<SearchScreen> {
         _artistPlaylists = _mergeWithPlaceholders(_artistUrls, artists, _artistFallbackNames, isGenre: false);
         _loadingCache = false;
       });
+      await _persistDiscover();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -111,6 +125,52 @@ class _SearchScreenState extends State<SearchScreen> {
         _loadingCache = false;
       });
     }
+  }
+
+  /// Returns true when a fresh (<24h) on-device snapshot was applied.
+  Future<bool> _usePersistedDiscover() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final last = prefs.getInt('discover_last_fetch_ms') ?? 0;
+      if (DateTime.now().millisecondsSinceEpoch - last > _discoverFetchInterval.inMilliseconds) return false;
+      final raw = prefs.getString('discover_snapshot_v1');
+      if (raw == null) return false;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final genres = ((data['genres'] as List<dynamic>?) ?? [])
+          .map((e) => PlaylistModel.fromCache(e as Map<String, dynamic>))
+          .toList();
+      final artists = ((data['artists'] as List<dynamic>?) ?? [])
+          .map((e) => PlaylistModel.fromCache(e as Map<String, dynamic>))
+          .toList();
+      if (!mounted) return false;
+      setState(() {
+        _genrePlaylists = _mergeWithPlaceholders(_genreUrls, genres, _genreFallbackNames, isGenre: true);
+        _artistPlaylists = _mergeWithPlaceholders(_artistUrls, artists, _artistFallbackNames, isGenre: false);
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _persistDiscover() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = jsonEncode({
+        'genres': _genrePlaylists.map((p) => p.toCache()).toList(),
+        'artists': _artistPlaylists.map((p) => p.toCache()).toList(),
+      });
+      await prefs.setString('discover_snapshot_v1', raw);
+      await prefs.setInt('discover_last_fetch_ms', DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  Future<void> _refetchDiscover() async {
+    await _loadDiscoverFromCache(force: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Discover updated'), duration: Duration(seconds: 2)),
+    );
   }
 
   List<PlaylistModel> _placeholders(List<String> urls, List<String> fallbackNames) {
@@ -215,6 +275,13 @@ class _SearchScreenState extends State<SearchScreen> {
       searchController: _searchController,
       searchHint: 'Search Discover',
       query: _query,
+      action: IconButton(
+        icon: const Icon(Icons.refresh, size: 20),
+        tooltip: 'Refetch Discover',
+        onPressed: _loadingCache ? null : _refetchDiscover,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.only(bottom: 100),
         child: Column(
@@ -285,10 +352,9 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _section(BuildContext context, String title, List<PlaylistModel> data, String query, {bool isLoading = false, bool clickableTitle = true}) {
-    // Smaller cards to fit extra Radio row
+    // Square cards; title overlays the cover bottom on a blur
     const cardW = 110.0;
-    const coverH = 92.0;
-    const listH = 144.0;
+    const listH = 110.0;
     if (isLoading && data.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,12 +371,9 @@ class _SearchScreenState extends State<SearchScreen> {
               itemCount: 5,
               itemBuilder: (_, i) => Container(
                 width: cardW,
+                height: cardW,
                 margin: EdgeInsets.only(right: i == 4 ? 0 : 10),
                 decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Container(height: coverH, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(12)))),
-                  Padding(padding: const EdgeInsets.all(8), child: Container(height: 10, width: 80, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(6)))),
-                ]),
               ),
             ),
           ),
@@ -353,25 +416,13 @@ class _SearchScreenState extends State<SearchScreen> {
             itemBuilder: (_, i) {
               final p = display[i];
               final isFetching = _fetching.contains(p.spotifyUrl.split('?').first);
-              return GestureDetector(
+              return _DiscoverCard(
+                width: cardW,
+                coverUrl: p.coverUrl,
+                title: p.name,
+                isFetching: isFetching,
+                margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
                 onTap: () => _openDiscoverPlaylist(context, p),
-                child: Container(
-                  width: cardW,
-                  margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
-                  decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      child: Stack(children: [
-                        p.coverUrl.isNotEmpty
-                            ? Image.network(p.coverUrl, height: coverH, width: cardW, fit: BoxFit.cover)
-                            : Container(height: coverH, color: SpotterfyTheme.surface, child: Center(child: Icon(title == 'Radio Stations' ? Icons.radio : Icons.music_note, color: SpotterfyTheme.muted, size: 22))),
-                        if (isFetching) Container(height: coverH, width: cardW, color: Colors.black38, child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))),
-                      ]),
-                    ),
-                    Padding(padding: const EdgeInsets.all(7), child: Text(p.name, style: TextStyle(color: SpotterfyTheme.text, fontSize: 11, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis)),
-                  ]),
-                ),
               );
             },
           ),
@@ -392,8 +443,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _otherUsersSection(BuildContext context, String query) {
     const cardW = 110.0;
-    const coverH = 92.0;
-    const listH = 144.0;
+    const listH = 110.0;
     final prov = context.watch<PlaylistProvider>();
     final auth = context.watch<AuthProvider>();
     var list = prov.playlists.where((p) => p.creatorUid != auth.user?.uid && p.creatorUid.isNotEmpty).toList();
@@ -433,7 +483,11 @@ class _SearchScreenState extends State<SearchScreen> {
               itemBuilder: (_, i) {
                 final p = display[i];
                 final bool isReal = !isPlaceholder || prov.playlists.any((r) => r.id == p.id);
-                return GestureDetector(
+                return _DiscoverCard(
+                  width: cardW,
+                  coverUrl: p.coverUrl,
+                  title: p.name,
+                  margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
                   onTap: () {
                     if (!isReal) {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No community playlists yet – be the first to share!')));
@@ -441,15 +495,6 @@ class _SearchScreenState extends State<SearchScreen> {
                     }
                     Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p)));
                   },
-                  child: Container(
-                    width: cardW,
-                    margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
-                    decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), child: p.coverUrl.isNotEmpty ? Image.network(p.coverUrl, height: coverH, width: cardW, fit: BoxFit.cover) : Container(height: coverH, color: SpotterfyTheme.surface, child: Center(child: Icon(Icons.music_note, color: SpotterfyTheme.muted)))),
-                      Padding(padding: const EdgeInsets.all(7), child: Text(p.name, style: TextStyle(color: SpotterfyTheme.text, fontSize: 11, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis)),
-                    ]),
-                  ),
                 );
               },
             ),
@@ -460,6 +505,78 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Text('No community playlists yet – showing suggestions', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11, fontStyle: FontStyle.italic)),
           ),
       ],
+    );
+  }
+}
+
+/// Square playlist cover with the title overlaid on a blurred strip at the
+/// bottom, covering part of the cover.
+class _DiscoverCard extends StatelessWidget {
+  final double width;
+  final String coverUrl;
+  final String title;
+  final bool isFetching;
+  final EdgeInsets margin;
+  final VoidCallback onTap;
+
+  const _DiscoverCard({
+    required this.width,
+    required this.coverUrl,
+    required this.title,
+    this.isFetching = false,
+    this.margin = EdgeInsets.zero,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: width,
+        margin: margin,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: Stack(children: [
+              Positioned.fill(
+                child: coverUrl.isNotEmpty
+                    ? Image.network(coverUrl, fit: BoxFit.cover)
+                    : Container(
+                        color: SpotterfyTheme.surface,
+                        child: const Center(child: Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 28)),
+                      ),
+              ),
+              if (isFetching)
+                const Positioned.fill(
+                  child: ColoredBox(
+                    color: Colors.black38,
+                    child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))),
+                  ),
+                ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+                      child: Text(title,
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -477,11 +594,14 @@ class _SectionPage extends StatelessWidget {
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, title: Text(title, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.4),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.0),
         itemCount: playlists.length,
         itemBuilder: (_, i) {
           final p = playlists[i];
-          return GestureDetector(
+          return _DiscoverCard(
+            width: double.infinity,
+            coverUrl: p.coverUrl,
+            title: p.name,
             onTap: () async {
               if (onTap != null) {
                 await onTap!(p);
@@ -489,8 +609,6 @@ class _SectionPage extends StatelessWidget {
                 Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p)));
               }
             },
-            child: Container(decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), child: p.coverUrl.isNotEmpty ? Image.network(p.coverUrl, fit: BoxFit.cover, width: double.infinity) : Container(color: SpotterfyTheme.surface, child: Center(child: Icon(Icons.music_note, color: SpotterfyTheme.muted))))), Padding(padding: const EdgeInsets.all(8), child: Text(p.name, style: TextStyle(color: SpotterfyTheme.text, fontWeight: FontWeight.w600, fontSize: 12), maxLines: 2))]),
-            ),
           );
         },
       ),

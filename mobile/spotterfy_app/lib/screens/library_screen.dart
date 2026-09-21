@@ -199,30 +199,51 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                 ]),
               );
             }
-            // Group by parent folder -> subfolders as playlists (user requested)
+            // Group direct files by parent folder
             final Map<String, List<File>> groups = {};
             for (final f in files) {
               final parent = File(f.path).parent.path;
               groups.putIfAbsent(parent, () => []).add(f);
             }
-            // Sort folders by name
-            final folderPaths = groups.keys.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-            // Filter by query (folder name or any file in folder)
-            List<String> filteredFolders = folderPaths;
+            // Full folder tree: every ancestor dir down to the storage base, so
+            // intermediate folders without direct songs still show up and the
+            // app mirrors the on-device hierarchy (Music > Artist > Album...).
+            String parentOf(String p) => File(p).parent.path;
+            const scanBase = '/storage/emulated/0';
+            final Set<String> allDirs = {};
+            for (final f in files) {
+              var dir = File(f.path).parent.path;
+              while (dir.startsWith('$scanBase/') && dir.length > scanBase.length + 1) {
+                allDirs.add(dir);
+                final parent = parentOf(dir);
+                if (parent == dir) break;
+                dir = parent;
+              }
+            }
+            List<String> childDirs(String p) {
+              final list = allDirs.where((d) => d != p && parentOf(d) == p).toList();
+              list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+              return list;
+            }
+            int recursiveCount(String dir) =>
+                files.where((f) => f.path == dir || f.path.startsWith('$dir/')).length;
+            // Root: top-level folders only (no known parent) - drill down from there
+            final topDirs = allDirs.where((d) => !allDirs.contains(parentOf(d))).toList()
+              ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+            // Filter by query (folder name or any file beneath it)
+            List<String> filteredFolders = topDirs;
             if (_query.isNotEmpty) {
               final q = _query.toLowerCase();
-              filteredFolders = folderPaths.where((p) {
-                final folderName = p.split('/').last.toLowerCase();
-                if (folderName.contains(q)) return true;
-                return groups[p]!.any((f) => f.path.toLowerCase().contains(q));
+              filteredFolders = topDirs.where((p) {
+                if (p.split('/').last.toLowerCase().contains(q)) return true;
+                return files.any((f) => (f.path == p || f.path.startsWith('$p/')) && f.path.toLowerCase().contains(q));
               }).toList();
             }
             // Inline folder detail with subfolder drill-down (keeps MiniPlayer visible, not a new route)
             if (_folderStack.isNotEmpty) {
               final folderPath = _folderStack.last;
-              final rawSubs = groups.keys.where((q) => q != folderPath && File(q).parent.path == folderPath).toList()
-                ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-              if (groups.containsKey(folderPath) || rawSubs.isNotEmpty) {
+              final rawSubs = childDirs(folderPath);
+              if (allDirs.contains(folderPath)) {
               final folderFilesAll = groups[folderPath] ?? const <File>[];
               final folderName = folderPath.split('/').last.isEmpty ? 'Music' : folderPath.split('/').last;
               var detailFiles = folderFilesAll;
@@ -309,11 +330,12 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               itemCount: filteredFolders.length,
               itemBuilder: (_, idx) {
                 final folderPath = filteredFolders[idx];
-                final folderFiles = groups[folderPath]!;
+                final folderFiles = groups[folderPath] ?? const <File>[];
                 final folderName = folderPath.split('/').last.isEmpty ? 'Music' : folderPath.split('/').last;
-                final count = folderFiles.length;
+                final count = recursiveCount(folderPath);
                 final folderTracks = _tracksForFiles(folderFiles, folderName);
-                final isActiveFolder = folderFiles.any((f) => context.watch<PlayerProvider>().currentTrack?.id == 'storage_${f.path.hashCode}');
+                final curTrack = context.watch<PlayerProvider>().currentTrack;
+                final isActiveFolder = curTrack != null && curTrack.id.startsWith('storage_') && (curTrack.sourceUrl == folderPath || curTrack.sourceUrl.startsWith('$folderPath/'));
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: GestureDetector(
@@ -329,7 +351,8 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                           const SizedBox(height: 2),
                           Text('$count ${count == 1 ? 'song' : 'songs'} • ${folderPath.replaceFirst('/storage/emulated/0/', '')}', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                         ])),
-                        IconButton(icon: Icon(Icons.play_arrow_rounded, color: isActiveFolder ? SpotterfyTheme.primary : SpotterfyTheme.text, size: 28), onPressed: () async { await context.read<PlayerProvider>().play(folderTracks.first, queue: folderTracks); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing $folderName'))); }),
+                        if (folderTracks.isNotEmpty)
+                          IconButton(icon: Icon(Icons.play_arrow_rounded, color: isActiveFolder ? SpotterfyTheme.primary : SpotterfyTheme.text, size: 28), onPressed: () async { await context.read<PlayerProvider>().play(folderTracks.first, queue: folderTracks); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing $folderName'))); }),
                         const SizedBox(width: 4),
                         Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 20),
                       ]),

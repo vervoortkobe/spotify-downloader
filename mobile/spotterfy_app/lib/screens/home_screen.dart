@@ -5,6 +5,7 @@ import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/widgets/playlist_card.dart';
+import 'package:spotterfy_app/widgets/connectivity_banner.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/playlist_detail_screen.dart';
 import 'package:spotterfy_app/screens/admin_screen.dart';
@@ -157,6 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
+          const ConnectivityBanner(),
           _header(auth, playlistProv),
           Expanded(
             child: playlistProv.isLoading
