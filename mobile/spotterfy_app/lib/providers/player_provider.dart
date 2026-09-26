@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart' as perm;
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/audio_handler.dart';
+import 'package:spotterfy_app/services/auto_media_library.dart';
 import 'package:spotterfy_app/providers/equalizer_provider.dart';
 
 class PlayerProvider extends ChangeNotifier {
@@ -36,10 +37,16 @@ class PlayerProvider extends ChangeNotifier {
 
   bool _isRadioUrl(String url) {
     final u = url.toLowerCase();
-    return u.contains('icecast.vrtcdn.be') || u.contains('qmusic.be') || u.contains('joe.be') || u.contains('streamtheworld.com');
+    return u.contains('icecast.vrtcdn.be') ||
+        u.contains('qmusic.be') ||
+        u.contains('joe.be') ||
+        u.contains('streamtheworld.com');
   }
 
-  bool get isRadio => _currentTrack != null && (_currentTrack!.id.startsWith('radio_') || _isRadioUrl(_currentTrack!.sourceUrl));
+  bool get isRadio =>
+      _currentTrack != null &&
+      (_currentTrack!.id.startsWith('radio_') ||
+          _isRadioUrl(_currentTrack!.sourceUrl));
   Duration _radioMaxListened = Duration.zero;
   Timer? _radioDriftTimer;
 
@@ -57,6 +64,11 @@ class PlayerProvider extends ChangeNotifier {
     );
     _loadPlayerState();
     _requestNotificationPermission();
+    // Let Android Auto start playback from rows it browses.
+    AutoLibraryBridge.instance.bindPlayback((tracks, index) async {
+      setQueue(tracks, startIndex: index);
+      await play(tracks[index], queue: tracks);
+    });
     // NOTE: do NOT init AudioService here. The constructor runs before
     // MainActivity is attached, which burns our single AudioService.init()
     // attempt (it can only be called once per process). Init lazily on
@@ -73,7 +85,15 @@ class PlayerProvider extends ChangeNotifier {
       // Live radio has no duration (null) - keep the previous value.
       if (dur == null) return;
       _duration = dur;
-      if (_currentTrack != null) audioHandler?.updateTrack(_currentTrack!, queue: _queue, position: _position, duration: _duration, isPlaying: _isPlaying);
+      if (_currentTrack != null) {
+        audioHandler?.updateTrack(
+          _currentTrack!,
+          queue: _queue,
+          position: _position,
+          duration: _duration,
+          isPlaying: _isPlaying,
+        );
+      }
       notifyListeners();
     });
     _player.bufferedPositionStream.listen((buf) {
@@ -171,7 +191,13 @@ class PlayerProvider extends ChangeNotifier {
     _bindHandler();
     final h = audioHandler;
     if (h != null) {
-      await h.updateTrack(track, queue: _queue, position: Duration.zero, duration: Duration.zero, isPlaying: true);
+      await h.updateTrack(
+        track,
+        queue: _queue,
+        position: Duration.zero,
+        duration: Duration.zero,
+        isPlaying: true,
+      );
       h.onSeekRequested = (pos) async => await seekTo(pos);
     } else {
       debugPrint('[Player] audioHandler is null — notification will not show');
@@ -195,23 +221,35 @@ class PlayerProvider extends ChangeNotifier {
     // Radio live streams (icecast etc) play directly, not via backend proxy
     bool isDirectRadio(String url) {
       final u = url.toLowerCase();
-      return u.contains('icecast.vrtcdn.be') || u.contains('qmusic.be') || u.contains('joe.be') || u.contains('streamtheworld.com') || u.contains('.mp3') && u.contains('dist=') || track.id.startsWith('radio_');
+      return u.contains('icecast.vrtcdn.be') ||
+          u.contains('qmusic.be') ||
+          u.contains('joe.be') ||
+          u.contains('streamtheworld.com') ||
+          u.contains('.mp3') && u.contains('dist=') ||
+          track.id.startsWith('radio_');
     }
 
     final primary = track.sourceUrl.isNotEmpty
-        ? (isDirectRadio(track.sourceUrl) ? track.sourceUrl : ApiService.streamTrackUrl(track.sourceUrl))
+        ? (isDirectRadio(track.sourceUrl)
+              ? track.sourceUrl
+              : ApiService.streamTrackUrl(track.sourceUrl))
         : null;
-    final fallback = ApiService.streamTrackUrl('ytsearch1:${track.title} ${track.artists} audio');
+    final fallback = ApiService.streamTrackUrl(
+      'ytsearch1:${track.title} ${track.artists} audio',
+    );
     Future<void> warm(String url) async {
       try {
         await http.head(Uri.parse(url)).timeout(const Duration(seconds: 3));
       } catch (_) {}
     }
+
     try {
       await _player.stop();
       final url = primary ?? fallback;
       await warm(url);
-      await _player.setAudioSource(AudioSource.uri(Uri.parse(url))).timeout(const Duration(seconds: 30));
+      await _player
+          .setAudioSource(AudioSource.uri(Uri.parse(url)))
+          .timeout(const Duration(seconds: 30));
       await _player.play().timeout(const Duration(seconds: 30));
       _completed = false;
       _isPlaying = true;
@@ -221,7 +259,9 @@ class PlayerProvider extends ChangeNotifier {
       try {
         await _player.stop();
         await warm(fallback);
-        await _player.setAudioSource(AudioSource.uri(Uri.parse(fallback))).timeout(const Duration(seconds: 35));
+        await _player
+            .setAudioSource(AudioSource.uri(Uri.parse(fallback)))
+            .timeout(const Duration(seconds: 35));
         await _player.play().timeout(const Duration(seconds: 35));
         _completed = false;
         _isPlaying = true;
@@ -266,7 +306,10 @@ class PlayerProvider extends ChangeNotifier {
     if (isRadio) {
       // Radio: only back within listened window, never forward beyond live edge
       final clamped = Duration(
-        milliseconds: position.inMilliseconds.clamp(0, _radioMaxListened.inMilliseconds),
+        milliseconds: position.inMilliseconds.clamp(
+          0,
+          _radioMaxListened.inMilliseconds,
+        ),
       );
       await _player.seek(clamped);
       _position = clamped;
@@ -348,7 +391,10 @@ class PlayerProvider extends ChangeNotifier {
 
   void addToQueue(TrackModel track) {
     _queue.add(track);
-    audioHandler?.setQueue(_queue, startIndex: _currentIndex.clamp(0, _queue.length - 1));
+    audioHandler?.setQueue(
+      _queue,
+      startIndex: _currentIndex.clamp(0, _queue.length - 1),
+    );
     notifyListeners();
   }
 
@@ -358,7 +404,10 @@ class PlayerProvider extends ChangeNotifier {
     } else {
       _queue.add(track);
     }
-    audioHandler?.setQueue(_queue, startIndex: _currentIndex.clamp(0, _queue.length - 1));
+    audioHandler?.setQueue(
+      _queue,
+      startIndex: _currentIndex.clamp(0, _queue.length - 1),
+    );
     notifyListeners();
   }
 

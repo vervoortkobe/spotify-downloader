@@ -4,13 +4,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
+import 'package:spotterfy_app/services/auto_media_library.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
 
 // Isolate helpers - must be top-level for compute()
 List<PlaylistModel> _parsePlaylistsIsolate(String cached) {
   try {
     final data = jsonDecode(cached) as List<dynamic>;
-    final list = data.map((d) => PlaylistModel.fromCache(d as Map<String, dynamic>)).toList();
+    final list = data
+        .map((d) => PlaylistModel.fromCache(d as Map<String, dynamic>))
+        .toList();
     list.removeWhere((p) => p.id.isEmpty);
     return list;
   } catch (_) {
@@ -24,8 +27,45 @@ String _encodePlaylistsIsolate(List<Map<String, dynamic>> data) {
 
 class PlaylistProvider extends ChangeNotifier {
   final PlaylistService _playlistService = PlaylistService();
+
+  PlaylistProvider() {
+    // Android Auto browses the library through this provider, so hand it a
+    // loader here rather than letting the audio handler touch providers.
+    AutoLibraryBridge.instance.bindLibrary(() async {
+      return AutoLibrarySnapshot(
+        own: List.of(_playlists),
+        shared: List.of(_sharedPlaylists),
+        community: await communityPlaylists(),
+      );
+    });
+  }
+
+  /// Public playlists from other users, cached briefly so opening the Auto
+  /// browse tree does not re-query Firestore on every tap.
+  Future<List<PlaylistModel>> communityPlaylists({bool force = false}) async {
+    final now = DateTime.now();
+    final fetchedAt = _communityFetchedAt;
+    if (!force &&
+        fetchedAt != null &&
+        now.difference(fetchedAt) < _communityTtl) {
+      return _communityPlaylists;
+    }
+    try {
+      final list = await _playlistService.getCommunityPlaylists(limit: 50);
+      _communityPlaylists = list;
+      _communityFetchedAt = now;
+      return list;
+    } catch (e) {
+      debugPrint('communityPlaylists failed: $e');
+      return _communityPlaylists;
+    }
+  }
+
   List<PlaylistModel> _playlists = [];
   List<PlaylistModel> _sharedPlaylists = [];
+  List<PlaylistModel> _communityPlaylists = [];
+  DateTime? _communityFetchedAt;
+  static const Duration _communityTtl = Duration(minutes: 10);
   PlaylistModel? _currentPlaylist;
   bool _isLoading = false;
   String? _error;
@@ -71,11 +111,16 @@ class PlaylistProvider extends ChangeNotifier {
       for (final m in missingRemote) {
         try {
           if (m.tracks.isEmpty) {
-            final fileTracks = await _playlistService.loadCachedTracks(uid, m.id);
+            final fileTracks = await _playlistService.loadCachedTracks(
+              uid,
+              m.id,
+            );
             if (fileTracks.isNotEmpty) m.tracks = fileTracks;
           }
           await _playlistService.savePlaylist(uid, m);
-          debugPrint('restored missing playlist to cloud: ${m.id} (${m.tracks.length} tracks)');
+          debugPrint(
+            'restored missing playlist to cloud: ${m.id} (${m.tracks.length} tracks)',
+          );
         } catch (e) {
           debugPrint('restore to cloud failed for ${m.id}: $e');
         }
@@ -117,21 +162,37 @@ class PlaylistProvider extends ChangeNotifier {
 
   bool hasPlaylistWithUrl(String spotifyUrl) {
     final clean = spotifyUrl.split('?').first;
-    return _playlists.any((p) => p.spotifyUrl == clean || p.spotifyUrl == spotifyUrl || p.id == clean || p.id == spotifyUrl || p.id == clean.hashCode.toString());
+    return _playlists.any(
+      (p) =>
+          p.spotifyUrl == clean ||
+          p.spotifyUrl == spotifyUrl ||
+          p.id == clean ||
+          p.id == spotifyUrl ||
+          p.id == clean.hashCode.toString(),
+    );
   }
 
   PlaylistModel? getPlaylistByUrl(String spotifyUrl) {
     final clean = spotifyUrl.split('?').first;
     try {
       return _playlists.firstWhere(
-        (p) => p.spotifyUrl == clean || p.spotifyUrl == spotifyUrl || p.id == clean || p.id == spotifyUrl || p.id == clean.hashCode.toString(),
+        (p) =>
+            p.spotifyUrl == clean ||
+            p.spotifyUrl == spotifyUrl ||
+            p.id == clean ||
+            p.id == spotifyUrl ||
+            p.id == clean.hashCode.toString(),
       );
     } catch (_) {
       return null;
     }
   }
 
-  Future<PlaylistModel?> importFromUrl(String url, {String service = 'auto', String? creatorUid}) async {
+  Future<PlaylistModel?> importFromUrl(
+    String url, {
+    String service = 'auto',
+    String? creatorUid,
+  }) async {
     debugPrint('importFromUrl: starting scrape for $url');
     _isLoading = true;
     _error = null;
@@ -145,7 +206,9 @@ class PlaylistProvider extends ChangeNotifier {
         notifyListeners();
         return null;
       }
-      debugPrint('importFromUrl: scrape succeeded, playlist=${playlist.name}, tracks=${playlist.tracks.length}');
+      debugPrint(
+        'importFromUrl: scrape succeeded, playlist=${playlist.name}, tracks=${playlist.tracks.length}',
+      );
       _currentPlaylist = playlist;
       _isLoading = false;
       notifyListeners();
@@ -160,7 +223,9 @@ class PlaylistProvider extends ChangeNotifier {
   }
 
   Future<void> savePlaylist(String uid, PlaylistModel playlist) async {
-    debugPrint('savePlaylist called: uid=$uid, playlist.id=${playlist.id}, playlist.name=${playlist.name}, tracks=${playlist.tracks.length}');
+    debugPrint(
+      'savePlaylist called: uid=$uid, playlist.id=${playlist.id}, playlist.name=${playlist.name}, tracks=${playlist.tracks.length}',
+    );
     // scrapePlaylist() returns creatorUid:'' — rules require
     // request.resource.data.creatorUid == auth.uid, so stamp ownership here.
     if (playlist.creatorUid.isEmpty) playlist.creatorUid = uid;
@@ -171,7 +236,9 @@ class PlaylistProvider extends ChangeNotifier {
       debugPrint('savePlaylist: updated existing at index $idx');
     } else {
       _playlists.insert(0, playlist);
-      debugPrint('savePlaylist: inserted new at index 0, total playlists=${_playlists.length}');
+      debugPrint(
+        'savePlaylist: inserted new at index 0, total playlists=${_playlists.length}',
+      );
     }
     _currentPlaylist = playlist;
     _error = null;
@@ -219,15 +286,27 @@ class PlaylistProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> sharePlaylist(String uid, String playlistId, String friendUid) async {
+  Future<void> sharePlaylist(
+    String uid,
+    String playlistId,
+    String friendUid,
+  ) async {
     await _playlistService.sharePlaylist(uid, playlistId, friendUid);
   }
 
-  Future<void> addTrackToPlaylist(String uid, String playlistId, TrackModel track) async {
+  Future<void> addTrackToPlaylist(
+    String uid,
+    String playlistId,
+    TrackModel track,
+  ) async {
     await _playlistService.addTrackToPlaylist(uid, playlistId, track);
   }
 
-  Future<void> syncPlaylistTracks(String uid, String playlistId, List<TrackModel> tracks) async {
+  Future<void> syncPlaylistTracks(
+    String uid,
+    String playlistId,
+    List<TrackModel> tracks,
+  ) async {
     try {
       await _playlistService.updatePlaylistTracks(uid, playlistId, tracks);
     } catch (e) {
@@ -259,9 +338,15 @@ class PlaylistProvider extends ChangeNotifier {
     );
   }
 
-  Future<List<PlaylistModel>> searchOtherUsersPlaylists(String query, {int limit = 20}) async {
+  Future<List<PlaylistModel>> searchOtherUsersPlaylists(
+    String query, {
+    int limit = 20,
+  }) async {
     try {
-      return await _playlistService.searchOtherUsersPlaylists(query, limit: limit);
+      return await _playlistService.searchOtherUsersPlaylists(
+        query,
+        limit: limit,
+      );
     } catch (e) {
       debugPrint('searchOtherUsersPlaylists failed: $e');
       return [];

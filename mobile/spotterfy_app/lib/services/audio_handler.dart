@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import '../models/track_model.dart';
+import 'auto_media_library.dart';
 
 SpotterfyAudioHandler? audioHandler;
 Completer<SpotterfyAudioHandler?>? _initCompleter;
@@ -73,13 +74,16 @@ Future<void> ensureAudioHandler() async {
     _initCompleter!.complete(handler);
     debugPrint('[AudioService] init ok handler=$audioHandler');
   } catch (e, st) {
-    debugPrint('[AudioService] init failed (notification disabled, playback continues): $e\n$st');
+    debugPrint(
+      '[AudioService] init failed (notification disabled, playback continues): $e\n$st',
+    );
     _initCompleter!.complete(null);
     _initCompleter = null;
   }
 }
 
-class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
+class SpotterfyAudioHandler extends BaseAudioHandler
+    with QueueHandler, SeekHandler {
   List<TrackModel> _tracks = [];
   int _index = -1;
   // used by PlayerProvider seek bridging
@@ -96,16 +100,22 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
   SpotterfyAudioHandler() {
     _initSession();
     // Broadcast an initial idle state so Android's MediaSession is aware of this session
-    playbackState.add(PlaybackState(
-      controls: [MediaControl.play],
-      systemActions: const {MediaAction.seek, MediaAction.seekForward, MediaAction.seekBackward},
-      androidCompactActionIndices: const [0],
-      processingState: AudioProcessingState.idle,
-      playing: false,
-      updatePosition: Duration.zero,
-      bufferedPosition: Duration.zero,
-      speed: 1.0,
-    ));
+    playbackState.add(
+      PlaybackState(
+        controls: [MediaControl.play],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: const [0],
+        processingState: AudioProcessingState.idle,
+        playing: false,
+        updatePosition: Duration.zero,
+        bufferedPosition: Duration.zero,
+        speed: 1.0,
+      ),
+    );
     _throttleTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
       if (_stateDirty) {
         _stateDirty = false;
@@ -121,26 +131,90 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
     } catch (_) {}
   }
 
-  MediaItem _toMediaItem(TrackModel t) => MediaItem(
-        id: t.id,
-        title: t.title,
-        artist: t.artists,
-        album: t.album.isNotEmpty ? t.album : 'Spotterfy',
-        artUri: t.cover.isNotEmpty ? Uri.tryParse(t.cover) : null,
-        duration: t.durationMs > 0 ? Duration(milliseconds: t.durationMs) : null,
-      );
+  MediaItem _toMediaItem(TrackModel t) =>
+      AutoLibraryBridge.instance.trackItemSync(t);
 
   void setQueue(List<TrackModel> tracks, {int startIndex = 0}) {
     _tracks = List.from(tracks);
     _index = startIndex.clamp(0, _tracks.length - 1);
     queue.add(_tracks.map(_toMediaItem).toList());
     if (_tracks.isNotEmpty) {
-      mediaItem.add(_toMediaItem(_tracks[_index]).copyWith(duration: _duration));
+      mediaItem.add(
+        _toMediaItem(_tracks[_index]).copyWith(duration: _duration),
+      );
     }
+    AutoLibraryBridge.instance.updatePlaybackState(
+      _tracks,
+      _index >= 0 ? _tracks[_index] : null,
+    );
     _markDirty();
+    // Artwork/durations for storage tracks need disk reads; publish again once
+    // resolved so Android Auto shows real lengths and covers.
+    _enrichQueue();
   }
 
-  Future<void> updateTrack(TrackModel track, {List<TrackModel>? queue, required Duration position, Duration? duration, required bool isPlaying}) async {
+  /// Bumped whenever the queue changes so a slow enrichment pass can detect that
+  /// it is stale and bail out instead of clobbering a newer queue.
+  int _queueGeneration = 0;
+
+  Future<void> _enrichQueue() async {
+    final generation = ++_queueGeneration;
+    final tracks = List<TrackModel>.from(_tracks);
+    if (tracks.isEmpty) return;
+    final items = <MediaItem>[];
+    for (final t in tracks) {
+      items.add(
+        AutoLibraryBridge.instance
+            .trackItemSync(t)
+            .copyWith(
+              duration:
+                  await AutoLibraryBridge.resolveDuration(t) ??
+                  (t.durationMs > 0
+                      ? Duration(milliseconds: t.durationMs)
+                      : null),
+              artUri: await AutoLibraryBridge.resolveArtUri(t),
+            ),
+      );
+    }
+    // The queue changed (or the screen went away) while we were reading files.
+    if (generation != _queueGeneration) return;
+    queue.add(items);
+    if (_index >= 0 && _index < _tracks.length) {
+      mediaItem.add(
+        items[_index].copyWith(
+          duration: _duration != Duration.zero
+              ? _duration
+              : items[_index].duration,
+        ),
+      );
+    }
+  }
+
+  // --- Android Auto browse tree ------------------------------------------
+
+  @override
+  Future<List<MediaItem>> getChildren(
+    String parentMediaId, [
+    Map<String, dynamic>? options,
+  ]) => AutoLibraryBridge.instance.getChildren(parentMediaId);
+
+  @override
+  Future<void> playFromMediaId(
+    String mediaId, [
+    Map<String, dynamic>? extras,
+  ]) => AutoLibraryBridge.instance.playFromMediaId(mediaId);
+
+  @override
+  Future<void> playFromSearch(String query, [Map<String, dynamic>? extras]) =>
+      AutoLibraryBridge.instance.playFromSearch(query);
+
+  Future<void> updateTrack(
+    TrackModel track, {
+    List<TrackModel>? queue,
+    required Duration position,
+    Duration? duration,
+    required bool isPlaying,
+  }) async {
     _position = position;
     _isPlaying = isPlaying;
     if (duration != null) _duration = duration;
@@ -150,8 +224,13 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
       if (_index == -1) _index = 0;
       this.queue.add(_tracks.map(_toMediaItem).toList());
     }
+    AutoLibraryBridge.instance.updatePlaybackState(_tracks, track);
     final item = _toMediaItem(track);
-    mediaItem.add(item.copyWith(duration: _duration != Duration.zero ? _duration : item.duration));
+    mediaItem.add(
+      item.copyWith(
+        duration: _duration != Duration.zero ? _duration : item.duration,
+      ),
+    );
     _markDirty(force: true);
   }
 
@@ -161,20 +240,23 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
   }
 
   void _doBroadcast() {
-    final isRadio = _tracks.isNotEmpty && _index >= 0 && _isRadioTrack(_tracks[_index]);
+    final isRadio =
+        _tracks.isNotEmpty && _index >= 0 && _isRadioTrack(_tracks[_index]);
     // Radio: no next/prev, only play/pause and seek back (system seek)
     if (isRadio) {
-      playbackState.add(PlaybackState(
-        controls: [_isPlaying ? MediaControl.pause : MediaControl.play],
-        systemActions: const {MediaAction.seek, MediaAction.seekBackward},
-        androidCompactActionIndices: const [0],
-        processingState: AudioProcessingState.ready,
-        playing: _isPlaying,
-        updatePosition: _position,
-        bufferedPosition: _buffered,
-        speed: 1.0,
-        queueIndex: _index >= 0 ? _index : null,
-      ));
+      playbackState.add(
+        PlaybackState(
+          controls: [_isPlaying ? MediaControl.pause : MediaControl.play],
+          systemActions: const {MediaAction.seek, MediaAction.seekBackward},
+          androidCompactActionIndices: const [0],
+          processingState: AudioProcessingState.ready,
+          playing: _isPlaying,
+          updatePosition: _position,
+          bufferedPosition: _buffered,
+          speed: 1.0,
+          queueIndex: _index >= 0 ? _index : null,
+        ),
+      );
       return;
     }
     final hasPrev = _index > 0;
@@ -185,23 +267,31 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
       if (hasNext) MediaControl.skipToNext,
     ];
     final prevIdx = controls.indexOf(MediaControl.skipToPrevious);
-    final playIdx = controls.indexWhere((c) => c == MediaControl.pause || c == MediaControl.play);
+    final playIdx = controls.indexWhere(
+      (c) => c == MediaControl.pause || c == MediaControl.play,
+    );
     final nextIdx = controls.indexOf(MediaControl.skipToNext);
-    playbackState.add(PlaybackState(
-      controls: controls,
-      systemActions: const {MediaAction.seek, MediaAction.seekForward, MediaAction.seekBackward},
-      androidCompactActionIndices: [
-        if (prevIdx != -1) prevIdx,
-        if (playIdx != -1) playIdx,
-        if (nextIdx != -1) nextIdx,
-      ],
-      processingState: AudioProcessingState.ready,
-      playing: _isPlaying,
-      updatePosition: _position,
-      bufferedPosition: _buffered,
-      speed: 1.0,
-      queueIndex: _index >= 0 ? _index : null,
-    ));
+    playbackState.add(
+      PlaybackState(
+        controls: controls,
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: [
+          if (prevIdx != -1) prevIdx,
+          if (playIdx != -1) playIdx,
+          if (nextIdx != -1) nextIdx,
+        ],
+        processingState: AudioProcessingState.ready,
+        playing: _isPlaying,
+        updatePosition: _position,
+        bufferedPosition: _buffered,
+        speed: 1.0,
+        queueIndex: _index >= 0 ? _index : null,
+      ),
+    );
   }
 
   void updatePosition(Duration pos, Duration dur, bool isPlaying) {
@@ -260,7 +350,9 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
     }
     if (_index + 1 < _tracks.length) {
       _index++;
-      mediaItem.add(_toMediaItem(_tracks[_index]).copyWith(duration: _duration));
+      mediaItem.add(
+        _toMediaItem(_tracks[_index]).copyWith(duration: _duration),
+      );
       _markDirty(force: true);
     }
   }
@@ -273,7 +365,9 @@ class SpotterfyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHand
     }
     if (_index > 0) {
       _index--;
-      mediaItem.add(_toMediaItem(_tracks[_index]).copyWith(duration: _duration));
+      mediaItem.add(
+        _toMediaItem(_tracks[_index]).copyWith(duration: _duration),
+      );
       _markDirty(force: true);
     }
   }
