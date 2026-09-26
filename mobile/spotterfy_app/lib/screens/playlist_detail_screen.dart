@@ -261,7 +261,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final player = context.read<PlayerProvider>();
     player.setQueue(_playlist.tracks, startIndex: index);
     player.play(track, queue: _playlist.tracks);
-    Navigator.push(context, swipeRoute(const PlayerScreen()));
+    // Same rise/fall animation as opening from the mini player.
+    Navigator.push(context, nowPlayingRoute(const PlayerScreen()));
   }
 
   void _sharePlaylist(BuildContext context) async {

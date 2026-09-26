@@ -36,7 +36,9 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
           setState(() => _dragDx = 0);
           return;
         }
-        setState(() => _dragDx = delta.clamp(0, MediaQuery.of(context).size.width));
+        setState(
+          () => _dragDx = delta.clamp(0, MediaQuery.of(context).size.width),
+        );
       },
       onHorizontalDragEnd: (details) {
         if (!_dragging) return;
@@ -53,7 +55,11 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
           _startDx = 0;
         });
       },
-      onHorizontalDragCancel: () => setState(() { _dragging = false; _dragDx = 0; _startDx = 0; }),
+      onHorizontalDragCancel: () => setState(() {
+        _dragging = false;
+        _dragDx = 0;
+        _startDx = 0;
+      }),
       child: Stack(
         children: [
           widget.child,
@@ -63,12 +69,28 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
                 child: Container(
                   alignment: Alignment.centerLeft,
                   padding: EdgeInsets.only(left: (_dragDx / 5).clamp(0, 24)),
-                  color: Colors.black.withValues(alpha: (_dragDx / 350).clamp(0, 0.18)),
+                  color: Colors.black.withValues(
+                    alpha: (_dragDx / 350).clamp(0, 0.18),
+                  ),
                   child: Container(
                     width: 36,
                     height: 36,
-                    decoration: BoxDecoration(color: const Color(0xFF10b981), shape: BoxShape.circle, boxShadow: [BoxShadow(color: const Color(0xFF10b981).withValues(alpha: 0.4), blurRadius: 12)]),
-                    child: Icon(Icons.arrow_back, color: Colors.white, size: 20, grade: 200),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10b981),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF10b981).withValues(alpha: 0.4),
+                          blurRadius: 12,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.arrow_back,
+                      color: Colors.white,
+                      size: 20,
+                      grade: 200,
+                    ),
                   ),
                 ),
               ),
@@ -82,19 +104,62 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
 class SlidePageRoute extends PageRouteBuilder {
   final Widget child;
   SlidePageRoute({required this.child})
-      : super(
-          transitionDuration: const Duration(milliseconds: 350),
-          reverseTransitionDuration: const Duration(milliseconds: 300),
-          pageBuilder: (_, _, _) => child,
-          transitionsBuilder: (_, anim, _, c) {
-            final tween = Tween(begin: const Offset(0.12, 0), end: Offset.zero).chain(CurveTween(curve: Curves.easeOutCubic));
-            final fade = Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOut));
-            return SlideTransition(
-              position: anim.drive(tween),
-              child: FadeTransition(opacity: anim.drive(fade), child: c),
-            );
-          },
-        );
+    : super(
+        transitionDuration: const Duration(milliseconds: 350),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (_, _, _) => child,
+        transitionsBuilder: (_, anim, _, c) {
+          final tween = Tween(
+            begin: const Offset(0.12, 0),
+            end: Offset.zero,
+          ).chain(CurveTween(curve: Curves.easeOutCubic));
+          final fade = Tween(
+            begin: 0.0,
+            end: 1.0,
+          ).chain(CurveTween(curve: Curves.easeOut));
+          return SlideTransition(
+            position: anim.drive(tween),
+            child: FadeTransition(opacity: anim.drive(fade), child: c),
+          );
+        },
+      );
 }
 
 Route<T> swipeRoute<T>(Widget page) => SlidePageRoute(child: page) as Route<T>;
+
+/// Vertical "sheet" route used to open the now-playing screen.
+///
+/// The open transition slides + fades the page **up** from the bottom edge,
+/// which reads as the page growing out of the mini player, and the close
+/// transition plays the exact reverse (slide + fade back down) so the page
+/// appears to collapse back into the mini player.
+class VerticalSheetRoute extends PageRouteBuilder {
+  final Widget child;
+
+  VerticalSheetRoute({required this.child})
+    : super(
+        transitionDuration: const Duration(milliseconds: 380),
+        reverseTransitionDuration: const Duration(milliseconds: 320),
+        pageBuilder: (_, _, _) => child,
+        transitionsBuilder: (_, anim, _, child) {
+          // begin at the bottom edge and rise to rest.
+          final position = Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic));
+          final fade = Tween<double>(
+            begin: 0.0,
+            end: 1.0,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut));
+          return SlideTransition(
+            position: position,
+            child: FadeTransition(opacity: fade, child: child),
+          );
+        },
+      );
+}
+
+/// Opens the now-playing screen with [VerticalSheetRoute] so it rises out of
+/// the mini player (and drops back into it when dismissed).
+Route<T> nowPlayingRoute<T>(Widget page) =>
+    VerticalSheetRoute(child: page) as Route<T>;
