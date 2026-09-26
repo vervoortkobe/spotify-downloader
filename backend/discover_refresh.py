@@ -11,9 +11,22 @@ DISCOVER_URLS = [
     "https://open.spotify.com/playlist/37i9dQZF1EQfqRaYoWBGEg",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO37wTNS",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0PRpBu",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4vD8f6",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO20Wzv2",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evNZY5NHq",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0lhGr6",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2O09Hg",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3tjkZi",
+    "https://open.spotify.com/playlist/37i9dQZF1DWZUozJiHy44Y",
+    "https://open.spotify.com/playlist/37i9dQZF1DX3D78h6FPBPC",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1SVXaM",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1VAWw8",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0ENBD2",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3154GY",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3GSvAY",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0rer1m",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3262Tm",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4gTUOY",
 ]
 
 def _init_firestore():

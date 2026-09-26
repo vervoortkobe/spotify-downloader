@@ -42,6 +42,16 @@ class _SearchScreenState extends State<SearchScreen> {
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0lhGr6?si=c2960a61f7134cb2",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2O09Hg?si=7056b2b4c9a44633",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3tjkZi?si=6bdf9e673dfb4f3c",
+    "https://open.spotify.com/playlist/37i9dQZF1DWZUozJiHy44Y?si=68e8f43b4b3f4fb3",
+    "https://open.spotify.com/playlist/37i9dQZF1DX3D78h6FPBPC?si=668fb476846d4ff9",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1SVXaM?si=61d06e90cfef4173",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1VAWw8?si=3489cec8913640f4",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0ENBD2?si=b8835c3da8784dfe",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3154GY?si=81ca769127ae4000",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3GSvAY?si=b22ab600db044f58",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0rer1m?si=0f83f0c724374979",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3262Tm?si=c76cd2e9119e499d",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4gTUOY?si=324e042bf1804ea5",
   ];
   static const _radioStations = [
     {"logo": "https://play-lh.googleusercontent.com/0IsJvPieGJZ6gvvUMWTuU-46gIPJATFX6mirRyS8YxRMFd5bR6COv7pD853HtN_bWBfOaBsn6nkenmQ_qUlViw", "name": "Radio 2 Antwerpen", "streaming_url": "https://icecast.vrtcdn.be/ra2ant-high.mp3?dist=belgiefm"},
@@ -65,6 +75,16 @@ class _SearchScreenState extends State<SearchScreen> {
     'This Is Artist Mix 3',
     'This Is Artist Mix 4',
     'This Is Artist Mix 5',
+    'This Is Artist Mix 6',
+    'This Is Artist Mix 7',
+    'This Is Artist Mix 8',
+    'This Is Artist Mix 9',
+    'This Is Artist Mix 10',
+    'This Is Artist Mix 11',
+    'This Is Artist Mix 12',
+    'This Is Artist Mix 13',
+    'This Is Artist Mix 14',
+    'This Is Artist Mix 15',
   ];
 
   final PlaylistService _discoverService = PlaylistService();

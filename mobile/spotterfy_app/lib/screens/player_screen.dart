@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
-import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key});
@@ -30,32 +30,43 @@ class PlayerScreen extends StatelessWidget {
 
     final isRadio = player.isRadio;
     final pos = player.position;
-    // Radio: duration is live window (max listened), not track duration (-1)
     final dur = isRadio
         ? (player.radioMaxListened.inMilliseconds > 0 ? player.radioMaxListened : const Duration(seconds: 1))
         : player.duration;
     final sliderVal = dur.inMilliseconds > 0
         ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
         : 0.0;
+    final queue = player.queue;
+    final currentIndex = player.currentIndex.clamp(0, queue.isEmpty ? 0 : queue.length - 1);
 
-    return SwipeBackWrapper(
-      child: Scaffold(
-        backgroundColor: SpotterfyTheme.background,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: IconButton(
-            icon: Icon(Icons.keyboard_arrow_down, color: SpotterfyTheme.text),
-            onPressed: () => Navigator.pop(context),
-          ),
-          actions: [
-            if (!isRadio)
-              IconButton(
-                icon: Icon(Icons.queue_music, color: SpotterfyTheme.text, size: 24),
-                onPressed: () => _showQueueDialog(context, player, track),
-              ),
-          ],
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          if (!isRadio)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: SpotterfyTheme.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: SpotterfyTheme.primary.withValues(alpha: 0.4), blurRadius: 10)],
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.queue_music_rounded, color: Colors.black, size: 20),
+                  onPressed: () => _showQueueDialog(context, player, track),
+                ),
+              ),
+            ),
+        ],
+      ),
       body: GestureDetector(
         onVerticalDragEnd: (d) {
           if ((d.primaryVelocity ?? 0) > 400) {
@@ -66,8 +77,6 @@ class PlayerScreen extends StatelessWidget {
         onHorizontalDragEnd: (d) {
           if (isRadio) return;
           final v = d.primaryVelocity ?? 0;
-          // Swipe LEFT (negative velocity, finger moves left) -> next track (show next)
-          // Swipe RIGHT (positive velocity, finger moves right) -> previous track
           if (v < -500) { HapticFeedback.lightImpact(); player.next(); }
           else if (v > 500) { HapticFeedback.lightImpact(); player.previous(); }
         },
@@ -76,132 +85,119 @@ class PlayerScreen extends StatelessWidget {
           player.togglePlayPause();
         },
         child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          children: [
-            Center(child: Container(width: 36, height: 4, margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: SpotterfyTheme.text.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(2)))),
-            const Spacer(flex: 1),
-            Hero(
-              tag: 'mini-cover-${track.id}',
-              child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                width: 280,
-                height: 280,
-                color: SpotterfyTheme.surface,
-                child: _PlayerCover(track: track),
-              ),
-            )),
-            const Spacer(flex: 1),
-            Text(
-              track.title,
-              style: TextStyle(
-                color: SpotterfyTheme.text,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              track.artists,
-              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 16),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            _SeekBar(
-              progress: sliderVal.clamp(0.0, 1.0),
-              buffered: dur.inMilliseconds > 0
-                  ? (player.buffered.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
-                  : 0.0,
-              onSeek: (v) {
-                // Radio: can only seek back within listened window, not forward beyond live
-                final raw = Duration(milliseconds: (v * dur.inMilliseconds).round());
-                final newPos = isRadio ? Duration(milliseconds: raw.inMilliseconds.clamp(0, player.radioMaxListened.inMilliseconds)) : raw;
-                player.seekTo(newPos);
-              },
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _fmtDuration(pos),
-                    style: TextStyle(
-                      color: SpotterfyTheme.muted,
-                      fontSize: 12,
-                    ),
-                  ),
-                  Text(
-                    _fmtDuration(dur),
-                    style: TextStyle(
-                      color: SpotterfyTheme.muted,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (!isRadio)
-                  _CircleControlButton(icon: Icons.skip_previous, onTap: () => player.previous())
-                else
-                  const SizedBox(width: 48),
-                const SizedBox(width: 28),
-                GestureDetector(
-                  onTap: () => player.togglePlayPause(),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            children: [
+              Center(child: Container(width: 36, height: 4, margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(2)))),
+              const Spacer(flex: 1),
+              if (!isRadio && queue.length > 1)
+                _CoverCarousel(
+                  key: ValueKey('carousel-${queue.length}-${queue.first.id}-${queue.last.id}'),
+                  tracks: queue,
+                  currentIndex: currentIndex,
+                  onPageSelected: (i) {
+                    if (i != player.currentIndex) player.playFromQueue(i);
+                  },
+                )
+              else
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
                   child: Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: SpotterfyTheme.primary,
-                      shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: SpotterfyTheme.primary.withValues(alpha: 0.3), blurRadius: 12)],
-                    ),
-                    child: Icon(
-                      player.isPlaying ? Icons.pause : Icons.play_arrow,
-                      color: Colors.black,
-                      size: 32,
-                    ),
+                    width: 280,
+                    height: 280,
+                    color: SpotterfyTheme.surface,
+                    child: _PlayerCover(track: track),
                   ),
                 ),
-                const SizedBox(width: 28),
-                if (!isRadio)
-                  _CircleControlButton(icon: Icons.skip_next, onTap: () => player.next())
-                else
-                  const SizedBox(width: 48),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (!isRadio)
+              const Spacer(flex: 1),
               Text(
-                '${player.queue.indexOf(track) + 1} / ${player.queue.length} in queue',
-                style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12, fontWeight: FontWeight.w500),
-              )
-            else
+                track.title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                track.artists,
+                style: TextStyle(color: SpotterfyTheme.muted, fontSize: 16),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              _SeekBar(
+                progress: sliderVal.clamp(0.0, 1.0),
+                buffered: dur.inMilliseconds > 0
+                    ? (player.buffered.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
+                    : 0.0,
+                onSeek: (v) {
+                  final raw = Duration(milliseconds: (v * dur.inMilliseconds).round());
+                  final newPos = isRadio ? Duration(milliseconds: raw.inMilliseconds.clamp(0, player.radioMaxListened.inMilliseconds)) : raw;
+                  player.seekTo(newPos);
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(_fmtDuration(pos), style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
+                    Text(_fmtDuration(dur), style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
-                  const SizedBox(width: 6),
-                  Text('LIVE', style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-                  const SizedBox(width: 8),
-                  Text('Radio • can seek back ${player.radioMaxListened.inSeconds ~/ 60} min', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11)),
+                  if (!isRadio) _CircleControlButton(icon: Icons.skip_previous_rounded, onTap: () => player.previous())
+                  else const SizedBox(width: 48),
+                  const SizedBox(width: 28),
+                  GestureDetector(
+                    onTap: () => player.togglePlayPause(),
+                    child: Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: SpotterfyTheme.primary,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: SpotterfyTheme.primary.withValues(alpha: 0.3), blurRadius: 12)],
+                      ),
+                      child: Icon(
+                        player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        color: Colors.black,
+                        size: 32,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 28),
+                  if (!isRadio) _CircleControlButton(icon: Icons.skip_next_rounded, onTap: () => player.next())
+                  else const SizedBox(width: 48),
                 ],
               ),
-            const Spacer(flex: 2),
-          ],
+              const SizedBox(height: 8),
+              if (!isRadio)
+                Text('${currentIndex + 1} / ${player.queue.length} in queue', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12, fontWeight: FontWeight.w500))
+              else
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
+                    const SizedBox(width: 6),
+                    const Text('LIVE', style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                    const SizedBox(width: 8),
+                    Text('Radio • can seek back ${player.radioMaxListened.inSeconds ~/ 60} min', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11)),
+                  ],
+                ),
+              const Spacer(flex: 2),
+            ],
+          ),
         ),
-      ),
-      ),
       ),
     );
   }
@@ -269,10 +265,10 @@ class PlayerScreen extends StatelessWidget {
                                 color: SpotterfyTheme.primary,
                                 shape: BoxShape.circle,
                               ),
-                              child: Icon(Icons.music_note, color: Colors.black, size: 14),
+                              child: const Icon(Icons.music_note_rounded, color: Colors.black, size: 14),
                             )
                           else
-                            const Icon(Icons.play_arrow, color: Colors.white, size: 16),
+                            const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -291,7 +287,7 @@ class PlayerScreen extends StatelessWidget {
                           ),
                           if (!isCurrent)
                             IconButton(
-                              icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                              icon: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
                               onPressed: () {
                                 HapticFeedback.lightImpact();
                                 player.removeFromQueue(index);
@@ -317,7 +313,77 @@ class PlayerScreen extends StatelessWidget {
   }
 }
 
-/// Smaller translucent-white circle sibling of the big green play button.
+class _CoverCarousel extends StatefulWidget {
+  final List<TrackModel> tracks;
+  final int currentIndex;
+  final ValueChanged<int> onPageSelected;
+  const _CoverCarousel({super.key, required this.tracks, required this.currentIndex, required this.onPageSelected});
+
+  @override
+  State<_CoverCarousel> createState() => _CoverCarouselState();
+}
+
+class _CoverCarouselState extends State<_CoverCarousel> with SingleTickerProviderStateMixin {
+  late PageController _ctrl;
+  late int _current;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = widget.currentIndex.clamp(0, widget.tracks.length - 1);
+    _ctrl = PageController(viewportFraction: 0.76, initialPage: _current);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CoverCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newIdx = widget.currentIndex.clamp(0, widget.tracks.length - 1);
+    if (newIdx != _current && _ctrl.hasClients) {
+      _current = newIdx;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_ctrl.hasClients) return;
+        _ctrl.animateToPage(_current, duration: const Duration(milliseconds: 350), curve: Curves.easeInOutCubic);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 280,
+      child: PageView.builder(
+        controller: _ctrl,
+        itemCount: widget.tracks.length,
+        onPageChanged: (i) {
+          if (i == _current) return;
+          _current = i;
+          HapticFeedback.selectionClick();
+          widget.onPageSelected(i);
+        },
+        itemBuilder: (_, i) {
+          final t = widget.tracks[i];
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                color: SpotterfyTheme.surface,
+                child: _PlayerCover(track: t),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _CircleControlButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -341,7 +407,6 @@ class _CircleControlButton extends StatelessWidget {
   }
 }
 
-/// Seek bar with a gray buffered (fetched) layer under the green progress.
 class _SeekBar extends StatelessWidget {
   final double progress;
   final double buffered;
@@ -355,6 +420,8 @@ class _SeekBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = progress.clamp(0.0, 1.0);
+    final b = buffered.clamp(0.0, 1.0);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragDown: (d) {
@@ -367,30 +434,43 @@ class _SeekBar extends StatelessWidget {
       },
       child: SizedBox(
         height: 28,
-        child: Center(
-          child: SizedBox(
-            height: 4,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LayoutBuilder(
-                builder: (_, constraints) => Stack(children: [
-                  Container(color: SpotterfyTheme.card),
-                  FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: buffered.clamp(0.0, 1.0),
-                    child: Container(color: Colors.white.withValues(alpha: 0.35)),
+        child: LayoutBuilder(
+          builder: (_, constraints) {
+            final w = constraints.maxWidth;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 12,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: SizedBox(
+                      height: 4,
+                      child: Stack(children: [
+                        Container(color: SpotterfyTheme.card),
+                        FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: b,
+                          child: Container(color: Colors.white.withValues(alpha: 0.35)),
+                        ),
+                        FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: p,
+                          child: Container(color: SpotterfyTheme.primary),
+                        ),
+                      ]),
+                    ),
                   ),
-                  FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: progress.clamp(0.0, 1.0),
-                    child: Container(color: SpotterfyTheme.primary),
-                  ),
+                ),
+                if (p > 0.005)
                   Positioned(
-                    left: (constraints.maxWidth * progress.clamp(0.0, 1.0) - 8).clamp(0.0, constraints.maxWidth - 16),
-                    top: -6,
+                    left: (w * p - 7).clamp(0.0, w - 14),
+                    top: 7,
                     child: Container(
-                      width: 16,
-                      height: 16,
+                      width: 14,
+                      height: 14,
                       decoration: BoxDecoration(
                         color: SpotterfyTheme.primary,
                         shape: BoxShape.circle,
@@ -398,10 +478,9 @@ class _SeekBar extends StatelessWidget {
                       ),
                     ),
                   ),
-                ]),
-              ),
-            ),
-          ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -415,7 +494,14 @@ class _PlayerCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (track.cover.isNotEmpty) {
-      return Image.network(track.cover, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64));
+      return CachedNetworkImage(
+        imageUrl: track.cover,
+        fit: BoxFit.cover,
+        memCacheWidth: 560,
+        fadeInDuration: const Duration(milliseconds: 200),
+        placeholder: (_, _) => Container(color: SpotterfyTheme.surface),
+        errorWidget: (_, _, _) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64),
+      );
     }
     final src = track.sourceUrl;
     final isStorage = track.id.startsWith('storage_') || src.startsWith('/') || src.startsWith('file://');

@@ -121,58 +121,72 @@ class TrackTile extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: Text(
-          track.artists,
-          style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (progress > 0 && progress < 100)
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  value: progress / 100,
-                  strokeWidth: 2,
-                  color: Color(0xFF10b981),
-                ),
-              ),
-            if (progress >= 100) Icon(Icons.check_circle, color: Color(0xFF10b981), size: 20),
-            if (onDownload != null && progress == 0)
-              IconButton(icon: Icon(Icons.download, color: Color(0xFFa1a1aa), size: 20), onPressed: onDownload, padding: EdgeInsets.zero, constraints: BoxConstraints()),
-            // Queue button
-            IconButton(
-              icon: Icon(Icons.queue_music, color: isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa), size: 20),
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                final player = context.read<PlayerProvider>();
-                final newQueue = [...player.queue, track];
-                player.setQueue(newQueue, startIndex: player.currentIndex);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Added "${track.title}" to queue'),
-                    duration: Duration(milliseconds: 900),
-                    backgroundColor: Color(0xFF0f1d17),
-                  ),
-                );
-              },
-              padding: EdgeInsets.zero,
-              constraints: BoxConstraints(),
-            ),
-            if (onPlay != null)
-              IconButton(
-                icon: Icon(active ? Icons.pause_circle_filled : Icons.play_circle_filled, color: active ? Color(0xFF10b981) : isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa), size: 28),
-                onPressed: onPlay,
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints(),
-              ),
-          ],
-        ),
-      ),
-      ),
-    );
-  }
-}
+subtitle: Text(
+           track.artists,
+           style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
+           maxLines: 1,
+           overflow: TextOverflow.ellipsis,
+         ),
+         trailing: Row(
+           mainAxisSize: MainAxisSize.min,
+           children: [
+             if (progress > 0 && progress < 100)
+               SizedBox(
+                 width: 24,
+                 height: 24,
+                 child: CircularProgressIndicator(
+                   value: progress / 100,
+                   strokeWidth: 2,
+                   color: Color(0xFF10b981),
+                 ),
+               ),
+             if (progress >= 100) Icon(Icons.check_circle, color: Color(0xFF10b981), size: 20),
+             if (track.durationMs > 0)
+               Padding(
+                 padding: const EdgeInsets.only(right: 8),
+                 child: Text(
+                   _fmtDuration(Duration(milliseconds: track.durationMs)),
+                   style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 11, fontWeight: FontWeight.w500),
+                 ),
+               ),
+             if (onDownload != null && progress == 0)
+               IconButton(icon: Icon(Icons.download, color: Color(0xFFa1a1aa), size: 20), onPressed: onDownload, padding: EdgeInsets.zero, constraints: BoxConstraints()),
+             // Queue button
+             IconButton(
+               icon: Icon(Icons.queue_music, color: isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa), size: 20),
+               onPressed: () {
+                 HapticFeedback.lightImpact();
+                 final player = context.read<PlayerProvider>();
+                 final newQueue = [...player.queue, track];
+                 player.setQueue(newQueue, startIndex: player.currentIndex);
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   SnackBar(
+                     content: Text('Added "${track.title}" to queue'),
+                     duration: Duration(milliseconds: 900),
+                     backgroundColor: Color(0xFF0f1d17),
+                   ),
+                 );
+               },
+               padding: EdgeInsets.zero,
+               constraints: BoxConstraints(),
+             ),
+             if (onPlay != null)
+               IconButton(
+                 icon: Icon(active ? Icons.pause_circle_filled : Icons.play_circle_filled, color: active ? Color(0xFF10b981) : isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa), size: 28),
+                 onPressed: onPlay,
+                 padding: EdgeInsets.zero,
+                 constraints: BoxConstraints(),
+               ),
+           ],
+         ),
+       ),
+       ),
+     );
+   }
+
+   String _fmtDuration(Duration d) {
+     final m = d.inMinutes.remainder(60);
+     final s = d.inSeconds.remainder(60);
+     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+   }
+ }

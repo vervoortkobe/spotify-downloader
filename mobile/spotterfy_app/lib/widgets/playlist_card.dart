@@ -71,6 +71,15 @@ class PlaylistCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (playlist.tracks.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      _totalDuration(playlist),
+                      style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11, fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -107,5 +116,16 @@ class PlaylistCard extends StatelessWidget {
       color: SpotterfyTheme.surface,
       child: Icon(Icons.library_music, color: SpotterfyTheme.muted, size: 28),
     );
+  }
+
+  String _totalDuration(PlaylistModel playlist) {
+    final total = playlist.tracks.fold<int>(0, (sum, t) => sum + t.durationMs);
+    final hours = total ~/ 3600000;
+    final minutes = (total % 3600000) ~/ 60000;
+    final seconds = (total % 60000) ~/ 1000;
+    if (hours > 0) {
+      return '${hours}h ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 }
