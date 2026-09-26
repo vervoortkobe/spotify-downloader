@@ -258,4 +258,13 @@ class PlaylistProvider extends ChangeNotifier {
       isCustom: true,
     );
   }
+
+  Future<List<PlaylistModel>> searchOtherUsersPlaylists(String query, {int limit = 20}) async {
+    try {
+      return await _playlistService.searchOtherUsersPlaylists(query, limit: limit);
+    } catch (e) {
+      debugPrint('searchOtherUsersPlaylists failed: $e');
+      return [];
+    }
+  }
 }

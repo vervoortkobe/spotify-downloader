@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
-import 'package:spotterfy_app/screens/approval_screen.dart';
 import 'package:spotterfy_app/screens/onboarding_screen.dart';
 import 'package:spotterfy_app/screens/admin_screen.dart';
 import 'package:spotterfy_app/screens/main_screen.dart';
@@ -37,8 +36,6 @@ class _SplashScreenState extends State<SplashScreen> {
       Widget target;
       if (!auth.isLoggedIn) {
         target = const LoginScreen();
-      } else if (!auth.isApproved) {
-        target = const ApprovalScreen();
       } else if (auth.needsOnboarding) {
         target = const OnboardingScreen();
       } else if (auth.isAdmin) {

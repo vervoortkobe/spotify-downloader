@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import os
 import re
 import threading
@@ -261,12 +263,120 @@ def get_yt_info(track_title, artists):
         return "", ""
 
 
+_SPOTIFY_SHORT_RE = re.compile(r'https?://open\.spotify\.com/(?:intl-[a-zA-Z]+/)?s/([a-zA-Z0-9]+)')
+_SPOTIFY_CANONICAL_RE = re.compile(r'open\.spotify\.com/(?:intl-[a-zA-Z]+/)?(track|playlist|album)/([a-zA-Z0-9]+)')
+# code -> canonical "type/id", so repeated imports of the same shared link
+# don't re-hit the network.
+_SHORT_LINK_CACHE: dict[str, tuple[str, str]] = {}
+_SHORT_LINK_LOCK = threading.Lock()
+
+
+def _extract_spotify_canonical(text):
+    m = _SPOTIFY_CANONICAL_RE.search(text or "")
+    if not m:
+        return None
+    return m.group(1), m.group(2)
+
+
+def _canonical_from_short_page(html):
+    """Pull the real target out of a /s/<code> landing page.
+
+    The page doesn't redirect; it ships a base64 `urlSchemeConfig` blob whose
+    JSON holds the canonical `redirectUrl` (and a `spotify://` urlScheme).
+    """
+    m = re.search(
+        r'<script[^>]+id="urlSchemeConfig"[^>]*>([A-Za-z0-9+/=]+)</script>',
+        html or "",
+    )
+    if not m:
+        return None
+    try:
+        padded = m.group(1) + "=" * (-len(m.group(1)) % 4)
+        config = json.loads(base64.b64decode(padded).decode("utf-8", "replace"))
+    except Exception:
+        return None
+    for key in ("redirectUrl", "urlScheme"):
+        val = config.get(key)
+        if isinstance(val, str) and val:
+            found = _extract_spotify_canonical(val)
+            if found:
+                return found
+    return None
+
+
+def resolve_spotify_short_link(url):
+    """Expand an open.spotify.com/s/<code> share link to its real target.
+
+    Spotify's Android share sheet hands out short links like
+    https://open.spotify.com/s/zuDumlq instead of a /playlist/<id> URL. The
+    landing page is JS-driven (no HTTP redirect), so we decode the embedded
+    urlSchemeConfig blob, then fall back to sniffing redirects/body.
+    Returns (url_type, item_id) or None when the link can't be resolved.
+    """
+    raw = (url or "").strip()
+    m = _SPOTIFY_SHORT_RE.search(raw)
+    if not m:
+        return None
+    code = m.group(1)
+
+    with _SHORT_LINK_LOCK:
+        cached = _SHORT_LINK_CACHE.get(code)
+    if cached:
+        return cached
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    resolved = None
+    try:
+        resp = requests.get(
+            raw,
+            headers=headers,
+            timeout=15,
+            allow_redirects=True,
+            proxies=_get_proxy_for_requests(),
+        )
+        # 1) the JS config blob is the reliable source for /s/ links
+        resolved = _canonical_from_short_page(resp.text)
+        # 2) final URL / redirect chain
+        if not resolved:
+            resolved = _extract_spotify_canonical(resp.url)
+        if not resolved:
+            for hop in list(resp.history) + [resp]:
+                resolved = _extract_spotify_canonical(getattr(hop, "url", "") or "")
+                if resolved:
+                    break
+        # 3) last resort: any entity URL in the body
+        if not resolved:
+            resolved = _extract_spotify_canonical(resp.text)
+    except Exception as e:
+        print(f"[Spotify] short-link resolve failed for {raw}: {e}", flush=True)
+
+    if resolved:
+        print(f"[Spotify] short link {raw} -> {resolved[0]}/{resolved[1]}", flush=True)
+        with _SHORT_LINK_LOCK:
+            _SHORT_LINK_CACHE[code] = resolved
+    else:
+        print(f"[Spotify] short link {raw} could not be resolved", flush=True)
+    return resolved
+
+
 def detect_url_service(url):
     url = url.strip()
 
     m = re.search(r'open\.spotify\.com/(track|playlist)/([a-zA-Z0-9]+)', url)
     if m:
         return 'spotify', m.group(1), m.group(2)
+
+    # Shared short link (Spotify Android share sheet) -> resolve to real target.
+    resolved = resolve_spotify_short_link(url)
+    if resolved:
+        return 'spotify', resolved[0], resolved[1]
 
     m = re.search(r'(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})', url)
     if m:

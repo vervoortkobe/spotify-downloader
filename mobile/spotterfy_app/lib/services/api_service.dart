@@ -110,16 +110,21 @@ class ApiService {
       final tracks = (result['tracks'] as List<dynamic>)
           .map((t) => TrackModel.fromJson(t as Map<String, dynamic>))
           .toList();
+      // Prefer the canonical entity URL the backend resolved (matters for
+      // Spotify short share links like open.spotify.com/s/<code>), so the same
+      // playlist always gets the same id regardless of how it was shared.
+      final canonical = (result['canonicalUrl'] as String? ?? '').split('?').first;
+      final identityUrl = canonical.isNotEmpty ? canonical : cleanUrl;
       debugPrint('scrapePlaylist success tracks=${tracks.length} playlistName=${result['playlistName']}');
       return PlaylistModel(
-        id: cleanUrl.hashCode.toString(),
+        id: identityUrl.hashCode.toString(),
         // Raw title for display — stripping happens only on save (toFirestore).
         name: (result['playlistName'] as String? ?? 'Playlist').trim(),
         owner: result['playlistOwner'] as String? ?? '',
         tracks: tracks,
         creatorUid: '',
         source: service == 'auto' ? 'spotify' : service,
-        spotifyUrl: cleanUrl,
+        spotifyUrl: identityUrl,
       );
     } catch (e) {
       debugPrint('Scrape failed: $e');

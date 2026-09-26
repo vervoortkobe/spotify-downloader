@@ -7,11 +7,27 @@ import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/playlist_card.dart';
+import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
 import 'playlist_detail_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
+
+/// One row in the storage root list: a folder treated as a playlist, or the
+/// loose tracks sitting directly in a scan root.
+class _StorageEntry {
+  final String name;
+  final List<File> songs;
+  /// Absolute folder path, or null for loose tracks (not drillable).
+  final String? folderPath;
+
+  const _StorageEntry({
+    required this.name,
+    required this.songs,
+    required this.folderPath,
+  });
+}
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -195,7 +211,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                 onRefresh: () async => (context as Element).markNeedsBuild(),
                 child: ListView(physics: const AlwaysScrollableScrollPhysics(), children: [
                   const SizedBox(height: 80),
-                  Center(child: Text(_query.isNotEmpty ? 'No matches' : 'No local music found\nTip: check Music/Download subfolders', textAlign: TextAlign.center, style: TextStyle(color: SpotterfyTheme.muted))),
+                  Center(child: Text(_query.isNotEmpty ? 'No matches' : 'No local music found\nTip: check subfolders inside /Music', textAlign: TextAlign.center, style: TextStyle(color: SpotterfyTheme.muted))),
                 ]),
               );
             }
@@ -205,15 +221,21 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               final parent = File(f.path).parent.path;
               groups.putIfAbsent(parent, () => []).add(f);
             }
-            // Full folder tree: every ancestor dir down to the storage base, so
+            // Full folder tree: every ancestor dir down to the scan roots, so
             // intermediate folders without direct songs still show up and the
             // app mirrors the on-device hierarchy (Music > Artist > Album...).
             String parentOf(String p) => File(p).parent.path;
-            const scanBase = '/storage/emulated/0';
+            const storageBase = '/storage/emulated/0';
+            final scanRoots = <String>{
+              kStorageRoot,
+              ...kExtraScanRoots,
+            };
             final Set<String> allDirs = {};
             for (final f in files) {
               var dir = File(f.path).parent.path;
-              while (dir.startsWith('$scanBase/') && dir.length > scanBase.length + 1) {
+              // Walk up to (but never including) a scan root, so /Music itself
+              // is never listed - the explorer already starts inside it.
+              while (dir.startsWith('$storageBase/') && !scanRoots.contains(dir)) {
                 allDirs.add(dir);
                 final parent = parentOf(dir);
                 if (parent == dir) break;
@@ -225,18 +247,63 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
               return list;
             }
-            int recursiveCount(String dir) =>
-                files.where((f) => f.path == dir || f.path.startsWith('$dir/')).length;
-            // Root: top-level folders only (no known parent) - drill down from there
-            final topDirs = allDirs.where((d) => !allDirs.contains(parentOf(d))).toList()
-              ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+            List<File> songsIn(String dir) =>
+                files.where((f) => f.path.startsWith('$dir/')).toList()
+                  ..sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
+
+            // Root listing shows EVERY folder that contains songs, at any depth,
+            // so playlists nested in subfolders are no longer hidden. Shallowest
+            // first so the on-device hierarchy still reads naturally.
+            final playlistDirs = allDirs.toList()
+              ..sort((a, b) {
+                final da = a.split('/').length, db = b.split('/').length;
+                if (da != db) return da.compareTo(db);
+                return a.toLowerCase().compareTo(b.toLowerCase());
+              });
+
+            // Loose tracks sitting directly in a scan root (e.g. /Music/foo.mp3)
+            // have no folder of their own. Surface them as one entry per root so
+            // those songs aren't invisible now that we start inside /Music.
+            final looseByRoot = <String, List<File>>{};
+            for (final f in files) {
+              final parent = File(f.path).parent.path;
+              if (scanRoots.contains(parent)) {
+                looseByRoot.putIfAbsent(parent, () => []).add(f);
+              }
+            }
+            for (final e in looseByRoot.entries) {
+              e.value.sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
+            }
+
+            // Unified root entries: real folders (drillable) + loose-track roots.
+            final entries = <_StorageEntry>[
+              for (final d in playlistDirs)
+                _StorageEntry(
+                  name: d.split('/').last,
+                  songs: songsIn(d),
+                  folderPath: d,
+                ),
+              for (final e in looseByRoot.entries)
+                _StorageEntry(
+                  name: e.key.split('/').last,
+                  songs: e.value,
+                  folderPath: null,
+                ),
+            ];
+            entries.sort((a, b) {
+              // Loose-root entries always last.
+              final an = a.folderPath == null, bn = b.folderPath == null;
+              if (an != bn) return an ? 1 : -1;
+              return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+            });
+
             // Filter by query (folder name or any file beneath it)
-            List<String> filteredFolders = topDirs;
+            var filteredEntries = entries;
             if (_query.isNotEmpty) {
               final q = _query.toLowerCase();
-              filteredFolders = topDirs.where((p) {
-                if (p.split('/').last.toLowerCase().contains(q)) return true;
-                return files.any((f) => (f.path == p || f.path.startsWith('$p/')) && f.path.toLowerCase().contains(q));
+              filteredEntries = entries.where((e) {
+                if (e.name.toLowerCase().contains(q)) return true;
+                return e.songs.any((f) => f.path.toLowerCase().contains(q));
               }).toList();
             }
             // Inline folder detail with subfolder drill-down (keeps MiniPlayer visible, not a new route)
@@ -292,11 +359,19 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                             if (i < subfolders.length) {
                               final subPath = subfolders[i];
                               final subName = subPath.split('/').last;
-                              final subCount = files.where((f) => f.path == subPath || f.path.startsWith('$subPath/')).length;
+                              final subSongs = songsIn(subPath);
+                              final subCount = subSongs.length;
                               final cur = context.watch<PlayerProvider>().currentTrack;
                               final isActive = cur != null && cur.id.startsWith('storage_') && cur.sourceUrl.startsWith('$subPath/');
+                              // Subfolders are playlists too: cover = first song's art.
+                              final subCover = subSongs.isNotEmpty ? subSongs.first.path : null;
                               return ListTile(
-                                leading: Container(width: 48, height: 48, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.folder, color: isActive ? SpotterfyTheme.primary : SpotterfyTheme.muted)),
+                                leading: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: subCover != null
+                                      ? StorageCover(path: subCover, size: 48, iconSize: 24, radius: 8)
+                                      : Container(width: 48, height: 48, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.folder, color: isActive ? SpotterfyTheme.primary : SpotterfyTheme.muted)),
+                                ),
                                 title: Text(subName, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
                                 subtitle: Text('$subCount ${subCount == 1 ? 'song' : 'songs'}', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11), maxLines: 1),
                                 trailing: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
@@ -322,39 +397,68 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               ]);
               }
             }
-            if (filteredFolders.isEmpty) {
+            if (filteredEntries.isEmpty) {
               return Center(child: Text('No matches for "$_query"', style: TextStyle(color: SpotterfyTheme.muted)));
             }
             return ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: filteredFolders.length,
+              itemCount: filteredEntries.length,
               itemBuilder: (_, idx) {
-                final folderPath = filteredFolders[idx];
-                final folderFiles = groups[folderPath] ?? const <File>[];
-                final folderName = folderPath.split('/').last.isEmpty ? 'Music' : folderPath.split('/').last;
-                final count = recursiveCount(folderPath);
-                final folderTracks = _tracksForFiles(folderFiles, folderName);
+                final entry = filteredEntries[idx];
+                final folderName = entry.name;
+                // A folder is a playlist: every song underneath it, recursively.
+                final allSongs = entry.songs;
+                final count = allSongs.length;
+                final folderTracks = _tracksForFiles(allSongs, folderName);
                 final curTrack = context.watch<PlayerProvider>().currentTrack;
-                final isActiveFolder = curTrack != null && curTrack.id.startsWith('storage_') && (curTrack.sourceUrl == folderPath || curTrack.sourceUrl.startsWith('$folderPath/'));
+                final prefix = entry.folderPath == null ? '$folderName/' : '${entry.folderPath}/';
+                final isActiveFolder = curTrack != null && curTrack.id.startsWith('storage_') && curTrack.sourceUrl.startsWith(prefix);
+                // Cover = embedded art of the first song in the playlist.
+                final coverPath = allSongs.isNotEmpty ? allSongs.first.path : null;
+                final subPath = entry.folderPath ?? folderName;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: GestureDetector(
-                    onTap: () => setState(() { _folderStack..clear()..add(folderPath); }),
+                    onTap: entry.folderPath == null
+                        ? null
+                        : () => setState(() { _folderStack..clear()..add(subPath); }),
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(color: isActiveFolder ? SpotterfyTheme.card : SpotterfyTheme.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: isActiveFolder ? SpotterfyTheme.primary.withValues(alpha: 0.6) : SpotterfyTheme.card, width: isActiveFolder ? 1.2 : 0.8)),
                       child: Row(children: [
-                        Container(width: 56, height: 56, decoration: BoxDecoration(color: isActiveFolder ? SpotterfyTheme.primary.withValues(alpha: 0.15) : SpotterfyTheme.card, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.folder, color: isActiveFolder ? SpotterfyTheme.primary : SpotterfyTheme.muted, size: 28)),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: coverPath != null
+                              ? StorageCover(path: coverPath, size: 56, iconSize: 28, radius: 10)
+                              : Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    color: isActiveFolder ? SpotterfyTheme.primary.withValues(alpha: 0.15) : SpotterfyTheme.card,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(Icons.folder, color: isActiveFolder ? SpotterfyTheme.primary : SpotterfyTheme.muted, size: 28),
+                                ),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(folderName, style: TextStyle(color: isActiveFolder ? SpotterfyTheme.primary : SpotterfyTheme.text, fontSize: 14, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
                           const SizedBox(height: 2),
-                          Text('$count ${count == 1 ? 'song' : 'songs'} • ${folderPath.replaceFirst('/storage/emulated/0/', '')}', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(
+                            entry.folderPath == null
+                                ? '$count ${count == 1 ? 'song' : 'songs'} • loose tracks'
+                                : '$count ${count == 1 ? 'song' : 'songs'} • ${entry.folderPath!.replaceFirst('/storage/emulated/0/', '')}',
+                            style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ])),
                         if (folderTracks.isNotEmpty)
                           IconButton(icon: Icon(Icons.play_arrow_rounded, color: isActiveFolder ? SpotterfyTheme.primary : SpotterfyTheme.text, size: 28), onPressed: () async { await context.read<PlayerProvider>().play(folderTracks.first, queue: folderTracks); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing $folderName'))); }),
-                        const SizedBox(width: 4),
-                        Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 20),
+                        if (entry.folderPath != null) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 20),
+                        ],
                       ]),
                     ),
                   ),
@@ -385,39 +489,44 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     return false;
   }
 
+  /// Root the storage explorer browses from. We start *inside* /Music so the
+  /// Music folder itself is never listed as a playlist.
+  static const String kStorageRoot = '/storage/emulated/0/Music';
+
+  /// Extra roots scanned (but not shown as folders themselves) so music in
+  /// Download/Documents still shows up as a top-level playlist entry.
+  static const List<String> kExtraScanRoots = [
+    '/storage/emulated/0/Download',
+    '/storage/emulated/0/Documents',
+  ];
+
   Future<List<FileSystemEntity>> _listMusicFiles() async {
     final exts = ['.mp3', '.m4a', '.opus', '.flac', '.wav', '.ogg', '.aac'];
     bool isAudio(String p) => exts.any((e) => p.toLowerCase().endsWith(e));
-    final candidates = <String>[
-      '/storage/emulated/0/Music',
-      '/storage/emulated/0/Download',
-      '/storage/emulated/0/Documents',
-    ];
+
+    // Primary root first; fall back to the wider set only if Music is absent
+    // (so the explorer is never completely empty on odd devices).
+    var candidates = <String>[kStorageRoot];
+    final musicDir = Directory(kStorageRoot);
+    if (!await musicDir.exists()) {
+      candidates = <String>[...kExtraScanRoots];
+    } else {
+      candidates = <String>[kStorageRoot, ...kExtraScanRoots];
+    }
+
     final all = <FileSystemEntity>[];
     for (final p in candidates) {
       final d = Directory(p);
       if (!await d.exists()) continue;
       try {
-        // Recursive to catch subfolders (user reported folders/songs not found)
+        // Recursive so nested playlist folders are discovered too. No hard cap
+        // here: truncating the walk was what made deep subfolders disappear.
         await for (final e in d.list(recursive: true, followLinks: false)) {
-          if (e is File && isAudio(e.path)) {
-            all.add(e);
-            if (all.length > 800) break; // cap to avoid OOM
-          }
+          if (e is File && isAudio(e.path)) all.add(e);
         }
       } catch (_) {}
     }
-    // Include MediaStore via best-effort fallback: if still empty, try non-recursive old path
-    if (all.isEmpty) {
-      for (final p in candidates.take(2)) {
-        final d = Directory(p);
-        if (!await d.exists()) continue;
-        try {
-          final list = await d.list().toList();
-          all.addAll(list.where((e) => e is File && isAudio(e.path)));
-        } catch (_) {}
-      }
-    }
+
     all.sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
     return all;
   }

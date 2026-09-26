@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +15,7 @@ import 'package:spotterfy_app/screens/playlist_detail_screen.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
+import 'package:spotterfy_app/services/firebase_service.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
 
@@ -52,9 +54,13 @@ class _SearchScreenState extends State<SearchScreen> {
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0rer1m?si=0f83f0c724374979",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3262Tm?si=c76cd2e9119e499d",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4gTUOY?si=324e042bf1804ea5",
+    "https://open.spotify.com/playlist/37i9dQZF1DX6p4TJxzMRDe?si=85f8b85180e040cc",
+    "https://open.spotify.com/playlist/66U9yz0mUOyY1fd40d2iMA?si=d30ba68980f8411d",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0FQNnk?si=XWSHlTf_RkiboFOpz0pXiQ",
+    "https://open.spotify.com/playlist/37i9dQZF1DX8kP0ioXjxIA?si=668fb476846d4ff9",
   ];
   static const _radioStations = [
-    {"logo": "https://play-lh.googleusercontent.com/0IsJvPieGJZ6gvvUMWTuU-46gIPJATFX6mirRyS8YxRMFd5bR6COv7pD853HtN_bWBfOaBsn6nkenmQ_qUlViw", "name": "Radio 2 Antwerpen", "streaming_url": "https://icecast.vrtcdn.be/ra2ant-high.mp3?dist=belgiefm"},
+    {"logo": "https://play-lh.googleusercontent.com/0IsJvPieGJZ6gvvUMWTuU-46gIPJATFX6mirRyS8YxRMFd5bR6COv7pD853HtN_bWBfOaBsn6nkenmQ_qUlViw", "name": "Radio 2", "streaming_url": "https://icecast.vrtcdn.be/ra2ant-high.mp3?dist=belgiefm"},
     {"logo": "https://play-lh.googleusercontent.com/3xmVTnZ39XVejn53qNev0BODoBS-WX6yLdkcI220QCFYLxblGAHjdtlAFzTPhkfkYipQwRZP4WwFvhL_ae2cLQ", "name": "MNM", "streaming_url": "https://icecast.vrtcdn.be/mnm-high.mp3?dist=belgiefm"},
     {"logo": "https://play-lh.googleusercontent.com/pqPqoFgR_HJkb5BFw87xpDn6E174M0eQaouclw1B-JiVwDBs6I1Y_YW4a3UJ-kTWnN7rAjNkMHxwCZc06PaN", "name": "Qmusic", "streaming_url": "https://audio-streaming.qmusic.be/qmusic.mp3?aw_0_req.userConsentV2=&dist=belgiefm&gdpr=1&pname=redirect-service"},
     {"logo": "https://play-lh.googleusercontent.com/r-P2EpdnaY4rOPtGlRn8h-SGiQWhQkzX3fha5ETTT5XTrr7JXd9gk4HXz4WrFxAbfjqYX6W0V2hVEXpso7Oz=s0-br30", "name": "Studio Brussel", "streaming_url": "https://icecast.vrtcdn.be/stubru-high.mp3?dist=belgiefm"},
@@ -85,6 +91,10 @@ class _SearchScreenState extends State<SearchScreen> {
     'This Is Artist Mix 13',
     'This Is Artist Mix 14',
     'This Is Artist Mix 15',
+    'This Is Artist Mix 16',
+    'This Is Artist Mix 17',
+    'This Is Artist Mix 18',
+    'This Is Artist Mix 19',
   ];
 
   final PlaylistService _discoverService = PlaylistService();
@@ -94,13 +104,48 @@ class _SearchScreenState extends State<SearchScreen> {
   final Set<String> _fetching = {};
   bool _isOnline = true;
   StreamSubscription<List<ConnectivityResult>>? _connSub;
+  List<Map<String, String>> _profiles = [];
+  List<PlaylistModel> _searchPlaylistResults = [];
+  List<PlaylistModel> _communityPlaylists = [];
+  bool _communityLoading = false;
+  bool _communityLoaded = false;
+  Timer? _profileSearchTimer;
+  Timer? _searchPlaylistTimer;
+  String? _myUid;
 
   @override
   void initState() {
     super.initState();
-    _searchController.addListener(() => setState(() => _query = _searchController.text.trim().toLowerCase()));
+    _myUid = context.read<AuthProvider>().user?.uid;
+    _searchController.addListener(() {
+      setState(() => _query = _searchController.text.trim().toLowerCase());
+      _profileSearchTimer?.cancel();
+      _searchPlaylistTimer?.cancel();
+      if (_query.length >= 2) {
+        _profileSearchTimer = Timer(const Duration(milliseconds: 400), () async {
+          final results = await FirebaseService.searchUsers(
+            _query,
+            excludeUid: _myUid,
+          );
+          if (!mounted) return;
+          setState(() => _profiles = results);
+        });
+        _searchPlaylistTimer = Timer(const Duration(milliseconds: 400), () async {
+          final results = await _discoverService.searchOtherUsersPlaylists(
+            _query,
+            excludeUid: _myUid,
+          );
+          if (!mounted) return;
+          setState(() => _searchPlaylistResults = results);
+        });
+      } else {
+        _profiles = [];
+        _searchPlaylistResults = [];
+      }
+    });
     _initConnectivity();
     _loadDiscoverFromCache();
+    _loadCommunityPlaylists();
   }
 
   Future<void> _initConnectivity() async {
@@ -187,6 +232,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _refetchDiscover() async {
     await _loadDiscoverFromCache(force: true);
+    // Also refresh the community row so "Refresh" really updates the page.
+    await _loadCommunityPlaylists(force: true);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Discover updated'), duration: Duration(seconds: 2)),
@@ -226,7 +273,7 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
-  Future<void> _playRadioStation(Map<String, String> station) async {
+  Future<void> _playRadioStation(Map<String, dynamic> station) async {
     if (!_isOnline) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Radio requires internet connection')));
       return;
@@ -252,7 +299,14 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
     final url = p.spotifyUrl.split('?').first;
-    if (url.isEmpty) return;
+    if (url.isEmpty) {
+      // Suggestion placeholder with nothing behind it - say so instead of
+      // silently doing nothing when tapped.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No community playlists yet - be the first to share!')),
+      );
+      return;
+    }
     if (_fetching.contains(url)) return;
     setState(() => _fetching.add(url));
     final scaffold = ScaffoldMessenger.of(context);
@@ -285,31 +339,47 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void dispose() {
     _connSub?.cancel();
+    _profileSearchTimer?.cancel();
+    _searchPlaylistTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // AuthProvider resolves the signed-in user asynchronously, so the uid read
+    // in initState is usually still null there. Re-sync it here and reload the
+    // community row once it arrives, otherwise our own playlists would show up
+    // under "Community Playlists" and the user couldn't be excluded from search.
+    final uid = context.watch<AuthProvider>().user?.uid;
+    if (uid != _myUid) {
+      _myUid = uid;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _communityLoaded = false;
+        _loadCommunityPlaylists(force: true);
+      });
+    }
+
     return BasePageScaffold(
       searchController: _searchController,
       searchHint: 'Search Discover',
       query: _query,
-      action: IconButton(
-        icon: const Icon(Icons.refresh, size: 20),
-        tooltip: 'Refetch Discover',
+      action: OutlinedButton.icon(
         onPressed: _loadingCache ? null : _refetchDiscover,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(),
+        icon: const Icon(Icons.refresh, size: 18),
+        label: const Text('Refresh'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.only(bottom: 100),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _section(context, 'Top Genres', _genrePlaylists, _query, isLoading: _loadingCache, clickableTitle: false),
-            _section(context, 'Top Artists', _artistPlaylists, _query, isLoading: _loadingCache, clickableTitle: false),
+            _section(context, 'Top Genres', _genrePlaylists, _query, isLoading: _loadingCache, clickableTitle: _query.isEmpty),
+            _section(context, 'Top Artists', _artistPlaylists, _query, isLoading: _loadingCache, clickableTitle: _query.isEmpty),
             _radioSection(context, _query),
+            if (_searchPlaylistResults.isNotEmpty && _query.isNotEmpty) _searchResultsSection(),
+            if (_profiles.isNotEmpty) _profilesSection(),
             _otherUsersSection(context, _query),
           ],
         ),
@@ -320,26 +390,25 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _radioSection(BuildContext context, String query) {
     if (!_isOnline) return const SizedBox.shrink();
     const cardW = 110.0;
-    const coverH = 92.0;
-    const listH = 144.0;
+    const listH = 110.0;
     var stations = _radioStations;
     if (query.isNotEmpty) {
       stations = stations.where((s) => s['name']!.toLowerCase().contains(query)).toList();
-      if (stations.isEmpty) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(padding: EdgeInsets.fromLTRB(16, 14, 16, 8), child: Text('Radio Stations', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800))),
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('No matches for "$query"', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12))),
-          ],
-        );
-      }
+      // No station matched: hide the whole category (same rule as the other
+      // sections) instead of leaving a lone "No matches" header behind.
+      if (stations.isEmpty) return const SizedBox.shrink();
     }
     final display = stations.take(6).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(padding: EdgeInsets.fromLTRB(16, 14, 16, 8), child: Text('Radio Stations', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800))),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: GestureDetector(
+            onTap: () => Navigator.push(context, swipeRoute(_RadioStationsPage(stations: _radioStations, onTap: (s) => _playRadioStation(s)))),
+            child: Row(children: [Text('Radio Stations', style: TextStyle(color: SpotterfyTheme.text, fontSize: 17, fontWeight: FontWeight.w800)), const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]),
+          ),
+        ),
         SizedBox(
           height: listH,
           child: ListView.builder(
@@ -348,26 +417,197 @@ class _SearchScreenState extends State<SearchScreen> {
             itemCount: display.length,
             itemBuilder: (_, i) {
               final s = display[i];
-              return GestureDetector(
+              return _DiscoverCard(
+                width: cardW,
+                coverUrl: s['logo']!,
+                title: s['name']!,
                 onTap: () => _playRadioStation(s),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Playlists from other users matched in Firestore (name search).
+  Widget _searchResultsSection() {
+    const cardW = 110.0;
+    const listH = 110.0;
+    final list = _searchPlaylistResults;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(padding: EdgeInsets.fromLTRB(16, 14, 16, 8), child: Text('User Playlists', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800))),
+        SizedBox(
+          height: listH,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: list.length,
+            itemBuilder: (_, i) {
+              final p = list[i];
+              return _DiscoverCard(
+                width: cardW,
+                coverUrl: p.coverUrl,
+                title: p.name,
+                margin: EdgeInsets.only(right: i == list.length - 1 ? 0 : 10),
+                onTap: () => Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p))),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _profilesSection() {
+    const cardW = 110.0;
+    const listH = 110.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(padding: EdgeInsets.fromLTRB(16, 14, 16, 8), child: Text('Profiles', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800))),
+        SizedBox(
+          height: listH,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _profiles.length,
+            itemBuilder: (_, i) {
+              final p = _profiles[i];
+              final name = (p['displayName'] ?? '').trim().isNotEmpty ? p['displayName']! : (p['email'] ?? p['uid'] ?? '');
+              final photo = p['photoUrl'] ?? '';
+              return GestureDetector(
+                onTap: () => _openUserProfile(p),
                 child: Container(
                   width: cardW,
-                  margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
-                  decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(12)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      child: Image.network(s['logo']!, height: coverH, width: cardW, fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(height: coverH, color: SpotterfyTheme.surface, child: const Center(child: Icon(Icons.radio, color: Colors.white70)))),
+                  margin: EdgeInsets.only(right: i == _profiles.length - 1 ? 0 : 10),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: Container(
+                        color: SpotterfyTheme.card,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor: SpotterfyTheme.surface,
+                              backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
+                              child: photo.isNotEmpty
+                                  ? null
+                                  : Text(
+                                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                      style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 20, fontWeight: FontWeight.w700),
+                                    ),
+                            ),
+                            const SizedBox(height: 6),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: Text(name, style: const TextStyle(color: SpotterfyTheme.text, fontSize: 10, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    Padding(padding: const EdgeInsets.all(7), child: Text(s['name']!, style: TextStyle(color: SpotterfyTheme.text, fontSize: 11, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis)),
-                  ]),
+                  ),
                 ),
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  /// Opens a sheet for a found (other) user with their public playlists.
+  Future<void> _openUserProfile(Map<String, String> user) async {
+    final uid = user['uid'] ?? '';
+    if (uid.isEmpty) return;
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: SpotterfyTheme.surface,
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: SpotterfyTheme.card,
+                  backgroundImage: (user['photoUrl'] ?? '').isNotEmpty ? NetworkImage(user['photoUrl']!) : null,
+                  child: (user['photoUrl'] ?? '').isEmpty
+                      ? Text(
+                          (user['displayName'] ?? '?').isNotEmpty ? user['displayName']![0].toUpperCase() : '?',
+                          style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 18, fontWeight: FontWeight.w700),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(user['displayName'] ?? 'Unknown user', style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      if ((user['email'] ?? '').isNotEmpty)
+                        Text(user['email']!, style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 18),
+              Text('Public playlists', style: TextStyle(color: SpotterfyTheme.text, fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              Flexible(
+                child: FutureBuilder<List<PlaylistModel>>(
+                  future: _discoverService.getPlaylistsByCreator(uid),
+                  builder: (_, snap) {
+                    if (snap.connectionState != ConnectionState.done) {
+                      return const SizedBox(height: 90, child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: SpotterfyTheme.primary)));
+                    }
+                    final items = snap.data ?? const <PlaylistModel>[];
+                    if (items.isEmpty) {
+                      return const SizedBox(height: 70, child: Center(child: Text('No public playlists', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13))));
+                    }
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      itemBuilder: (_, i) {
+                        final pl = items[i];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: pl.coverUrl.isNotEmpty
+                                  ? CachedNetworkImage(imageUrl: pl.coverUrl, fit: BoxFit.cover, memCacheWidth: 120, errorWidget: (_, _, _) => Container(color: SpotterfyTheme.card, child: const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 18)))
+                                  : Container(color: SpotterfyTheme.card, child: const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 18)),
+                            ),
+                          ),
+                          title: Text(pl.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text('${pl.tracks.length} tracks', style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
+                          onTap: () {
+                            Navigator.pop(sheetCtx);
+                            Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: pl)));
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -404,16 +644,7 @@ class _SearchScreenState extends State<SearchScreen> {
     if (query.isNotEmpty) filtered = data.where((p) => p.name.toLowerCase().contains(query)).toList();
     final display = filtered.take(5).toList();
     if (display.isEmpty && query.isNotEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Row(children: [Text(title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 17, fontWeight: FontWeight.w800)), if (clickableTitle) ...[const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]]),
-          ),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('No matches for "$query"', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12))),
-        ],
-      );
+      return const SizedBox.shrink();
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,12 +666,10 @@ class _SearchScreenState extends State<SearchScreen> {
             itemCount: display.length,
             itemBuilder: (_, i) {
               final p = display[i];
-              final isFetching = _fetching.contains(p.spotifyUrl.split('?').first);
               return _DiscoverCard(
                 width: cardW,
                 coverUrl: p.coverUrl,
                 title: p.name,
-                isFetching: isFetching,
                 margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
                 onTap: () => _openDiscoverPlaylist(context, p),
               );
@@ -451,7 +680,8 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // Placeholders for "Other users" when none exist – never show own playlists
+  // Placeholders for "Community Playlists" only when the community catalogue is
+  // genuinely empty. Never used while a real fetch is in flight or failed.
   List<PlaylistModel> get _otherUsersPlaceholders => List.generate(5, (i) => PlaylistModel(
         id: 'other_placeholder_$i',
         name: ['Community Picks', 'Late Night Mix', 'Chill Discovery', 'Viral Vault', 'Fresh Finds'][i % 5],
@@ -461,71 +691,51 @@ class _SearchScreenState extends State<SearchScreen> {
         source: 'spotify',
       ));
 
+  /// Community playlists always come straight from Firestore.
+  /// [PlaylistProvider.playlists] only ever holds the signed-in user's own
+  /// playlists, so filtering it by `creatorUid != myUid` was always empty.
   Widget _otherUsersSection(BuildContext context, String query) {
-    const cardW = 110.0;
-    const listH = 110.0;
-    final prov = context.watch<PlaylistProvider>();
-    final auth = context.watch<AuthProvider>();
-    var list = prov.playlists.where((p) => p.creatorUid != auth.user?.uid && p.creatorUid.isNotEmpty).toList();
-    list.sort((a, b) => (b.lastTrackSync ?? b.createdAt).compareTo(a.lastTrackSync ?? a.createdAt));
-    final bool isPlaceholder = list.isEmpty;
-    if (isPlaceholder) {
-      list = _otherUsersPlaceholders;
+    // While searching, the dedicated "User Playlists" row already shows hits.
+    if (query.isNotEmpty) return const SizedBox.shrink();
+
+    if (_communityLoading) {
+      return _section(context, 'Community Playlists', const [], '', isLoading: true, clickableTitle: false);
     }
-    if (query.isNotEmpty) {
-      final q = query.toLowerCase();
-      list = list.where((p) => p.name.toLowerCase().contains(q)).toList();
+    if (_communityPlaylists.isEmpty) {
+      // No community content yet: keep the suggestion placeholders so the row
+      // isn't just a dead header.
+      return _section(context, 'Community Playlists', _otherUsersPlaceholders, '', isLoading: false, clickableTitle: false);
     }
-    final display = list.take(5).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: GestureDetector(
-              onTap: () {
-                final realList = prov.playlists.where((p) => p.creatorUid != auth.user?.uid && p.creatorUid.isNotEmpty).toList();
-                final target = realList.isEmpty ? display : realList.where((p) => query.isEmpty || p.name.toLowerCase().contains(query)).toList();
-                Navigator.push(context, swipeRoute(_SectionPage(title: "New Playlists", playlists: target, onTap: (p) => Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p))))));
-              },
-              child: Row(children: [Text("New Playlists", style: TextStyle(color: SpotterfyTheme.text, fontSize: 17, fontWeight: FontWeight.w800)), const SizedBox(width: 6), Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 18)]),
-            ),
-        ),
-        if (display.isEmpty)
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('No matches for "$query"', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)))
-        else
-          SizedBox(
-            height: listH,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: display.length,
-              itemBuilder: (_, i) {
-                final p = display[i];
-                final bool isReal = !isPlaceholder || prov.playlists.any((r) => r.id == p.id);
-                return _DiscoverCard(
-                  width: cardW,
-                  coverUrl: p.coverUrl,
-                  title: p.name,
-                  margin: EdgeInsets.only(right: i == display.length - 1 ? 0 : 10),
-                  onTap: () {
-                    if (!isReal) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No community playlists yet – be the first to share!')));
-                      return;
-                    }
-                    Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p)));
-                  },
-                );
-              },
-            ),
-          ),
-        if (isPlaceholder && query.isEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text('No community playlists yet – showing suggestions', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11, fontStyle: FontStyle.italic)),
-          ),
-      ],
+    return _section(
+      context,
+      'Community Playlists',
+      _communityPlaylists,
+      '',
+      isLoading: false,
+      clickableTitle: true,
     );
+  }
+
+  Future<void> _loadCommunityPlaylists({bool force = false}) async {
+    if (_communityLoading) return;
+    if (!force && _communityLoaded) return;
+    setState(() => _communityLoading = true);
+    try {
+      final list = await _discoverService.getCommunityPlaylists(
+        excludeUid: _myUid,
+        limit: 30,
+      );
+      if (!mounted) return;
+      setState(() {
+        _communityPlaylists = list;
+        _communityLoaded = true;
+      });
+    } catch (e) {
+      debugPrint('loadCommunityPlaylists failed: $e');
+      if (mounted) setState(() => _communityLoaded = true);
+    } finally {
+      if (mounted) setState(() => _communityLoading = false);
+    }
   }
 }
 
@@ -535,7 +745,6 @@ class _DiscoverCard extends StatelessWidget {
   final double width;
   final String coverUrl;
   final String title;
-  final bool isFetching;
   final EdgeInsets margin;
   final VoidCallback onTap;
 
@@ -543,57 +752,60 @@ class _DiscoverCard extends StatelessWidget {
     required this.width,
     required this.coverUrl,
     required this.title,
-    this.isFetching = false,
     this.margin = EdgeInsets.zero,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: width,
-        margin: margin,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: Stack(children: [
-              Positioned.fill(
-                child: coverUrl.isNotEmpty
-                    ? Image.network(coverUrl, fit: BoxFit.cover)
-                    : Container(
-                        color: SpotterfyTheme.surface,
-                        child: const Center(child: Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 28)),
-                      ),
-              ),
-              if (isFetching)
-                const Positioned.fill(
-                  child: ColoredBox(
-                    color: Colors.black38,
-                    child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))),
-                  ),
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: width,
+          margin: margin,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: Stack(children: [
+                Positioned.fill(
+                  child: coverUrl.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: coverUrl,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 220,
+                          placeholder: (_, _) => Container(color: SpotterfyTheme.surface),
+                          errorWidget: (_, _, _) => Container(
+                            color: SpotterfyTheme.surface,
+                            child: const Center(child: Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 28)),
+                          ),
+                        )
+                      : Container(
+                          color: SpotterfyTheme.surface,
+                          child: const Center(child: Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 28)),
+                        ),
                 ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.45),
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-                      child: Text(title,
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+                        child: Text(title,
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ]),
+              ]),
+            ),
           ),
         ),
       ),
@@ -601,30 +813,109 @@ class _DiscoverCard extends StatelessWidget {
   }
 }
 
-class _SectionPage extends StatelessWidget {
+/// Radio stations list page
+class _RadioStationsPage extends StatelessWidget {
+  final List<Map<String, dynamic>> stations;
+  final Function(Map<String, dynamic>) onTap;
+  const _RadioStationsPage({required this.stations, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: SpotterfyTheme.background,
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, title: const Text('Radio Stations', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: stations.length,
+        itemBuilder: (_, i) {
+          final s = stations[i];
+          return GestureDetector(
+            onTap: () => onTap(s),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(16)),
+              child: Row(children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: CachedNetworkImage(
+                    imageUrl: s['logo']!,
+                    width: 56, height: 56, fit: BoxFit.cover,
+                    placeholder: (context, _) => Container(color: SpotterfyTheme.surface),
+                    errorWidget: (context, _, _) => const Icon(Icons.radio, color: SpotterfyTheme.muted),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(child: Text(s['name']!, style: TextStyle(color: SpotterfyTheme.text, fontSize: 16, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                const Icon(Icons.play_arrow, color: SpotterfyTheme.primary, size: 24),
+              ]),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SectionPage extends StatefulWidget {
   final String title;
   final List<PlaylistModel> playlists;
   final Future<void> Function(PlaylistModel)? onTap;
   const _SectionPage({required this.title, required this.playlists, this.onTap});
 
   @override
+  State<_SectionPage> createState() => _SectionPageState();
+}
+
+class _SectionPageState extends State<_SectionPage> {
+  static const int _pageSize = 10;
+  late List<PlaylistModel> _displayed;
+  late ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayed = widget.playlists.take(_pageSize).toList();
+    _scrollController = ScrollController()
+      ..addListener(() {
+        if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 300) {
+          if (_displayed.length < widget.playlists.length) {
+            setState(() {
+              _displayed = widget.playlists.take(_displayed.length + _pageSize).toList();
+            });
+          }
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SpotterfyTheme.background,
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, title: Text(title, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, title: Text(widget.title, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
       body: GridView.builder(
+        controller: _scrollController,
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.0),
-        itemCount: playlists.length,
+        itemCount: _displayed.length + (_displayed.length < widget.playlists.length ? 1 : 0),
         itemBuilder: (_, i) {
-          final p = playlists[i];
+          if (i >= _displayed.length) {
+            return const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF10b981)));
+          }
+          final p = _displayed[i];
           return _DiscoverCard(
             width: double.infinity,
             coverUrl: p.coverUrl,
             title: p.name,
             onTap: () async {
-              if (onTap != null) {
-                await onTap!(p);
+              if (widget.onTap != null) {
+                await widget.onTap!(p);
               } else {
                 Navigator.push(context, swipeRoute(PlaylistDetailScreen(playlist: p)));
               }

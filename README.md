@@ -27,3 +27,9 @@
 - Download link on frontend
 - Update notifications/download button in app
 - Description button in app
+- Playlist songs playing continuously
+- Play songs with a transition (configurable in settings for how many seconds)
+- Playlist downloading
+- Playlist selecting
+- Adding playlists to your library (also other users' playlists)
+- Add version & check for updates button in settings

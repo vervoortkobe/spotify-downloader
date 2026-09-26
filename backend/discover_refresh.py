@@ -27,6 +27,10 @@ DISCOVER_URLS = [
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0rer1m",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3262Tm",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4gTUOY",
+    "https://open.spotify.com/playlist/37i9dQZF1DX6p4TJxzMRDe",
+    "https://open.spotify.com/playlist/66U9yz0mUOyY1fd40d2iMA",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0FQNnk",
+    "https://open.spotify.com/playlist/37i9dQZF1DX8kP0ioXjxIA",
 ]
 
 def _init_firestore():

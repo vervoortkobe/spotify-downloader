@@ -11,8 +11,14 @@ import 'package:spotterfy_app/main.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key, this.showQueueButton = true});
-  
+
   final bool showQueueButton;
+
+  String _fmtDuration(int ms) {
+    final minutes = ms ~/ 60000;
+    final seconds = (ms % 60000) ~/ 1000;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,9 +37,12 @@ class MiniPlayer extends StatelessWidget {
     return Dismissible(
       key: ValueKey('mini-${track.id}'),
       direction: DismissDirection.horizontal,
-      dismissThresholds: const {DismissDirection.startToEnd: 0.35, DismissDirection.endToStart: 0.35},
-      // RIGHT swipe (startToEnd, finger moves right) -> previous (reveal left side)
-      // LEFT swipe (endToStart, finger moves left) -> next (reveal right side)
+      dismissThresholds: const {
+        DismissDirection.startToEnd: 0.4,
+        DismissDirection.endToStart: 0.4,
+      },
+      // Swipe right -> previous, swipe left -> next. Returning false snaps the
+      // card back so the mini player never leaves the footer.
       confirmDismiss: (dir) async {
         HapticFeedback.lightImpact();
         if (dir == DismissDirection.startToEnd) {
@@ -43,19 +52,15 @@ class MiniPlayer extends StatelessWidget {
         }
         return false;
       },
-      background: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(20)),
+      background: _SwipeRevealBackground(
         alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(left: 28),
-        child: Icon(Icons.skip_previous, color: SpotterfyTheme.primary, size: 20),
+        icon: Icons.skip_previous,
+        label: 'Previous',
       ),
-      secondaryBackground: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(20)),
+      secondaryBackground: _SwipeRevealBackground(
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 28),
-        child: Icon(Icons.skip_next, color: SpotterfyTheme.primary, size: 20),
+        icon: Icons.skip_next,
+        label: 'Next',
       ),
       child: GestureDetector(
         onTap: () => navigatorKey.currentState?.push(swipeRoute(const PlayerScreen())),
@@ -75,106 +80,101 @@ class MiniPlayer extends StatelessWidget {
             color: SpotterfyTheme.card,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, -4)),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // drag handle
-              Container(
-                margin: const EdgeInsets.only(top: 6),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(color: SpotterfyTheme.muted.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 12, 8),
-                child: Row(
-                  children: [
-                    Hero(
-                      tag: 'mini-cover-${track.id}',
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 52,
-                          height: 52,
-                          color: SpotterfyTheme.surface,
-                          child: _MiniCover(track: track),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(track.title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 14, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: 2),
-                          Text(track.artists, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          if (queuePos.isNotEmpty) 
-                            GestureDetector(
-                              onTap: showQueueButton ? () {
-                                // Show queue popup or navigate to queue screen
-                                HapticFeedback.lightImpact();
-                                _showQueueDialog(context, player);
-                              } : null,
-                              child: Text(queuePos, style: TextStyle(color: SpotterfyTheme.primary, fontSize: 10, fontWeight: FontWeight.w600)),
-                            ),
-                        ],
-                      ),
-                    ),
-                    IconButton(onPressed: () => player.previous(), icon: Icon(Icons.skip_previous, color: Colors.white, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-                    const SizedBox(width: 2),
-                    GestureDetector(
-                      onLongPress: () => HapticFeedback.lightImpact(),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, -4)),
+          ],
+          border: Border.all(color: SpotterfyTheme.primary.withValues(alpha: 0.15), width: 1),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // drag handle
+            Container(
+              margin: const EdgeInsets.only(top: 6),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(color: SpotterfyTheme.muted.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 12, 6),
+              child: Row(
+                children: [
+                  Hero(
+                    tag: 'mini-cover-${track.id}',
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        decoration: BoxDecoration(color: SpotterfyTheme.primary, shape: BoxShape.circle),
-                        child: IconButton(onPressed: () => player.togglePlayPause(), icon: Icon(player.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.black, size: 22), padding: const EdgeInsets.all(6), constraints: const BoxConstraints()),
+                        width: 52,
+                        height: 52,
+                        color: SpotterfyTheme.surface,
+                        child: _MiniCover(track: track),
                       ),
                     ),
-                    const SizedBox(width: 2),
-                    IconButton(onPressed: () => player.next(), icon: Icon(Icons.skip_next, color: Colors.white, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-                    const SizedBox(width: 4),
-                    if (showQueueButton && player.queue.length > 1)
-                      GestureDetector(
-                        onTap: () => _showQueueDialog(context, player),
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: SpotterfyTheme.primary.withAlpha(15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(Icons.queue_music, color: SpotterfyTheme.primary, size: 18),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(99),
-                  child: SizedBox(
-                    height: 3,
-                    child: Stack(children: [
-                      Container(color: SpotterfyTheme.muted.withValues(alpha: 0.25)),
-                      FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: bufferedFrac.clamp(0.0, 1.0),
-                        child: Container(color: Colors.white.withValues(alpha: 0.35), height: 3),
-                      ),
-                      FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: progress.clamp(0.0, 1.0),
-                        child: Container(color: SpotterfyTheme.primary, height: 3),
-                      ),
-                    ]),
                   ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(track.title, style: TextStyle(color: SpotterfyTheme.text, fontSize: 14, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 1),
+                        Text(track.artists, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        if (queuePos.isNotEmpty)
+                          GestureDetector(
+                            onTap: showQueueButton ? () {
+                              HapticFeedback.lightImpact();
+                              _showQueueDialog(context, player);
+                            } : null,
+                            child: Text(queuePos, style: TextStyle(color: SpotterfyTheme.primary, fontSize: 10, fontWeight: FontWeight.w600)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // progress time
+                  Text('${_fmtDuration(pos.inMilliseconds)} / ${_fmtDuration(dur.inMilliseconds)}', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 10)),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onLongPress: () => HapticFeedback.lightImpact(),
+                    child: Container(
+                      decoration: BoxDecoration(color: SpotterfyTheme.primary, shape: BoxShape.circle),
+                      child: IconButton(onPressed: () => player.togglePlayPause(), icon: Icon(player.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.black, size: 20), padding: const EdgeInsets.all(5), constraints: const BoxConstraints()),
+                    ),
+                  ),
+                  if (showQueueButton && player.queue.length > 1)
+                    GestureDetector(
+                      onTap: () => _showQueueDialog(context, player),
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(color: SpotterfyTheme.primary.withAlpha(15), shape: BoxShape.circle),
+                        child: Icon(Icons.queue_music, color: SpotterfyTheme.primary, size: 16),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: SizedBox(
+                  height: 3,
+                  child: Stack(children: [
+                    Container(color: SpotterfyTheme.muted.withValues(alpha: 0.2)),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: bufferedFrac.clamp(0.0, 1.0),
+                      child: Container(color: Colors.white.withValues(alpha: 0.3), height: 3),
+                    ),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: progress.clamp(0.0, 1.0),
+                      child: Container(color: SpotterfyTheme.primary, height: 3),
+                    ),
+                  ]),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
+        ),
         ),
       ),
     );
@@ -270,6 +270,41 @@ class MiniPlayer extends StatelessWidget {
   }
 }
 
+/// Revealed underneath the mini player while dragging it sideways.
+class _SwipeRevealBackground extends StatelessWidget {
+  final Alignment alignment;
+  final IconData icon;
+  final String label;
+
+  const _SwipeRevealBackground({
+    required this.alignment,
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      decoration: BoxDecoration(
+        color: SpotterfyTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: SpotterfyTheme.primary.withValues(alpha: 0.25)),
+      ),
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: SpotterfyTheme.primary, size: 22),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(color: SpotterfyTheme.primary, fontSize: 12, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+}
+
 class _MiniCover extends StatelessWidget {
   final dynamic track;
   const _MiniCover({required this.track});
@@ -279,7 +314,6 @@ class _MiniCover extends StatelessWidget {
     if (track.cover != null && (track.cover as String).isNotEmpty) {
       return Image.network(track.cover as String, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (context, error, stackTrace) => const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24));
     }
-    // Storage: embedded cover from file (cached + memoized, never flashes)
     final String src = track.sourceUrl as String? ?? '';
     final bool isStorage = (track.id as String).startsWith('storage_') || src.startsWith('/') || src.startsWith('file://');
     if (isStorage && src.isNotEmpty) {

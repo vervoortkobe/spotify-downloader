@@ -53,12 +53,6 @@ class _AdminScreenState extends State<AdminScreen> {
                   '${admin.activeUserCount}',
                   Icons.person_pin,
                 ),
-                const SizedBox(width: 12),
-                _statCard(
-                  'Pending',
-                  '${admin.pendingApprovalCount}',
-                  Icons.hourglass_empty,
-                ),
               ],
             ),
           ),
@@ -115,26 +109,6 @@ class _AdminScreenState extends State<AdminScreen> {
                                 ],
                               ),
                             ),
-                            if (!u.isApproved)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.check_circle,
-                                      color: Color(0xFF10b981),
-                                    ),
-                                    onPressed: () => admin.approveUser(u.uid),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.cancel,
-                                      color: Color(0xFFef4444),
-                                    ),
-                                    onPressed: () => admin.denyUser(u.uid),
-                                  ),
-                                ],
-                              ),
                             if (u.isAdmin)
                               Container(
                                 padding: const EdgeInsets.symmetric(

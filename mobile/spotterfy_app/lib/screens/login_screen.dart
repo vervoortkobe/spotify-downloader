@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/main_screen.dart';
-import 'package:spotterfy_app/screens/approval_screen.dart';
 import 'package:spotterfy_app/screens/admin_screen.dart';
 
 class LoginScreen extends StatelessWidget {
@@ -16,12 +15,7 @@ class LoginScreen extends StatelessWidget {
     if (!auth.isLoading && auth.isLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
-        if (!auth.isApproved) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const ApprovalScreen()),
-          );
-        } else if (auth.isAdmin) {
+        if (auth.isAdmin) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const AdminScreen()),
@@ -90,15 +84,7 @@ class LoginScreen extends StatelessWidget {
                                   final success = await auth.signInWithGoogle();
                                   if (!context.mounted) return;
                                   if (success) {
-                                    if (!auth.isApproved) {
-                                      Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              const ApprovalScreen(),
-                                        ),
-                                      );
-                                    } else if (auth.isAdmin) {
+                                    if (auth.isAdmin) {
                                       Navigator.pushReplacement(
                                         context,
                                         MaterialPageRoute(

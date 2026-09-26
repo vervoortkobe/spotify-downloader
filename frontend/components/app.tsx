@@ -340,6 +340,12 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
             const resultData = await resultRes.json()
 
             setPlaylistName(resultData.playlistName || "Playlist")
+            // Spotify share links (open.spotify.com/s/<code>) resolve to a real
+            // playlist URL server-side; swap it in so the input, the refresh
+            // button and any later re-fetch all use the canonical link.
+            if (resultData.canonicalUrl) {
+              setPlaylistLink(resultData.canonicalUrl)
+            }
             const processedTracks: Track[] = resultData.tracks || []
             setTracks(processedTracks)
             setTotalSongs(processedTracks.length)
@@ -1181,6 +1187,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
 
           setTracks(newTracks)
           setPlaylistName(resultData.playlistName || playlistName)
+          if (resultData.canonicalUrl) {
+            setPlaylistLink(resultData.canonicalUrl)
+          }
           setTotalSongs(newTracks.length)
           setSongsDownloaded(newTracks.length)
           setIsRefreshing(false)
@@ -1448,7 +1457,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                 <Search className="h-5 w-5 shrink-0 text-[var(--clr-primary)]" />
                 <input
                   type="text"
-                  placeholder="https://open.spotify.com/playlist/..."
+                  placeholder="https://open.spotify.com/playlist/... (Spotify share links work too)"
                   value={playlistLink}
                   onChange={(e) => {
                     const val = e.target.value

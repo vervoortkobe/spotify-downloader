@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -92,15 +93,79 @@ class PlaylistService {
     return snap.docs.map((d) => PlaylistModel.fromJson(d.data(), d.id)).toList();
   }
 
-  Future<List<PlaylistModel>> getOtherUsersPlaylists(String uid, {int limit = 20}) async {
-    final snap = await _firestore
-        .collection('playlists')
-        .where('creatorUid', isNotEqualTo: uid)
-        .orderBy('creatorUid')
-        .orderBy('createdAt', descending: true)
-        .limit(limit)
-        .get();
-    return snap.docs.map((d) => PlaylistModel.fromJson(d.data(), d.id)).toList();
+  /// Reads the community catalogue (playlists created by *other* users),
+  /// newest first. Ordering is done server-side on `createdAt` so no composite
+  /// index is required and the newest playlists are guaranteed to be inside
+  /// the window; the caller filters/name-matches locally because Firestore
+  /// can't do a case-insensitive "contains".
+  Future<List<PlaylistModel>> getCommunityPlaylists({
+    String? excludeUid,
+    int limit = 30,
+    String nameQuery = '',
+  }) async {
+    final q = nameQuery.trim().toLowerCase();
+    final out = <PlaylistModel>[];
+    try {
+      // Single-field index on createdAt is automatic -> no composite index.
+      final snap = await _firestore
+          .collection('playlists')
+          .orderBy('createdAt', descending: true)
+          .limit(300)
+          .get();
+      for (final d in snap.docs) {
+        if (out.length >= limit) break;
+        final PlaylistModel p;
+        try {
+          p = PlaylistModel.fromJson(d.data(), d.id);
+        } catch (e) {
+          debugPrint('skipping malformed playlist ${d.id}: $e');
+          continue;
+        }
+        if (p.creatorUid.isEmpty) continue;
+        if (excludeUid != null && p.creatorUid == excludeUid) continue;
+        if (q.isNotEmpty && !p.name.toLowerCase().contains(q)) continue;
+        out.add(p);
+      }
+    } catch (e) {
+      debugPrint('getCommunityPlaylists failed: $e');
+    }
+    return out;
+  }
+
+  /// Case-insensitive name search over playlists created by *other* users.
+  Future<List<PlaylistModel>> searchOtherUsersPlaylists(
+    String query, {
+    String? excludeUid,
+    int limit = 20,
+  }) =>
+      getCommunityPlaylists(excludeUid: excludeUid, limit: limit, nameQuery: query);
+
+  /// Playlists created by [uid], newest first. Used by the Discover profile
+  /// lookup so a found profile can show that user's playlists. Ordered before
+  /// limiting so the newest N are the ones returned.
+  Future<List<PlaylistModel>> getPlaylistsByCreator(String uid, {int limit = 30}) async {
+    try {
+      // Uses the (creatorUid ASC, createdAt DESC) composite index.
+      final snap = await _firestore
+          .collection('playlists')
+          .where('creatorUid', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .get();
+      final list = <PlaylistModel>[];
+      for (final d in snap.docs) {
+        try {
+          list.add(PlaylistModel.fromJson(d.data(), d.id));
+        } catch (e) {
+          debugPrint('skipping malformed playlist ${d.id}: $e');
+        }
+      }
+      list.sort((a, b) => (b.lastTrackSync ?? b.createdAt).compareTo(a.lastTrackSync ?? a.createdAt));
+      return list;
+    } catch (e) {
+      debugPrint('getPlaylistsByCreator failed: $e');
+      return [];
+    }
   }
 
   Future<void> addTrackToPlaylist(String uid, String playlistId, TrackModel track) async {
@@ -168,22 +233,68 @@ class PlaylistService {
     return (h & 0x7fffffff).toString();
   }
 
+  /// Firestore rejects `in` queries with more than 10 values, so the URL list
+  /// is fetched in chunks and merged. (There are far more than 10 discover
+  /// playlists now, which previously made the whole query fail.)
+  static const int _whereInChunk = 10;
+
   Future<List<PlaylistModel>> getDiscoverPlaylists(List<String> spotifyUrls) async {
     if (spotifyUrls.isEmpty) return [];
     final cleanUrls = spotifyUrls.map((u) => u.split('?').first).toList();
-    // Firestore whereIn max 10, genre+artist 5 each so safe
-    final snap = await _firestore.collection('discoverCache').where('spotifyUrl', whereIn: cleanUrls).get();
-    final byUrl = {for (final d in snap.docs) (d.data()['spotifyUrl'] as String? ?? ''): PlaylistModel.fromJson(d.data(), d.id)};
+    final byUrl = <String, PlaylistModel>{};
+    for (var i = 0; i < cleanUrls.length; i += _whereInChunk) {
+      final chunk = cleanUrls.sublist(i, (i + _whereInChunk).clamp(0, cleanUrls.length));
+      if (chunk.isEmpty) continue;
+      try {
+        final snap = await _firestore.collection('discoverCache').where('spotifyUrl', whereIn: chunk).get();
+        for (final d in snap.docs) {
+          try {
+            final u = (d.data()['spotifyUrl'] as String?) ?? '';
+            byUrl[u] = PlaylistModel.fromJson(d.data(), d.id);
+          } catch (e) {
+            debugPrint('skipping malformed discoverCache doc ${d.id}: $e');
+          }
+        }
+      } catch (e) {
+        debugPrint('getDiscoverPlaylists chunk failed: $e');
+      }
+    }
     return cleanUrls.map((u) => byUrl[u]).whereType<PlaylistModel>().toList();
   }
 
   Stream<List<PlaylistModel>> streamDiscoverPlaylists(List<String> spotifyUrls) {
     if (spotifyUrls.isEmpty) return Stream.value([]);
     final cleanUrls = spotifyUrls.map((u) => u.split('?').first).toList();
-    return _firestore.collection('discoverCache').where('spotifyUrl', whereIn: cleanUrls).snapshots().map((snap) {
-      final byUrl = {for (final d in snap.docs) (d.data()['spotifyUrl'] as String? ?? ''): PlaylistModel.fromJson(d.data(), d.id)};
-      return cleanUrls.map((u) => byUrl[u]).whereType<PlaylistModel>().toList();
+    // Merge the per-chunk streams into one.
+    final streams = <Stream<QuerySnapshot<Map<String, dynamic>>>>[];
+    for (var i = 0; i < cleanUrls.length; i += _whereInChunk) {
+      final chunk = cleanUrls.sublist(i, (i + _whereInChunk).clamp(0, cleanUrls.length));
+      if (chunk.isEmpty) continue;
+      streams.add(_firestore.collection('discoverCache').where('spotifyUrl', whereIn: chunk).snapshots());
+    }
+    late StreamController<List<PlaylistModel>> out;
+    final subs = <StreamSubscription<dynamic>>[];
+    out = StreamController<List<PlaylistModel>>.broadcast(onCancel: () async {
+      for (final s in subs) {
+        await s.cancel();
+      }
     });
+    for (final c in streams) {
+      subs.add(c.listen((snap) {
+        if (out.isClosed) return;
+        final byUrl = <String, PlaylistModel>{};
+        for (final d in snap.docs) {
+          try {
+            final u = (d.data()['spotifyUrl'] as String?) ?? '';
+            byUrl[u] = PlaylistModel.fromJson(d.data(), d.id);
+          } catch (_) {}
+        }
+        out.add(cleanUrls.map((u) => byUrl[u]).whereType<PlaylistModel>().toList());
+      }, onError: (Object e) {
+        debugPrint('streamDiscoverPlaylists chunk error: $e');
+      }));
+    }
+    return out.stream;
   }
 
   Future<void> cacheDiscoverPlaylist(PlaylistModel playlist) async {

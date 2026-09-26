@@ -103,18 +103,21 @@ class _MainScreenState extends State<MainScreen> {
           }
           _dragDx = 0;
         },
-        child: NavigationBar(
-          backgroundColor: const Color(0xFF121212),
-          indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.15),
-          selectedIndex: _currentIndex,
-          onDestinationSelected: _goToTab,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.explore_outlined, color: Colors.white), selectedIcon: Icon(Icons.explore, color: Colors.white), label: 'Discover'),
-            NavigationDestination(icon: Icon(Icons.search, color: Colors.white), selectedIcon: Icon(Icons.search, color: Colors.white), label: 'Search'),
-            NavigationDestination(icon: Icon(Icons.library_music_outlined, color: Colors.white), selectedIcon: Icon(Icons.library_music, color: Colors.white), label: 'Library'),
-            NavigationDestination(icon: Icon(Icons.forum_outlined, color: Colors.white), selectedIcon: Icon(Icons.forum, color: Colors.white), label: 'Chat'),
-          ],
+        child: NavigationBarTheme(
+          data: NavigationBarThemeData(height: 80),
+          child: NavigationBar(
+            backgroundColor: const Color(0xFF121212),
+            indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.15),
+            selectedIndex: _currentIndex,
+            onDestinationSelected: _goToTab,
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            destinations: const [
+              NavigationDestination(icon: Icon(Icons.explore_outlined, color: Colors.white), selectedIcon: Icon(Icons.explore, color: Colors.white), label: 'Discover'),
+              NavigationDestination(icon: Icon(Icons.search, color: Colors.white), selectedIcon: Icon(Icons.search, color: Colors.white), label: 'Search'),
+              NavigationDestination(icon: Icon(Icons.library_music_outlined, color: Colors.white), selectedIcon: Icon(Icons.library_music, color: Colors.white), label: 'Library'),
+              NavigationDestination(icon: Icon(Icons.forum_outlined, color: Colors.white), selectedIcon: Icon(Icons.forum, color: Colors.white), label: 'Chat'),
+            ],
+          ),
         ),
       ),
     );

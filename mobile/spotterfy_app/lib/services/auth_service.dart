@@ -50,7 +50,7 @@ class AuthService {
         displayName: user.displayName ?? '',
         photoUrl: user.photoURL ?? '',
         isAdmin: false,
-        isApproved: false,
+        isApproved: true,
       );
       try {
         await _firestore
@@ -118,14 +118,6 @@ class AuthService {
     return snap.docs
         .map((d) => UserModel.fromFirestore(d.data(), d.id))
         .toList();
-  }
-
-  Future<void> approveUser(String uid) async {
-    await _firestore.collection('users').doc(uid).update({'isApproved': true});
-  }
-
-  Future<void> denyUser(String uid) async {
-    await _firestore.collection('users').doc(uid).delete();
   }
 
   Future<int> getActiveUserCount() async {

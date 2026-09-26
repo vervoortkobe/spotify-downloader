@@ -172,10 +172,17 @@ def _run_scrape_job(input_url, service, progress_job_id):
 
         print(f"[Scrape] Job {progress_job_id} fetched \"{playlist_name}\" with {len(tracks)} tracks", flush=True)
 
+        # Send back the canonical entity URL so the client stores a stable id
+        # (shared short links like /s/<code> would otherwise be the key).
+        canonical_url = ""
+        if service == "spotify" and url_type in ("track", "playlist") and item_id:
+            canonical_url = f"https://open.spotify.com/{url_type}/{item_id}"
+
         scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'current': len(tracks), 'status': 'complete'})
         scrape_job_results[progress_job_id] = {
             'playlistName': playlist_name,
             'tracks': tracks,
+            'canonicalUrl': canonical_url,
         }
 
     except SpotifyDownAPIError as e:

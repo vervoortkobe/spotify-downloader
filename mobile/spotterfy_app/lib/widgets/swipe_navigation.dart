@@ -83,8 +83,8 @@ class SlidePageRoute extends PageRouteBuilder {
   final Widget child;
   SlidePageRoute({required this.child})
       : super(
-          transitionDuration: const Duration(milliseconds: 280),
-          reverseTransitionDuration: const Duration(milliseconds: 220),
+          transitionDuration: const Duration(milliseconds: 350),
+          reverseTransitionDuration: const Duration(milliseconds: 300),
           pageBuilder: (_, _, _) => child,
           transitionsBuilder: (_, anim, _, c) {
             final tween = Tween(begin: const Offset(0.12, 0), end: Offset.zero).chain(CurveTween(curve: Curves.easeOutCubic));

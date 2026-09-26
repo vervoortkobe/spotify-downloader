@@ -73,6 +73,19 @@ class BasePageScaffold extends StatelessWidget {
           scrolledUnderElevation: 0,
           automaticallyImplyLeading: false,
           leadingWidth: 56,
+          flexibleSpace: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  SpotterfyTheme.background.withValues(alpha: 0.95),
+                  SpotterfyTheme.background.withValues(alpha: 0.8),
+                  SpotterfyTheme.background.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
           leading: Consumer<AuthProvider>(
             builder: (context, auth, child) => GestureDetector(
               onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
@@ -150,13 +163,13 @@ class BasePageScaffold extends StatelessWidget {
                     letterSpacing: -0.5,
                   ),
                 ),
-          // Discover/Search have no trailing icon -> let search bar use full width (extra right padding only 12)
-          // Library/Chat keep 48 for + / group_add so left edge stays same but right gives space
+          // The action sizes to its own intrinsic width so both icon buttons
+          // (48px by default) and wider text buttons (e.g. the "Refresh"
+          // outlined button) lay out correctly without being clipped.
           actions: action != null
               ? [
-                  SizedBox(
-                    width: 48,
-                    child: Center(child: Padding(padding: const EdgeInsets.only(right: 4), child: action)),
+                  Center(
+                    child: Padding(padding: const EdgeInsets.only(right: 8), child: action),
                   ),
                 ]
               : const [

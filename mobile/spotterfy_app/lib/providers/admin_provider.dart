@@ -12,7 +12,6 @@ class AdminProvider extends ChangeNotifier {
   List<UserModel> get users => _users;
   bool get isLoading => _isLoading;
   int get activeUserCount => _activeUserCount;
-  int get pendingApprovalCount => _users.where((u) => !u.isApproved && !u.isAdmin).length;
 
   Future<void> loadUsers() async {
     _isLoading = true;
@@ -25,15 +24,5 @@ class AdminProvider extends ChangeNotifier {
     }
     _isLoading = false;
     notifyListeners();
-  }
-
-  Future<void> approveUser(String uid) async {
-    await _authService.approveUser(uid);
-    await loadUsers();
-  }
-
-  Future<void> denyUser(String uid) async {
-    await _authService.denyUser(uid);
-    await loadUsers();
   }
 }
