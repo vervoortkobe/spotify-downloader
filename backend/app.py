@@ -81,7 +81,6 @@ def create_app():
     # frontend/mobile during fetches, so they get generous buckets.
     _RL_LIMITS: dict[str, int] = {
         "scrape-playlist": 6,          # heavy Spotify+YT
-        "scrape-user-playlists": 8,
         "scrape-progress": 300,        # cheap poll (500ms) during playlist fetch
         "scrape-result": 120,          # cheap, fetched once per completed job
         "progress": 300,               # cheap polls: /api/progress/<id> + /api/progress/all

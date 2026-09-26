@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/services/network_stats_service.dart';
+import 'package:spotterfy_app/widgets/app_bottom_nav.dart';
 import 'package:spotterfy_app/widgets/mini_player.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
@@ -21,7 +21,6 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 2;
   int _slideDir = 1;
-  double _dragDx = 0;
 
   @override
   void initState() {
@@ -51,6 +50,19 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Publish the active tab so pushed screens (e.g. a playlist) can render the
+    // same nav bar with the correct selection.
+    tabNavController.currentIndex = _currentIndex;
+    // A pushed screen asked to switch tabs (e.g. tapped a nav destination).
+    if (tabNavController.hasPendingRequest) {
+      final target = tabNavController.takePendingRequest();
+      if (target != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _goToTab(target);
+        });
+      }
+    }
+
     return Scaffold(
       backgroundColor: SpotterfyTheme.background,
       // No swipe-to-switch here: content swipes belong to inner widgets
@@ -87,38 +99,9 @@ class _MainScreenState extends State<MainScreen> {
           const Positioned(left: 0, right: 0, bottom: 0, child: _MainMiniPlayerWrapper()),
         ],
       ),
-      bottomNavigationBar: GestureDetector(
-        // Swipe left/right on the navbar to switch tabs (swipe left -> next tab).
-        // Tracks drag distance too, so slow deliberate swipes work, not just flicks.
-        onHorizontalDragStart: (_) => _dragDx = 0,
-        onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
-        onHorizontalDragEnd: (details) {
-          final v = details.primaryVelocity ?? 0;
-          if (v < -400 || _dragDx < -72) {
-            HapticFeedback.lightImpact();
-            _goToTab(_currentIndex + 1);
-          } else if (v > 400 || _dragDx > 72) {
-            HapticFeedback.lightImpact();
-            _goToTab(_currentIndex - 1);
-          }
-          _dragDx = 0;
-        },
-        child: NavigationBarTheme(
-          data: NavigationBarThemeData(height: 80),
-          child: NavigationBar(
-            backgroundColor: const Color(0xFF121212),
-            indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.15),
-            selectedIndex: _currentIndex,
-            onDestinationSelected: _goToTab,
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            destinations: const [
-              NavigationDestination(icon: Icon(Icons.explore_outlined, color: Colors.white), selectedIcon: Icon(Icons.explore, color: Colors.white), label: 'Discover'),
-              NavigationDestination(icon: Icon(Icons.search, color: Colors.white), selectedIcon: Icon(Icons.search, color: Colors.white), label: 'Search'),
-              NavigationDestination(icon: Icon(Icons.library_music_outlined, color: Colors.white), selectedIcon: Icon(Icons.library_music, color: Colors.white), label: 'Library'),
-              NavigationDestination(icon: Icon(Icons.forum_outlined, color: Colors.white), selectedIcon: Icon(Icons.forum, color: Colors.white), label: 'Chat'),
-            ],
-          ),
-        ),
+      bottomNavigationBar: AppBottomNav(
+        currentIndex: _currentIndex,
+        onSelect: _goToTab,
       ),
     );
   }

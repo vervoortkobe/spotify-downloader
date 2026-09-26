@@ -79,13 +79,28 @@ class PlaylistModel {
     }
 
     final rawShared = json['sharedWith'];
+    final parsedTracks = parseTracks();
+
+    // Playlists imported from a URL never get their own artwork (the scrape
+    // endpoint returns no cover), so `coverUrl` is empty for most of them.
+    // Fall back to the first track that has art so playlists always show a
+    // cover instead of a generic music-note placeholder.
+    var cover = str('coverUrl');
+    if (cover.isEmpty) {
+      for (final t in parsedTracks) {
+        if (t.cover.isNotEmpty) {
+          cover = t.cover;
+          break;
+        }
+      }
+    }
 
     return PlaylistModel(
       id: docId,
       name: str('name'),
       owner: str('owner'),
-      coverUrl: str('coverUrl'),
-      tracks: parseTracks(),
+      coverUrl: cover,
+      tracks: parsedTracks,
       source: str('source').isEmpty ? 'spotify' : str('source'),
       spotifyUrl: str('spotifyUrl'),
       creatorUid: str('creatorUid'),
@@ -147,29 +162,42 @@ class PlaylistModel {
     'lastTrackSync': lastTrackSync?.toIso8601String(),
   };
 
-  factory PlaylistModel.fromCache(Map<String, dynamic> json) => PlaylistModel(
-    id: json['id'] as String? ?? '',
-    name: json['name'] as String? ?? '',
-    owner: json['owner'] as String? ?? '',
-    coverUrl: json['coverUrl'] as String? ?? '',
-    tracks: (json['tracks'] as List<dynamic>?)
+  factory PlaylistModel.fromCache(Map<String, dynamic> json) {
+    final tracks = (json['tracks'] as List<dynamic>?)
             ?.map((t) => TrackModel.fromJson(t as Map<String, dynamic>))
             .toList() ??
-        [],
-    source: json['source'] as String? ?? 'spotify',
-    spotifyUrl: json['spotifyUrl'] as String? ?? '',
-    creatorUid: json['creatorUid'] as String? ?? '',
-    sharedWith: (json['sharedWith'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList() ??
-        [],
-    isCustom: json['isCustom'] as bool? ?? false,
-    isUsersOwn: json['isUsersOwn'] as bool? ?? false,
-    createdAt: json['createdAt'] != null
-        ? DateTime.parse(json['createdAt'] as String)
-        : null,
-    lastTrackSync: json['lastTrackSync'] != null
-        ? DateTime.parse(json['lastTrackSync'] as String)
-        : null,
-  );
+        <TrackModel>[];
+    var cover = json['coverUrl'] as String? ?? '';
+    // Same first-track fallback as fromJson (see there for why).
+    if (cover.isEmpty) {
+      for (final t in tracks) {
+        if (t.cover.isNotEmpty) {
+          cover = t.cover;
+          break;
+        }
+      }
+    }
+    return PlaylistModel(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      owner: json['owner'] as String? ?? '',
+      coverUrl: cover,
+      tracks: tracks,
+      source: json['source'] as String? ?? 'spotify',
+      spotifyUrl: json['spotifyUrl'] as String? ?? '',
+      creatorUid: json['creatorUid'] as String? ?? '',
+      sharedWith: (json['sharedWith'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          <String>[],
+      isCustom: json['isCustom'] as bool? ?? false,
+      isUsersOwn: json['isUsersOwn'] as bool? ?? false,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : null,
+      lastTrackSync: json['lastTrackSync'] != null
+          ? DateTime.parse(json['lastTrackSync'] as String)
+          : null,
+    );
+  }
 }

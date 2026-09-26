@@ -144,6 +144,8 @@ class _SearchScreenState extends State<SearchScreen> {
   List<PlaylistModel> _communityPlaylists = [];
   bool _communityLoading = false;
   bool _communityLoaded = false;
+  bool _communityReloadQueued = false;
+  String? _communityError;
   bool _refetching = false;
   Timer? _profileSearchTimer;
   Timer? _searchPlaylistTimer;
@@ -462,12 +464,16 @@ class _SearchScreenState extends State<SearchScreen> {
     // community row once it arrives, otherwise our own playlists would show up
     // under "Community Playlists" and the user couldn't be excluded from search.
     final uid = context.watch<AuthProvider>().user?.uid;
-    if (uid != _myUid) {
-      _myUid = uid;
+    final uidChanged = uid != _myUid;
+    if (uidChanged) _myUid = uid;
+    // Kick the fetch off from build as well as initState. initState does not
+    // re-run on hot reload/restart-of-frame, which could otherwise leave the row
+    // permanently showing placeholders; this makes the load self-healing.
+    if (uidChanged || !_communityLoaded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _communityLoaded = false;
-        _loadCommunityPlaylists(force: true);
+        if (uidChanged) _communityLoaded = false;
+        _loadCommunityPlaylists(force: uidChanged);
       });
     }
 
@@ -497,7 +503,8 @@ class _SearchScreenState extends State<SearchScreen> {
       body: _showNoResults
           ? _NoResults(query: _query, onClear: () => _searchController.clear())
           : SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 100),
+              // Clears the mini player + navbar without leaving a big gap.
+              padding: const EdgeInsets.only(bottom: 110),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -631,7 +638,7 @@ class _SearchScreenState extends State<SearchScreen> {
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 14, 16, 8),
           child: Text(
-            'User Playlists',
+            'Community Playlists',
             style: TextStyle(
               color: Colors.white,
               fontSize: 17,
@@ -1103,7 +1110,7 @@ class _SearchScreenState extends State<SearchScreen> {
   /// [PlaylistProvider.playlists] only ever holds the signed-in user's own
   /// playlists, so filtering it by `creatorUid != myUid` was always empty.
   Widget _otherUsersSection(BuildContext context, String query) {
-    // While searching, the dedicated "User Playlists" row already shows hits.
+    // While searching, the dedicated "Community Playlists" row already shows hits.
     if (query.isNotEmpty) return const SizedBox.shrink();
 
     if (_communityLoading) {
@@ -1117,6 +1124,14 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
     if (_communityPlaylists.isEmpty) {
+      // Distinguish "genuinely no community playlists yet" from "the fetch
+      // failed" - a silent placeholder row hid permission-denied errors.
+      if (_communityError != null) {
+        return _CommunityError(
+          message: _communityError!,
+          onRetry: () => _loadCommunityPlaylists(force: true),
+        );
+      }
       // No community content yet: keep the suggestion placeholders so the row
       // isn't just a dead header. The arrow still leads to the full list page.
       return _section(
@@ -1138,26 +1153,43 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  /// Fetches the community catalogue. Safe to call repeatedly: a request that
+  /// arrives while another is in flight is remembered and run right after, so a
+  /// forced reload (e.g. when the signed-in uid finally resolves) is never
+  /// silently dropped.
   Future<void> _loadCommunityPlaylists({bool force = false}) async {
-    if (_communityLoading) return;
-    if (!force && _communityLoaded) return;
-    setState(() => _communityLoading = true);
-    try {
-      final list = await _discoverService.getCommunityPlaylists(
-        excludeUid: _myUid,
-        limit: 30,
-      );
-      if (!mounted) return;
-      setState(() {
-        _communityPlaylists = list;
-        _communityLoaded = true;
-      });
-    } catch (e) {
-      debugPrint('loadCommunityPlaylists failed: $e');
-      if (mounted) setState(() => _communityLoaded = true);
-    } finally {
-      if (mounted) setState(() => _communityLoading = false);
+    if (_communityLoading) {
+      if (force) _communityReloadQueued = true;
+      return;
     }
+    if (!force && _communityLoaded) return;
+    setState(() {
+      _communityLoading = true;
+      _communityError = null;
+    });
+    do {
+      _communityReloadQueued = false;
+      try {
+        final list = await _discoverService.getCommunityPlaylists(
+          excludeUid: _myUid,
+          limit: 30,
+        );
+        if (!mounted) return;
+        setState(() {
+          _communityPlaylists = list;
+          _communityLoaded = true;
+        });
+      } catch (e) {
+        debugPrint('loadCommunityPlaylists failed: $e');
+        if (mounted) {
+          setState(() {
+            _communityLoaded = true;
+            _communityError = '$e';
+          });
+        }
+      }
+    } while (_communityReloadQueued && mounted);
+    if (mounted) setState(() => _communityLoading = false);
   }
 }
 
@@ -1254,6 +1286,60 @@ class _DiscoverCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Surfaced when the community fetch fails, so a rules/permission problem is
+/// visible instead of being masked by the placeholder row.
+class _CommunityError extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _CommunityError({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Community Playlists',
+            style: TextStyle(
+              color: SpotterfyTheme.text,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "Couldn't load community playlists",
+            style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            message,
+            style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(
+              Icons.refresh,
+              color: SpotterfyTheme.primary,
+              size: 18,
+            ),
+            label: const Text(
+              'Retry',
+              style: TextStyle(color: SpotterfyTheme.primary),
+            ),
+          ),
+        ],
       ),
     );
   }

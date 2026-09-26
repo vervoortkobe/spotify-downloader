@@ -7,6 +7,7 @@ import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
+import 'package:spotterfy_app/widgets/app_bottom_nav.dart';
 import 'package:spotterfy_app/widgets/mini_player.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
@@ -122,7 +123,22 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     return SwipeBackWrapper(
       child: Scaffold(
       backgroundColor: const Color(0xFF07110b),
-      bottomNavigationBar: const SafeArea(top: false, child: MiniPlayer()),
+      // Keep the persistent footer visible inside a playlist: mini player first,
+      // then the same bottom nav MainScreen shows. Tapping a tab pops back and
+      // lets MainScreen perform the switch.
+      bottomNavigationBar: PersistentBottomArea(
+        currentIndex: tabNavController.currentIndex,
+        onSelect: (i) {
+          if (i < 0 || i > 3) return;
+          tabNavController.request(i);
+          Navigator.of(context).pop();
+        },
+        // No SafeArea here: the Scaffold already strips the bottom inset from
+        // the body on MainScreen (where the mini player is a Positioned at
+        // bottom: 0), so wrapping it here added a second inset and pushed the
+        // mini player up out of line. The nav bar below handles the inset.
+        miniPlayer: const MiniPlayer(),
+      ),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -215,7 +231,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 child: ListView.builder(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 140),
+                  // The Scaffold already insets the body above the
+                  // mini player + navbar, so only a little trailing space is
+                  // needed here (140 left a large empty gap).
+                  padding: const EdgeInsets.only(bottom: 16),
                   itemCount: _playlist.tracks.length,
                   itemBuilder: (_, i) {
                     final track = _playlist.tracks[i];

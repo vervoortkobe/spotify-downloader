@@ -39,11 +39,6 @@ class AuthProvider extends ChangeNotifier {
   bool get isApproved => _user?.isApproved ?? false;
   bool get isProfileCompleted => _user != null && _user!.displayName.trim().length >= 3 && _user!.hasCompletedOnboarding;
   bool get needsOnboarding => _user != null && !isProfileCompleted;
-  bool get needsSpotifySync {
-    if (_user == null || _user!.spotifyProfileUrl.isEmpty) return false;
-    if (_user!.lastSpotifySync == null) return true;
-    return DateTime.now().difference(_user!.lastSpotifySync!).inHours >= 1;
-  }
 
   AuthProvider() {
     _init();

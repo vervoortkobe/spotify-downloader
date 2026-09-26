@@ -218,12 +218,6 @@ class PlaylistService {
     await _saveTracksToCache(uid, playlistId, tracks);
   }
 
-  Future<void> updateLastSpotifySync(String uid) async {
-    await _firestore.collection('users').doc(uid).update({
-      'lastSpotifySync': DateTime.now(),
-    });
-  }
-
   // --- Discover cache (Firestore, populated by backend daily job) ---
   String _stableId(String clean) {
     var h = 5381;

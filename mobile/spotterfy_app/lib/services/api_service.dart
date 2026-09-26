@@ -132,29 +132,6 @@ class ApiService {
     }
   }
 
-  static Future<List<Map<String, dynamic>>?> scrapeUserPlaylists(
-    String profileUrl,
-  ) async {
-    try {
-      final reqBody = jsonEncode({'profileUrl': profileUrl});
-      _trackUp(reqBody);
-      final response = await http.post(
-        Uri.parse('$_baseUrl/scrape-user-playlists'),
-        headers: _headers(),
-        body: reqBody,
-      );
-      _trackDown(response.bodyBytes.length);
-      if (response.statusCode != 200) return null;
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (data['error'] != null) return null;
-      final playlists = data['playlists'] as List<dynamic>;
-      return playlists.cast<Map<String, dynamic>>();
-    } catch (e) {
-      debugPrint('Scrape user playlists failed: $e');
-      return null;
-    }
-  }
-
   static String streamTrackUrl(String sourceUrl) {
     return '$_baseUrl/stream?source_url=${Uri.encodeComponent(sourceUrl)}';
   }
