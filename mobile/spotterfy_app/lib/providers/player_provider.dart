@@ -208,6 +208,13 @@ class PlayerProvider extends ChangeNotifier {
     _duration = Duration.zero;
     _buffered = Duration.zero;
     if (isRadio) _radioMaxListened = Duration.zero;
+    // A track is loading from here until playback actually begins. During this
+    // window both `_isPlaying` and `_player.playing` are false, so a pause tap
+    // used to be read as "not playing", turned into a play command, and then
+    // silently overwritten when the load finished - which is why pressing pause
+    // during a slow load appeared to do nothing.
+    _starting = true;
+    _pauseRequested = false;
     _handleRadioDrift();
     notifyListeners();
     await ensureAudioHandler();
@@ -232,12 +239,11 @@ class PlayerProvider extends ChangeNotifier {
         await _player.stop();
         await _player.setFilePath(path).timeout(const Duration(seconds: 30));
         await _player.play().timeout(const Duration(seconds: 30));
-        _completed = false;
-        _isPlaying = true;
-        notifyListeners();
+        await _onTrackStarted();
       } catch (e) {
         debugPrint('[Player] local file failed: $e');
       }
+      _starting = false;
       _savePlayerState();
       return;
     }
@@ -274,9 +280,7 @@ class PlayerProvider extends ChangeNotifier {
           .setAudioSource(AudioSource.uri(Uri.parse(url)))
           .timeout(const Duration(seconds: 30));
       await _player.play().timeout(const Duration(seconds: 30));
-      _completed = false;
-      _isPlaying = true;
-      notifyListeners();
+      await _onTrackStarted();
     } catch (e) {
       debugPrint('[Player] primary failed: $e');
       try {
@@ -286,14 +290,30 @@ class PlayerProvider extends ChangeNotifier {
             .setAudioSource(AudioSource.uri(Uri.parse(fallback)))
             .timeout(const Duration(seconds: 35));
         await _player.play().timeout(const Duration(seconds: 35));
-        _completed = false;
-        _isPlaying = true;
-        notifyListeners();
+        await _onTrackStarted();
       } catch (e2) {
         debugPrint('[Player] fallback failed: $e2');
       }
     }
+    _starting = false;
     _savePlayerState();
+  }
+
+  /// Marks a track as genuinely started.
+  ///
+  /// Honours a pause that was pressed while the track was still loading, so the
+  /// page never starts playing something the user already cancelled.
+  Future<void> _onTrackStarted() async {
+    _completed = false;
+    if (_pauseRequested) {
+      _pauseRequested = false;
+      _isPlaying = false;
+      notifyListeners();
+      await _player.pause();
+      return;
+    }
+    _isPlaying = true;
+    notifyListeners();
   }
 
   Future<void> _startPlayback() async {
@@ -308,40 +328,76 @@ class PlayerProvider extends ChangeNotifier {
   /// Guards against overlapping play/pause requests: `_startPlayback()` can
   /// await network work for seconds, and without a guard two taps would
   /// interleave.
+  /// A track is loading (source resolution / buffering). During this window the
+  /// player reports `playing == false`, so this flag is what lets a pause tap be
+  /// understood as "stop the thing that is about to start".
+  bool _starting = false;
+
+  /// The user pressed pause before the track finished loading.
+  bool _pauseRequested = false;
+
+  /// Guards against overlapping play/pause requests: `_startPlayback()` can
+  /// await network work for seconds.
   bool _toggling = false;
 
-  Future<void> togglePlayPause() async {
-    if (_toggling) return;
+  /// Taps that arrived while a toggle was in flight. These used to be discarded
+  /// outright, which is the other half of "pause sometimes does nothing".
+  int _pendingToggles = 0;
+
+  Future<void> togglePlayPause() {
+    _pendingToggles++;
+    if (_toggling) return Future<void>.value();
+    return _drainToggles();
+  }
+
+  /// Applies queued toggles one at a time.
+  ///
+  /// Each toggle flips the state, so a burst of taps only needs applying by
+  /// parity - replaying every tap in order would just re-run a slow start
+  /// several times for exactly the same end result.
+  Future<void> _drainToggles() async {
     _toggling = true;
-    // `_isPlaying` is what the UI renders and is kept in sync by
-    // `playerStateStream`.
-    //
-    // This used to compute `wasPlaying = _player.playing || _isPlaying` and then
-    // unconditionally re-read `_player.playing` in a `finally`. That is what
-    // left the button stuck: just_audio reports `playing` asynchronously, so
-    // re-reading it immediately after `play()`/`pause()` could hand back the
-    // pre-toggle value and throw the optimistic flip away - and the stale `true`
-    // that leaked into `_isPlaying` then latched, making later taps look like
-    // no-ops. So: flip optimistically, keep that value, and only fall back to
-    // the player's state when the operation demonstrably failed.
-    // Decide from BOTH sources: treating it as playing when either says so is
-    // what makes pause reliable. Using only `_isPlaying` (the mirror) missed a
-    // pause whenever the mirror lagged behind the player; using only
-    // `_player.playing` missed one just after a fresh source loaded.
-    final actuallyPlaying = _player.playing || _isPlaying;
+    try {
+      while (_pendingToggles > 0) {
+        var queued = 0;
+        while (_pendingToggles > 0) {
+          _pendingToggles--;
+          queued++;
+        }
+        if (queued.isOdd) await _applyToggle();
+      }
+    } finally {
+      _toggling = false;
+    }
+  }
+
+  Future<void> _applyToggle() async {
+    // Decide from BOTH sources *plus* "a track is loading". Treating it as
+    // playing when any of them says so is what makes pause reliable: using only
+    // `_isPlaying` (the mirror) missed a pause whenever the mirror lagged, and
+    // using only `_player.playing` missed one while the source was loading.
+    final actuallyPlaying = _player.playing || _isPlaying || _starting;
     final willPlay = !actuallyPlaying;
+    // Optimistic so the button reacts on the first frame, and deliberately not
+    // re-read from the player afterwards - that discarded the flip before the
+    // audio pipeline reported back and left the glyph stuck.
     _isPlaying = willPlay;
     notifyListeners();
     try {
       if (willPlay) {
         await _startPlayback();
         // `_startPlayback` swallows its own errors and silently falls back to a
-        // second URL, so a source that never started leaves the optimistic
-        // value lying. `idle` is the only state that proves nothing loaded.
+        // second URL, so a source that never started leaves the optimistic value
+        // lying. `idle` is the only state that proves nothing loaded.
         if (!_player.playing &&
             _player.processingState == ProcessingState.idle) {
           _isPlaying = false;
         }
+      } else if (_starting) {
+        // Nothing is audible yet, so don't pause an unloaded player - just make
+        // sure the track doesn't start under the user's finger.
+        _pauseRequested = true;
+        _isPlaying = false;
       } else {
         await _player.pause();
         // A completed pause always settles on false, whatever `playing` happens
@@ -353,7 +409,6 @@ class PlayerProvider extends ChangeNotifier {
       debugPrint('[Player] toggle failed: $e');
       _isPlaying = _player.playing;
     } finally {
-      _toggling = false;
       notifyListeners();
     }
   }

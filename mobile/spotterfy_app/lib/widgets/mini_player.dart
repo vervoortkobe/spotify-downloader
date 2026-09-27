@@ -80,10 +80,11 @@ class MiniPlayer extends StatelessWidget {
             _openPlayer();
           }
         },
-        onDoubleTap: () {
-          HapticFeedback.lightImpact();
-          player.togglePlayPause();
-        },
+        // No onDoubleTap here on purpose. A double-tap recogniser shares the
+        // gesture arena with the play/pause button's own tap and deliberately
+        // holds it open for the ~300ms double-tap timeout, so every press had a
+        // visible lag before it registered. Play/pause is a button right there,
+        // so the gesture was redundant as well as slow.
         child: Container(
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
           decoration: BoxDecoration(
@@ -104,20 +105,14 @@ class MiniPlayer extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // drag handle
-              Container(
-                margin: const EdgeInsets.only(top: 7),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: SpotterfyTheme.muted.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
               // One row so the text, progress and time share a single baseline
               // instead of the time squeezing the title on narrow screens.
+              // Padding is symmetric: an earlier "drag handle" strip sat above
+              // the cover with nothing below it to match, which made the card
+              // look top-heavy. It was also misleading - this card only
+              // swipes horizontally, and swipes *up* to open the player.
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
+                padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
                 child: Row(
                   children: [
                     Hero(
@@ -185,25 +180,11 @@ class MiniPlayer extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // Roomier tap targets: 44px buttons with real spacing so
+                    // Roomier tap targets: 42px buttons with real spacing so
                     // they are easy to hit without crowding each other. The
                     // play/pause is the only filled + glowing control, so it
                     // reads as the primary one.
-                    _MiniIconButton(
-                      icon: player.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      tooltip: player.isPlaying ? 'Pause' : 'Play',
-                      size: 42,
-                      iconSize: 24,
-                      background: SpotterfyTheme.primary,
-                      glow: SpotterfyTheme.primary,
-                      foreground: Colors.black,
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        player.togglePlayPause();
-                      },
-                    ),
+                    _MiniPlayPauseButton(player: player),
                     if (showQueueButton && player.queue.length > 1) ...[
                       const SizedBox(width: 6),
                       // Same translucent white circle as the queue button on the
@@ -275,6 +256,38 @@ class _MiniProgressBar extends StatelessWidget {
 }
 
 /// Circular mini player control with a guaranteed 40px+ tap target.
+/// Play/pause control for the mini player.
+///
+/// Isolated behind a [Selector] so it rebuilds **only** when the playing state
+/// flips. The rest of the mini player rebuilds on every position tick, and
+/// rebuilding the button underneath an in-flight press animation is what made
+/// the tap feel laggy and stuttery.
+class _MiniPlayPauseButton extends StatelessWidget {
+  final PlayerProvider player;
+
+  const _MiniPlayPauseButton({required this.player});
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<PlayerProvider, bool>(
+      selector: (_, p) => p.isPlaying,
+      builder: (context, isPlaying, _) => _MiniIconButton(
+        icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+        tooltip: isPlaying ? 'Pause' : 'Play',
+        size: 42,
+        iconSize: 24,
+        background: SpotterfyTheme.primary,
+        glow: SpotterfyTheme.primary,
+        foreground: Colors.black,
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          player.togglePlayPause();
+        },
+      ),
+    );
+  }
+}
+
 class _MiniIconButton extends StatefulWidget {
   final IconData icon;
   final String tooltip;
@@ -327,10 +340,10 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
           child: AnimatedScale(
             // Press-in, so the tap is acknowledged before the state changes.
             scale: _held ? 0.88 : 1.0,
-            duration: const Duration(milliseconds: 130),
+            duration: const Duration(milliseconds: 100),
             curve: Curves.easeOut,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
+              duration: const Duration(milliseconds: 120),
               curve: Curves.easeOut,
               width: widget.size,
               height: widget.size,
@@ -353,10 +366,26 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
                     ),
                 ],
               ),
-              child: Icon(
-                widget.icon,
-                color: widget.foreground,
-                size: widget.iconSize,
+              // Cached so the press animation doesn't repaint the glyph, and so
+              // the play <-> pause swap animates instead of popping.
+              child: RepaintBoundary(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 170),
+                  switchInCurve: Curves.easeOutBack,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, anim) => ScaleTransition(
+                    scale: Tween<double>(begin: 0.6, end: 1).animate(anim),
+                    child: FadeTransition(opacity: anim, child: child),
+                  ),
+                  child: Icon(
+                    widget.icon,
+                    // Keying on the glyph is what tells the switcher to run the
+                    // transition when play/pause changes.
+                    key: ValueKey(widget.icon),
+                    color: widget.foreground,
+                    size: widget.iconSize,
+                  ),
+                ),
               ),
             ),
           ),

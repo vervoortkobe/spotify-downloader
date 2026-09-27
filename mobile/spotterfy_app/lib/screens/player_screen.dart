@@ -377,8 +377,10 @@ class _PlayerScreenState extends State<PlayerScreen>
               child: _CircleControlButton(
                 icon: Icons.queue_music_rounded,
                 tooltip: 'Queue',
-                size: 48,
-                iconSize: 27,
+                // No size overrides: the shared defaults (48 circle / 26 glyph)
+                // are exactly what the previous/next buttons use, so all three
+                // stay visually identical. Overriding them here is what made
+                // the queue icon look a different size.
                 onTap: () => showQueueSheet(context, player),
               ),
             ),
@@ -809,18 +811,24 @@ class _CarouselPage extends StatelessWidget {
   }
 }
 
+/// Circular transport control used for previous / next / queue.
+///
+/// The dimensions are fixed constants rather than parameters: the queue button
+/// used to override them and ended up a different size from the skip buttons,
+/// and per-call overrides are exactly what let that drift back in.
 class _CircleControlButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final String tooltip;
-  final double size;
-  final double iconSize;
+
+  /// Every circular control on the page shares these, so they always match.
+  static const double _diameter = 48;
+  static const double _glyph = 26;
+
   const _CircleControlButton({
     required this.icon,
     required this.onTap,
     this.tooltip = '',
-    this.size = 48,
-    this.iconSize = 26,
   });
 
   @override
@@ -836,9 +844,9 @@ class _CircleControlButton extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: SizedBox(
-            width: size,
-            height: size,
-            child: Icon(icon, color: Colors.white, size: iconSize),
+            width: _diameter,
+            height: _diameter,
+            child: Icon(icon, color: Colors.white, size: _glyph),
           ),
         ),
       ),

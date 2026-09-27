@@ -43,14 +43,16 @@ void showQueueSheet(BuildContext context, PlayerProvider player) {
             ),
           ],
         ),
-        // Opens up to the top of the screen. A long queue scrolls inside the
-        // sheet instead of growing past the screen - without a cap the Column
+        // Height of the sheet. Combined with `MainAxisSize.max` below, this is
+        // the *final* height rather than a ceiling, so the sheet always opens up
+        // to the top of the page instead of hugging a short queue at the bottom.
+        // The track list scrolls inside it - without this bound the Column
         // overflowed, which is what made the sheet look broken while opening.
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(sheetCtx).height * 0.9,
+          maxHeight: MediaQuery.sizeOf(sheetCtx).height * 0.92,
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.max,
           children: [
             // Grabber, matching the drag handle on the player page.
             Container(
@@ -130,19 +132,22 @@ void showQueueSheet(BuildContext context, PlayerProvider player) {
             ),
             const Divider(height: 1, color: Color(0x14FFFFFF)),
             if (queue.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Text(
-                  'Nothing queued',
-                  style: TextStyle(color: SpotterfyTheme.muted),
+              // The sheet is always full height now, so centre the empty state
+              // in the space below the header instead of leaving it stranded at
+              // the top.
+              const Expanded(
+                child: Center(
+                  child: Text(
+                    'Nothing queued',
+                    style: TextStyle(color: SpotterfyTheme.muted),
+                  ),
                 ),
               )
             else
-              Flexible(
+              Expanded(
                 child: ListView.separated(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
                   itemCount: queue.length,
-                  shrinkWrap: true,
                   separatorBuilder: (_, _) => const SizedBox(height: 2),
                   itemBuilder: (_, index) {
                     final track = queue[index];

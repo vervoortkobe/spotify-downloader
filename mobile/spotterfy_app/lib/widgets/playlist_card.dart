@@ -95,9 +95,11 @@ class PlaylistCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   Text(
+                    // `sourceLabel` renders the stored slug as a proper name
+                    // (Spotify / YouTube / SoundCloud).
                     playlist.owner.isNotEmpty
-                        ? '${playlist.tracks.length} tracks • ${playlist.source} • by ${playlist.owner}'
-                        : '${playlist.tracks.length} tracks • ${playlist.source}',
+                        ? '${playlist.tracks.length} tracks • ${playlist.sourceLabel} • by ${playlist.owner}'
+                        : '${playlist.tracks.length} tracks • ${playlist.sourceLabel}',
                     style: TextStyle(
                       color: SpotterfyTheme.muted,
                       fontSize: 12,

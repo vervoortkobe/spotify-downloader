@@ -31,6 +31,35 @@ class PlaylistModel {
     this.lastTrackSync,
   }) : createdAt = createdAt ?? DateTime.now();
 
+  /// Human-readable name for [source].
+  ///
+  /// Sources are stored as bare lowercase slugs (`spotify`, `youtube`,
+  /// `soundcloud`) because the backend uses them as identifiers, so they must be
+  /// formatted for display rather than shown raw.
+  String get sourceLabel {
+    switch (source.trim().toLowerCase()) {
+      case '':
+      case 'spotify':
+      case 'auto':
+        return 'Spotify';
+      case 'youtube':
+      case 'yt':
+      case 'ytsearch':
+        return 'YouTube';
+      case 'soundcloud':
+      case 'sound_cloud':
+        return 'SoundCloud';
+      case 'local':
+      case 'storage':
+        return 'On device';
+      default:
+        // Unknown slug: title-case it rather than leaking the raw identifier.
+        final s = source.trim();
+        if (s.isEmpty) return 'Spotify';
+        return s[0].toUpperCase() + s.substring(1);
+    }
+  }
+
   /// Firestore docs are read with a defensive cast on every field: a single
   /// hand-edited / legacy document with an unexpected type must not throw and
   /// wipe out an entire community listing.
@@ -122,7 +151,9 @@ class PlaylistModel {
     var n = name.trim();
     if (owner.isNotEmpty) {
       final dash = ' - $owner';
-      if (n.endsWith(dash)) return n.substring(0, n.length - dash.length).trim();
+      if (n.endsWith(dash)) {
+        return n.substring(0, n.length - dash.length).trim();
+      }
       final by = ' by $owner';
       if (n.toLowerCase().endsWith(by.toLowerCase())) {
         return n.substring(0, n.length - by.length).trim();
@@ -163,7 +194,8 @@ class PlaylistModel {
   };
 
   factory PlaylistModel.fromCache(Map<String, dynamic> json) {
-    final tracks = (json['tracks'] as List<dynamic>?)
+    final tracks =
+        (json['tracks'] as List<dynamic>?)
             ?.map((t) => TrackModel.fromJson(t as Map<String, dynamic>))
             .toList() ??
         <TrackModel>[];
@@ -186,7 +218,8 @@ class PlaylistModel {
       source: json['source'] as String? ?? 'spotify',
       spotifyUrl: json['spotifyUrl'] as String? ?? '',
       creatorUid: json['creatorUid'] as String? ?? '',
-      sharedWith: (json['sharedWith'] as List<dynamic>?)
+      sharedWith:
+          (json['sharedWith'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           <String>[],
