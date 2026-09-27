@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 
 class PlaylistCard extends StatelessWidget {
   final PlaylistModel playlist;
@@ -11,6 +12,10 @@ class PlaylistCard extends StatelessWidget {
   final bool showDelete;
   final Widget? trailing;
 
+  /// Marks the card as the source of the currently playing track.
+  final bool isPlaying;
+  final bool isActive;
+
   const PlaylistCard({
     super.key,
     required this.playlist,
@@ -19,80 +24,119 @@ class PlaylistCard extends StatelessWidget {
     this.onPlay,
     this.showDelete = false,
     this.trailing,
+    this.isPlaying = false,
+    this.isActive = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final active = isActive || isPlaying;
+    final hasPlay = onPlay != null && playlist.tracks.isNotEmpty;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        padding: EdgeInsets.all(12),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: SpotterfyTheme.card,
-          borderRadius: BorderRadius.circular(8),
+          // Subtle top-to-bottom lift so the row reads as a raised surface
+          // instead of a flat block of grey.
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: active
+                ? [
+                    SpotterfyTheme.primary.withValues(alpha: 0.16),
+                    SpotterfyTheme.card,
+                  ]
+                : [SpotterfyTheme.card, SpotterfyTheme.surface],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: active
+                ? SpotterfyTheme.primary.withValues(alpha: 0.55)
+                : Colors.white.withValues(alpha: 0.06),
+            width: active ? 1.2 : 1,
+          ),
         ),
         child: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: playlist.coverUrl.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: playlist.coverUrl,
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                      placeholder: (_, _) => _placeholder(),
-                      errorWidget: (_, _, _) => _placeholder(),
-                    )
-                  : _placeholder(),
-            ),
-            SizedBox(width: 12),
+            _Cover(url: playlist.coverUrl, radius: 12, active: active),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    playlist.name,
-                    style: TextStyle(
-                      color: SpotterfyTheme.text,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      if (active) ...[
+                        Icon(
+                          Icons.graphic_eq_rounded,
+                          color: SpotterfyTheme.primary,
+                          size: 15,
+                        ),
+                        const SizedBox(width: 5),
+                      ],
+                      Expanded(
+                        child: Text(
+                          playlist.name,
+                          style: TextStyle(
+                            color: active
+                                ? SpotterfyTheme.primary
+                                : SpotterfyTheme.text,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.1,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 5),
                   Text(
                     playlist.owner.isNotEmpty
                         ? '${playlist.tracks.length} tracks • ${playlist.source} • by ${playlist.owner}'
                         : '${playlist.tracks.length} tracks • ${playlist.source}',
-                    style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+                    style: TextStyle(
+                      color: SpotterfyTheme.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (playlist.tracks.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      _totalDuration(playlist),
-                      style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11, fontWeight: FontWeight.w500),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.schedule_rounded,
+                          color: SpotterfyTheme.mutedDark,
+                          size: 12,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _totalDuration(playlist),
+                          style: TextStyle(
+                            color: SpotterfyTheme.muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ],
               ),
             ),
             ?trailing,
-            if (onPlay != null)
-              Container(
-                decoration: BoxDecoration(color: SpotterfyTheme.primary, shape: BoxShape.circle, boxShadow: [BoxShadow(color: SpotterfyTheme.primary.withValues(alpha: 0.4), blurRadius: 10)]),
-                child: IconButton(
-                  icon: Icon(Icons.play_arrow, color: Colors.black, size: 20),
-                  onPressed: onPlay,
-                  padding: EdgeInsets.all(6),
-                  constraints: BoxConstraints(),
-                ),
+            if (hasPlay)
+              PlaylistPlayButton(
+                onPressed: onPlay,
+                isPlaying: isPlaying,
+                isActive: active,
+                tooltip: isPlaying ? 'Pause' : 'Play',
               ),
             if (showDelete)
               IconButton(
@@ -101,20 +145,12 @@ class PlaylistCard extends StatelessWidget {
                   color: SpotterfyTheme.muted,
                   size: 20,
                 ),
+                tooltip: 'Delete',
                 onPressed: onDelete,
               ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _placeholder() {
-    return Container(
-      width: 56,
-      height: 56,
-      color: SpotterfyTheme.surface,
-      child: Icon(Icons.library_music, color: SpotterfyTheme.muted, size: 28),
     );
   }
 
@@ -128,4 +164,56 @@ class PlaylistCard extends StatelessWidget {
     }
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
+}
+
+class _Cover extends StatelessWidget {
+  final String url;
+  final double radius;
+  final bool active;
+
+  const _Cover({required this.url, required this.radius, required this.active});
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 58.0;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        // Faint green rim picks up the active state on the artwork too.
+        border: Border.all(
+          color: active
+              ? SpotterfyTheme.primary.withValues(alpha: 0.6)
+              : Colors.white.withValues(alpha: 0.08),
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius - 1),
+        child: url.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: url,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                placeholder: (_, _) => _placeholder(),
+                errorWidget: (_, _, _) => _placeholder(),
+              )
+            : _placeholder(),
+      ),
+    );
+  }
+}
+
+Widget _placeholder() {
+  return Container(
+    width: 58,
+    height: 58,
+    color: SpotterfyTheme.surface,
+    child: const Icon(
+      Icons.library_music,
+      color: SpotterfyTheme.muted,
+      size: 26,
+    ),
+  );
 }

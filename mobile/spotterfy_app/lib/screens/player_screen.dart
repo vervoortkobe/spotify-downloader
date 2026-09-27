@@ -94,8 +94,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
           tooltip: 'Minimise',
           onPressed: () => Navigator.pop(context),
         ),
-        // No app-bar actions: the queue button lives with the transport
-        // controls lower down the page.
+        // Queue sits opposite the minimise arrow. Deliberately larger than the
+        // other circular controls since it is a primary destination, and
+        // translucent so it blends into the black rather than popping out of it.
+        actions: [
+          if (!isRadio)
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: _CircleControlButton(
+                icon: Icons.queue_music_rounded,
+                tooltip: 'Queue',
+                size: 48,
+                iconSize: 27,
+                onTap: () => _showQueueDialog(context, player, track),
+              ),
+            ),
+        ],
       ),
       body: ValueListenableBuilder<double>(
         valueListenable: _dragProgress,
@@ -156,9 +170,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ),
                       ),
                     ),
-                    // More room above the cover than below it, so the cover
-                    // sits higher and the text/controls below ride up.
-                    const Spacer(flex: 4),
+                    // Even space above the cover and below the controls, so the
+                    // whole block sits in the middle of the page instead of
+                    // hugging the top and bottom.
+                    const Spacer(flex: 3),
                     if (!isRadio && queue.length > 1)
                       _CoverCarousel(
                         key: ValueKey(
@@ -265,33 +280,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       height: 20,
                       child: Center(
                         child: !isRadio
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '${currentIndex + 1} / ${player.queue.length} in queue',
-                                    style: const TextStyle(
-                                      color: SpotterfyTheme.muted,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  // Queue button now sits on the page, styled
-                                  // like the other controls instead of the
-                                  // solid app-bar circle.
-                                  _CircleControlButton(
-                                    icon: Icons.queue_music_rounded,
-                                    tooltip: 'Queue',
-                                    size: 30,
-                                    iconSize: 16,
-                                    onTap: () => _showQueueDialog(
-                                      context,
-                                      player,
-                                      track,
-                                    ),
-                                  ),
-                                ],
+                            ? Text(
+                                '${currentIndex + 1} / ${player.queue.length} in queue',
+                                style: const TextStyle(
+                                  color: SpotterfyTheme.muted,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               )
                             : Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -327,6 +322,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    // Matches the top spacer, which pulls the content up into
+                    // the centre of the screen.
+                    const Spacer(flex: 3),
                   ],
                 ),
               ),
@@ -562,82 +560,82 @@ class _AnimatedGreenBackdropState extends State<_AnimatedGreenBackdrop>
         builder: (context, _) {
           // Full 0..1 cycle drives both the drift and a gentle opacity swell.
           final t = _ctrl.value * 2 * math.pi;
+
+          // One large, soft green spot. Kept as a helper because the page is
+          // purely black apart from these - no overall green wash - so each
+          // spot has to carry the colour on its own.
+          Widget spot(
+            Alignment center,
+            double radius,
+            Color color,
+            double core,
+            double mid,
+          ) {
+            return Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: center,
+                    radius: radius,
+                    colors: [
+                      color.withValues(alpha: core),
+                      color.withValues(alpha: mid),
+                      color.withValues(alpha: 0),
+                    ],
+                    stops: const [0.0, 0.38, 1.0],
+                  ),
+                ),
+              ),
+            );
+          }
+
           return Stack(
             children: [
-              // Base wash: deep green tint over Spotify black.
-              Positioned.fill(
+              // Pure black base.
+              const Positioned.fill(
+                child: ColoredBox(color: Color(0xFF000000)),
+              ),
+              // Three slow-drifting greenish spots on different periods, so the
+              // motion never looks like a single looping blob.
+              spot(
+                Alignment(
+                  -0.45 + 0.34 * math.sin(t),
+                  -0.40 + 0.18 * math.cos(t),
+                ),
+                0.88,
+                SpotterfyTheme.primary,
+                0.40 + 0.08 * math.sin(t),
+                0.12,
+              ),
+              spot(
+                Alignment(
+                  0.60 + 0.28 * math.cos(t * 0.8),
+                  0.30 + 0.22 * math.sin(t * 0.7),
+                ),
+                0.80,
+                SpotterfyTheme.primaryDark,
+                0.30 + 0.07 * math.cos(t * 1.2),
+                0.09,
+              ),
+              spot(
+                Alignment(
+                  0.12 * math.cos(t * 0.6),
+                  0.78 + 0.14 * math.sin(t * 1.1),
+                ),
+                0.72,
+                SpotterfyTheme.primary,
+                0.18 + 0.05 * math.sin(t * 0.9),
+                0.05,
+              ),
+              // Radial vignette: darkens the edges so the art and text stay the
+              // focus while the spots read as light sources.
+              const Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: RadialGradient(
-                      center: const Alignment(0, -0.55),
-                      radius: 1.3,
-                      colors: [
-                        SpotterfyTheme.primary.withValues(alpha: 0.16),
-                        const Color(0xFF000000),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              // Two slow-moving soft spots.
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment(
-                        -0.55 + 0.30 * math.sin(t),
-                        -0.55 + 0.16 * math.cos(t),
-                      ),
-                      // Wide + soft so it reads as a glowing spot, not a dot.
-                      radius: 0.95,
-                      colors: [
-                        SpotterfyTheme.primary.withValues(
-                          alpha: 0.32 + 0.07 * math.sin(t),
-                        ),
-                        SpotterfyTheme.primary.withValues(
-                          alpha: 0.10 + 0.03 * math.cos(t * 1.3),
-                        ),
-                        SpotterfyTheme.primary.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.0, 0.45, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment(
-                        0.65 + 0.26 * math.cos(t * 0.8),
-                        0.30 + 0.20 * math.sin(t * 0.7),
-                      ),
-                      radius: 0.85,
-                      colors: [
-                        SpotterfyTheme.primaryDark.withValues(
-                          alpha: 0.26 + 0.06 * math.cos(t * 1.2),
-                        ),
-                        SpotterfyTheme.primaryDark.withValues(alpha: 0.08),
-                        SpotterfyTheme.primaryDark.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.0, 0.45, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-              // Vignette so the text/controls stay readable.
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.45),
-                        Colors.black.withValues(alpha: 0.10),
-                        Colors.black.withValues(alpha: 0.45),
-                      ],
-                      stops: const [0.0, 0.45, 1.0],
+                      radius: 1.05,
+                      colors: [Color(0x00000000), Color(0x8C000000)],
+                      stops: [0.5, 1.0],
                     ),
                   ),
                 ),
