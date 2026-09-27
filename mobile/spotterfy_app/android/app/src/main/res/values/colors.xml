@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Referenced by mipmap-anydpi-v26/ic_launcher.xml (adaptive icon). -->
     <color name="ic_launcher_background">#090b0b</color>
+    <!-- Matches the Flutter splash background so the hand-off is seamless. -->
+    <color name="spotterfy_launch_background">#0A0A0A</color>
 </resources>

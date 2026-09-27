@@ -282,13 +282,35 @@ class PlayerProvider extends ChangeNotifier {
     await _player.play();
   }
 
+  /// Guards against overlapping play/pause requests. The page-level
+  /// double-tap gesture used to fire this twice in quick succession, and
+  /// `_startPlayback()` can await network work for seconds, so without a guard
+  /// two taps could interleave and leave the button stuck on a stale icon.
+  bool _toggling = false;
+
   Future<void> togglePlayPause() async {
-    if (_isPlaying) {
-      await _player.pause();
-      audioHandler?.updatePosition(_position, _duration, false);
-    } else {
-      await _startPlayback();
-      audioHandler?.updatePosition(_position, _duration, true);
+    if (_toggling) return;
+    _toggling = true;
+    try {
+      // `_player.playing` is the source of truth; `_isPlaying` only refreshes
+      // when playerStateStream emits, which can lag a fresh source load.
+      final wasPlaying = _player.playing || _isPlaying;
+      // Optimistic flip so the button reacts on the first frame instead of
+      // waiting for the audio pipeline to report back.
+      _isPlaying = !wasPlaying;
+      notifyListeners();
+      if (wasPlaying) {
+        await _player.pause();
+        audioHandler?.updatePosition(_position, _duration, false);
+      } else {
+        await _startPlayback();
+        audioHandler?.updatePosition(_position, _duration, true);
+      }
+    } finally {
+      _toggling = false;
+      // Re-sync with reality in case the source failed to start.
+      _isPlaying = _player.playing;
+      notifyListeners();
     }
   }
 

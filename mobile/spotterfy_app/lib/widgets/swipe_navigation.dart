@@ -133,11 +133,17 @@ Route<T> swipeRoute<T>(Widget page) => SlidePageRoute(child: page) as Route<T>;
 /// which reads as the page growing out of the mini player, and the close
 /// transition plays the exact reverse (slide + fade back down) so the page
 /// appears to collapse back into the mini player.
+///
+/// The route is deliberately **non-opaque**: the page underneath stays in the
+/// tree and remains visible, so the player reads as a sheet floating *above*
+/// the other page and the list behind it can be seen while it is dragged.
 class VerticalSheetRoute extends PageRouteBuilder {
   final Widget child;
 
   VerticalSheetRoute({required this.child})
     : super(
+        opaque: false,
+        barrierColor: Colors.transparent,
         transitionDuration: const Duration(milliseconds: 380),
         reverseTransitionDuration: const Duration(milliseconds: 320),
         pageBuilder: (_, _, _) => child,

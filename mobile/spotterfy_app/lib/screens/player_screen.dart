@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:flutter/services.dart';
@@ -9,8 +10,35 @@ import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-class PlayerScreen extends StatelessWidget {
+class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
+
+  @override
+  State<PlayerScreen> createState() => _PlayerScreenState();
+}
+
+class _PlayerScreenState extends State<PlayerScreen> {
+  /// Accumulated downward drag distance, used together with release velocity so
+  /// a slow deliberate swipe-down also dismisses the page.
+  double _dragDy = 0;
+
+  /// 0..1 drag progress, drives the sheet-like offset + handle highlight.
+  /// A ValueNotifier (not setState) so dragging only rebuilds this subtree
+  /// instead of the whole page every frame.
+  final ValueNotifier<double> _dragProgress = ValueNotifier(0);
+
+  static const double _dismissDistance = 110;
+
+  @override
+  void dispose() {
+    _dragProgress.dispose();
+    super.dispose();
+  }
+
+  void _resetDrag() {
+    _dragDy = 0;
+    _dragProgress.value = 0;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,12 +75,16 @@ class PlayerScreen extends StatelessWidget {
     );
 
     return Scaffold(
-      // Opaque here because the animated gradient paints the whole screen.
-      backgroundColor: const Color(0xFF04120C),
+      // Transparent so the page underneath stays visible: the backdrop below
+      // paints Spotify black at rest, but dissolves as the sheet is pulled
+      // down, revealing the list behind it.
+      backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        // Plain arrow, no extra wrapper/padding chrome.
         leading: IconButton(
           icon: const Icon(
             Icons.keyboard_arrow_down_rounded,
@@ -62,76 +94,71 @@ class PlayerScreen extends StatelessWidget {
           tooltip: 'Minimise',
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          if (!isRadio)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: SpotterfyTheme.primary,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: SpotterfyTheme.primary.withValues(alpha: 0.4),
-                      blurRadius: 10,
-                    ),
-                  ],
-                ),
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.queue_music_rounded,
-                    color: Colors.black,
-                    size: 20,
-                  ),
-                  tooltip: 'Queue',
-                  onPressed: () => _showQueueDialog(context, player, track),
-                ),
-              ),
-            ),
-        ],
+        // No app-bar actions: the queue button lives with the transport
+        // controls lower down the page.
       ),
-      body: Stack(
-        children: [
-          // Slowly drifting green glows behind everything.
-          const Positioned.fill(child: _AnimatedGreenBackdrop()),
-          GestureDetector(
-            onVerticalDragEnd: (d) {
-              if ((d.primaryVelocity ?? 0) > 400) {
-                HapticFeedback.lightImpact();
-                Navigator.pop(context);
-              }
-            },
-            onHorizontalDragEnd: (d) {
-              if (isRadio) return;
-              final v = d.primaryVelocity ?? 0;
-              if (v < -500) {
-                HapticFeedback.lightImpact();
-                player.next();
-              } else if (v > 500) {
-                HapticFeedback.lightImpact();
-                player.previous();
-              }
-            },
-            onDoubleTap: () {
-              HapticFeedback.mediumImpact();
-              player.togglePlayPause();
-            },
-            child: SafeArea(
+      body: ValueListenableBuilder<double>(
+        valueListenable: _dragProgress,
+        child: GestureDetector(
+          // Swipe down anywhere to dismiss. Driven by accumulated drag
+          // distance as well as release velocity so a slow, deliberate
+          // downward drag works, not just a fast flick.
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragUpdate: (d) {
+            // Only track downward drags; upward is ignored.
+            if (d.delta.dy > 0) _dragDy += d.delta.dy;
+            _dragProgress.value = (_dragDy / _dismissDistance).clamp(0.0, 1.0);
+          },
+          onVerticalDragEnd: (d) {
+            final flung = (d.primaryVelocity ?? 0) > 500;
+            if (_dragDy > _dismissDistance * 0.8 || flung) {
+              HapticFeedback.lightImpact();
+              Navigator.pop(context);
+            }
+            _resetDrag();
+          },
+          onVerticalDragCancel: _resetDrag,
+          child: SafeArea(
+            child: ValueListenableBuilder<double>(
+              valueListenable: _dragProgress,
+              builder: (context, drag, child) {
+                return Transform.translate(
+                  // Tracks the finger 1:1 (drag * _dismissDistance == _dragDy)
+                  // so the page can be pulled down and held at any point.
+                  offset: Offset(0, drag * _dismissDistance),
+                  child: Opacity(
+                    // Slight fade only; the page must stay readable so the
+                    // layout above the revealed area is still clear.
+                    opacity: 1 - drag * 0.25,
+                    child: child,
+                  ),
+                );
+              },
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(28, 8, 28, 20),
+                // Top padding clears the transparent app bar so the drag
+                // handle is fully visible.
+                padding: const EdgeInsets.fromLTRB(28, 52, 28, 20),
                 child: Column(
                   children: [
-                    // drag handle
-                    Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(2),
+                    // Drag handle at the very top - swipe down here (or
+                    // anywhere on the page) to dismiss.
+                    ValueListenableBuilder<double>(
+                      valueListenable: _dragProgress,
+                      builder: (context, drag, _) => Container(
+                        width: 40 + drag * 14,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(
+                            alpha: 0.22 + drag * 0.5,
+                          ),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                    const Spacer(flex: 3),
+                    // More room above the cover than below it, so the cover
+                    // sits higher and the text/controls below ride up.
+                    const Spacer(flex: 4),
                     if (!isRadio && queue.length > 1)
                       _CoverCarousel(
                         key: ValueKey(
@@ -140,12 +167,14 @@ class PlayerScreen extends StatelessWidget {
                         tracks: queue,
                         currentIndex: currentIndex,
                         onPageSelected: (i) {
-                          if (i != player.currentIndex) player.playFromQueue(i);
+                          if (i != player.currentIndex) {
+                            player.playFromQueue(i);
+                          }
                         },
                       )
                     else
                       _StaticCover(track: track),
-                    const Spacer(flex: 3),
+                    const Spacer(flex: 2),
                     // Title block in a fixed-width column so the text stays
                     // centred and never collides with the controls below.
                     SizedBox(
@@ -236,13 +265,33 @@ class PlayerScreen extends StatelessWidget {
                       height: 20,
                       child: Center(
                         child: !isRadio
-                            ? Text(
-                                '${currentIndex + 1} / ${player.queue.length} in queue',
-                                style: const TextStyle(
-                                  color: SpotterfyTheme.muted,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${currentIndex + 1} / ${player.queue.length} in queue',
+                                    style: const TextStyle(
+                                      color: SpotterfyTheme.muted,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  // Queue button now sits on the page, styled
+                                  // like the other controls instead of the
+                                  // solid app-bar circle.
+                                  _CircleControlButton(
+                                    icon: Icons.queue_music_rounded,
+                                    tooltip: 'Queue',
+                                    size: 30,
+                                    iconSize: 16,
+                                    onTap: () => _showQueueDialog(
+                                      context,
+                                      player,
+                                      track,
+                                    ),
+                                  ),
+                                ],
                               )
                             : Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -283,7 +332,28 @@ class PlayerScreen extends StatelessWidget {
               ),
             ),
           ),
-        ],
+        ),
+        builder: (context, drag, content) {
+          return ClipRRect(
+            // Top corners round off as the sheet is pulled down, reinforcing
+            // that it is a layer sitting above the page rather than that page.
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(30 * drag),
+            ),
+            child: Stack(
+              children: [
+                Opacity(
+                  // The Spotify-black + green backdrop dissolves as the sheet
+                  // drops, letting the page underneath show through. This is
+                  // what makes the player look like it is floating above it.
+                  opacity: 1 - drag * 0.88,
+                  child: const SizedBox.expand(child: _AnimatedGreenBackdrop()),
+                ),
+                content!,
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -455,9 +525,9 @@ class PlayerScreen extends StatelessWidget {
   }
 }
 
-/// Slowly drifting green gradient glows. Loops forever but paints only three
-/// radial gradients, and is wrapped in a RepaintBoundary so the animation
-/// doesn't dirty the rest of the player UI each frame.
+/// Slowly drifting green gradient glows plus a field of soft green particles
+/// rising through them. Loops forever and is wrapped in a RepaintBoundary so
+/// the animation never dirties the rest of the player UI each frame.
 class _AnimatedGreenBackdrop extends StatefulWidget {
   const _AnimatedGreenBackdrop();
 
@@ -492,53 +562,87 @@ class _AnimatedGreenBackdropState extends State<_AnimatedGreenBackdrop>
         builder: (context, _) {
           // Full 0..1 cycle drives both the drift and a gentle opacity swell.
           final t = _ctrl.value * 2 * math.pi;
-          return DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(
-                  -0.6 + 0.35 * math.sin(t),
-                  -0.7 + 0.18 * math.cos(t),
-                ),
-                radius: 1.25,
-                colors: [
-                  SpotterfyTheme.primary.withValues(
-                    alpha: 0.30 + 0.06 * math.sin(t),
-                  ),
-                  SpotterfyTheme.primary.withValues(alpha: 0.0),
-                ],
-              ),
-            ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(
-                    0.7 + 0.30 * math.cos(t * 0.8),
-                    0.35 + 0.22 * math.sin(t * 0.7),
-                  ),
-                  radius: 1.15,
-                  colors: [
-                    SpotterfyTheme.primaryDark.withValues(
-                      alpha: 0.22 + 0.05 * math.cos(t * 1.2),
+          return Stack(
+            children: [
+              // Base wash: deep green tint over Spotify black.
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(0, -0.55),
+                      radius: 1.3,
+                      colors: [
+                        SpotterfyTheme.primary.withValues(alpha: 0.16),
+                        const Color(0xFF000000),
+                      ],
                     ),
-                    SpotterfyTheme.primaryDark.withValues(alpha: 0.0),
-                  ],
-                ),
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.45),
-                      Colors.black.withValues(alpha: 0.0),
-                      Colors.black.withValues(alpha: 0.35),
-                    ],
-                    stops: const [0.0, 0.45, 1.0],
                   ),
                 ),
               ),
-            ),
+              // Two slow-moving soft spots.
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment(
+                        -0.55 + 0.30 * math.sin(t),
+                        -0.55 + 0.16 * math.cos(t),
+                      ),
+                      // Wide + soft so it reads as a glowing spot, not a dot.
+                      radius: 0.95,
+                      colors: [
+                        SpotterfyTheme.primary.withValues(
+                          alpha: 0.32 + 0.07 * math.sin(t),
+                        ),
+                        SpotterfyTheme.primary.withValues(
+                          alpha: 0.10 + 0.03 * math.cos(t * 1.3),
+                        ),
+                        SpotterfyTheme.primary.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment(
+                        0.65 + 0.26 * math.cos(t * 0.8),
+                        0.30 + 0.20 * math.sin(t * 0.7),
+                      ),
+                      radius: 0.85,
+                      colors: [
+                        SpotterfyTheme.primaryDark.withValues(
+                          alpha: 0.26 + 0.06 * math.cos(t * 1.2),
+                        ),
+                        SpotterfyTheme.primaryDark.withValues(alpha: 0.08),
+                        SpotterfyTheme.primaryDark.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+              // Vignette so the text/controls stay readable.
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.45),
+                        Colors.black.withValues(alpha: 0.10),
+                        Colors.black.withValues(alpha: 0.45),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -635,21 +739,31 @@ class _PlayPauseButton extends StatelessWidget {
   }
 }
 
-/// Single (non-carousel) cover, centred in a square.
+/// Single (non-carousel) square cover.
 class _StaticCover extends StatelessWidget {
   final TrackModel track;
   const _StaticCover({required this.track});
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        width: 280,
-        height: 280,
-        color: SpotterfyTheme.surface,
-        child: _PlayerCover(track: track),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Square that fits the available box without overflowing.
+        final side = math.min(constraints.maxWidth, constraints.maxHeight);
+        return Center(
+          child: SizedBox(
+            width: side,
+            height: side,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                color: SpotterfyTheme.surface,
+                child: _PlayerCover(track: track),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -669,16 +783,47 @@ class _CoverCarousel extends StatefulWidget {
   State<_CoverCarousel> createState() => _CoverCarouselState();
 }
 
-class _CoverCarouselState extends State<_CoverCarousel>
-    with SingleTickerProviderStateMixin {
+class _CoverCarouselState extends State<_CoverCarousel> {
   late PageController _ctrl;
   late int _current;
+
+  /// Fraction of the available width a single page occupies. `PageView` centres
+  /// the pages (via `padEnds`), so the leftover width is split evenly and is
+  /// what makes the previous/next cover peek in - the neighbours are already
+  /// partly visible before you swipe, instead of only appearing once a page has
+  /// scrolled all the way over.
+  static const double _viewportFraction = 0.76;
+
+  /// Gap between a cover and the edges of its page, so neighbouring covers
+  /// don't touch.
+  static const double _pageInset = 8;
+
+  /// How far a neighbour shrinks once it is a full page away. Kept close to 1
+  /// so the shrunk cover still reaches the screen edge and stays visible in the
+  /// peek strip; the page size difference already reads strongly.
+  static const double _inactiveScale = 0.9;
+
+  /// Fractional scroll position. Tracked continuously while dragging so covers
+  /// grow/shrink in step with the finger rather than snapping on page change.
+  final ValueNotifier<double> _position = ValueNotifier(0);
 
   @override
   void initState() {
     super.initState();
     _current = widget.currentIndex.clamp(0, widget.tracks.length - 1);
-    _ctrl = PageController(viewportFraction: 0.76, initialPage: _current);
+    _position.value = _current.toDouble();
+    _ctrl = PageController(
+      viewportFraction: _viewportFraction,
+      initialPage: _current,
+    )..addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final page = _ctrl.page;
+    if (page == null) return;
+    // Skip sub-pixel noise so we don't rebuild every frame when idle.
+    if ((_position.value - page).abs() < 0.001) return;
+    _position.value = page;
   }
 
   @override
@@ -700,38 +845,96 @@ class _CoverCarouselState extends State<_CoverCarousel>
 
   @override
   void dispose() {
+    _ctrl.removeListener(_onScroll);
     _ctrl.dispose();
+    _position.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 300,
-      child: PageView.builder(
-        controller: _ctrl,
-        itemCount: widget.tracks.length,
-        onPageChanged: (i) {
-          if (i == _current) return;
-          _current = i;
-          HapticFeedback.selectionClick();
-          widget.onPageSelected(i);
-        },
-        itemBuilder: (_, i) {
-          final t = widget.tracks[i];
-          return Padding(
-            // Wider gap + slight inset so neighbouring covers never touch.
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                color: SpotterfyTheme.surface,
-                child: _PlayerCover(track: t),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final pageWidth = constraints.maxWidth * _viewportFraction;
+        // Square cover: fills its page minus the inset, but never taller than
+        // the space the column gave us (prevents overflow on short screens).
+        final side = math.min(pageWidth - _pageInset, constraints.maxHeight);
+        return SizedBox(
+          height: side,
+          child: PageView.builder(
+            controller: _ctrl,
+            itemCount: widget.tracks.length,
+            onPageChanged: (i) {
+              if (i == _current) return;
+              _current = i;
+              HapticFeedback.selectionClick();
+              widget.onPageSelected(i);
+            },
+            itemBuilder: (_, i) => _CarouselPage(
+              position: _position,
+              index: i,
+              inactiveScale: _inactiveScale,
+              // Built once per page; only the transform around it changes.
+              child: SizedBox(
+                width: side,
+                height: side,
+                child: _PlayerCover(track: widget.tracks[i]),
               ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A single carousel page, scaled/dimmed continuously from how far it currently
+/// sits from the centred page. Driving the transform from the live scroll
+/// position (instead of an `isCurrent` flag) is what makes the covers ease
+/// bigger/smaller while the finger is still moving.
+class _CarouselPage extends StatelessWidget {
+  final ValueListenable<double> position;
+  final int index;
+  final double inactiveScale;
+  final Widget child;
+
+  const _CarouselPage({
+    required this.position,
+    required this.index,
+    required this.inactiveScale,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: position,
+      child: child,
+      builder: (context, pos, cover) {
+        // 0 while centred, 1 once a full page away.
+        final d = (pos - index).abs().clamp(0.0, 1.0);
+        // Eased so the shrink settles rather than tracking the finger linearly.
+        final e = Curves.easeOutCubic.transform(d);
+        return Center(
+          child: Transform.translate(
+            // Neighbours sink slightly, which adds depth to the size change.
+            offset: Offset(0, 8 * e),
+            child: Transform.scale(
+              scale: 1 - (1 - inactiveScale) * e,
+              child: Opacity(
+                opacity: 1 - 0.4 * e,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22 - 6 * e),
+                  child: ColoredBox(
+                    color: SpotterfyTheme.surface,
+                    child: cover,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -740,10 +943,14 @@ class _CircleControlButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final String tooltip;
+  final double size;
+  final double iconSize;
   const _CircleControlButton({
     required this.icon,
     required this.onTap,
     this.tooltip = '',
+    this.size = 48,
+    this.iconSize = 26,
   });
 
   @override
@@ -759,9 +966,9 @@ class _CircleControlButton extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: SizedBox(
-            width: 48,
-            height: 48,
-            child: Icon(icon, color: Colors.white, size: 26),
+            width: size,
+            height: size,
+            child: Icon(icon, color: Colors.white, size: iconSize),
           ),
         ),
       ),
@@ -789,7 +996,9 @@ class _SeekBar extends StatelessWidget {
     final p = progress.clamp(0.0, 1.0);
     final b = buffered.clamp(0.0, 1.0);
     return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+      // Translucent (not opaque) so a vertical drag starting on the seek bar
+      // still reaches the page-level swipe-down-to-dismiss handler.
+      behavior: HitTestBehavior.translucent,
       onHorizontalDragDown: (d) {
         final box = context.findRenderObject() as RenderBox?;
         if (box != null) {
