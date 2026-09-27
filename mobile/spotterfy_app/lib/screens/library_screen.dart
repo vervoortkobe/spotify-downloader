@@ -14,6 +14,7 @@ import 'playlist_detail_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
+import 'package:spotterfy_app/widgets/no_results_view.dart';
 
 /// One row in the storage root list: a folder treated as a playlist, or the
 /// loose tracks sitting directly in a scan root.
@@ -244,6 +245,17 @@ class _LibraryScreenState extends State<LibraryScreen>
       );
     }
     if (list.isEmpty) {
+      // A search that matched nothing uses the shared panel; a genuinely empty
+      // library keeps its own "pull to refresh / import" call to action.
+      if (_query.isNotEmpty) {
+        return NoResultsView(
+          query: _query,
+          icon: Icons.library_music_outlined,
+          message: 'No playlists in your library match "$_query".',
+          actionLabel: 'Clear search',
+          onAction: () => _searchController.clear(),
+        );
+      }
       return RefreshIndicator(
         onRefresh: _onRefreshPlaylists,
         color: SpotterfyTheme.primary,
@@ -263,7 +275,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    _query.isNotEmpty ? 'No matches' : 'No playlists yet',
+                    'No playlists yet',
                     style: TextStyle(
                       color: SpotterfyTheme.text,
                       fontWeight: FontWeight.w600,
@@ -271,26 +283,15 @@ class _LibraryScreenState extends State<LibraryScreen>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _query.isNotEmpty
-                        ? 'Try a different search'
-                        : 'Pull down to refresh or tap + to import',
+                    'Pull down to refresh or tap + to import',
                     style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
                   ),
                   const SizedBox(height: 12),
-                  if (_query.isNotEmpty)
-                    TextButton(
-                      onPressed: () => _searchController.clear(),
-                      child: Text(
-                        'Clear search',
-                        style: TextStyle(color: SpotterfyTheme.primary),
-                      ),
-                    )
-                  else
-                    OutlinedButton.icon(
-                      onPressed: _onRefreshPlaylists,
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('Refresh'),
-                    ),
+                  OutlinedButton.icon(
+                    onPressed: _onRefreshPlaylists,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Refresh'),
+                  ),
                 ],
               ),
             ),
@@ -431,6 +432,15 @@ class _LibraryScreenState extends State<LibraryScreen>
       }
       final files = _storageFiles ?? const <File>[];
       if (files.isEmpty) {
+        if (_query.isNotEmpty) {
+          return NoResultsView(
+            query: _query,
+            icon: Icons.folder_off,
+            message: 'No folders on this device match "$_query".',
+            actionLabel: 'Clear search',
+            onAction: () => _searchController.clear(),
+          );
+        }
         return RefreshIndicator(
           onRefresh: _startStorageScan,
           child: ListView(
@@ -439,9 +449,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               const SizedBox(height: 80),
               Center(
                 child: Text(
-                  _query.isNotEmpty
-                      ? 'No matches'
-                      : 'No local music found\nTip: check subfolders inside /Music',
+                  'No local music found\nTip: check subfolders inside /Music',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: SpotterfyTheme.muted),
                 ),
@@ -647,11 +655,16 @@ class _LibraryScreenState extends State<LibraryScreen>
                 ),
               Expanded(
                 child: (detailFiles.isEmpty && subfolders.isEmpty)
-                    ? Center(
-                        child: Text(
-                          'No matches',
-                          style: TextStyle(color: SpotterfyTheme.muted),
-                        ),
+                    ? NoResultsView(
+                        query: _query,
+                        icon: Icons.folder_off,
+                        message: _query.isNotEmpty
+                            ? 'Nothing in "$folderName" matches "$_query".'
+                            : 'This folder has no playable songs.',
+                        actionLabel: _query.isNotEmpty ? 'Clear search' : null,
+                        onAction: _query.isNotEmpty
+                            ? () => _searchController.clear()
+                            : null,
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.only(bottom: 100),
@@ -752,11 +765,12 @@ class _LibraryScreenState extends State<LibraryScreen>
         }
       }
       if (filteredEntries.isEmpty) {
-        return Center(
-          child: Text(
-            'No matches for "$_query"',
-            style: TextStyle(color: SpotterfyTheme.muted),
-          ),
+        return NoResultsView(
+          query: _query,
+          icon: Icons.folder_off,
+          message: 'No storage folders match "$_query".',
+          actionLabel: 'Clear search',
+          onAction: () => _searchController.clear(),
         );
       }
       return RefreshIndicator(

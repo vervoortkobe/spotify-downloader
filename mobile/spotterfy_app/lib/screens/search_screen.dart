@@ -18,6 +18,7 @@ import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/firebase_service.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
+import 'package:spotterfy_app/widgets/no_results_view.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -501,7 +502,13 @@ class _SearchScreenState extends State<SearchScreen> {
       // the scroll view) so it can expand to the full viewport height and truly
       // centre itself.
       body: _showNoResults
-          ? _NoResults(query: _query, onClear: () => _searchController.clear())
+          ? NoResultsView(
+              query: _query,
+              message:
+                  'No playlists or profiles include "$_query".\nCheck the spelling or try a different search.',
+              onAction: () => _searchController.clear(),
+              actionLabel: 'Clear search',
+            )
           : SingleChildScrollView(
               // Clears the mini player + navbar without leaving a big gap.
               padding: const EdgeInsets.only(bottom: 110),
@@ -1347,61 +1354,6 @@ class _CommunityError extends StatelessWidget {
 
 /// Shown when a search matches nothing in any category. Every section hides
 /// itself on a miss, so this is the only feedback the user would otherwise get.
-class _NoResults extends StatelessWidget {
-  final String query;
-  final VoidCallback onClear;
-
-  const _NoResults({required this.query, required this.onClear});
-
-  @override
-  Widget build(BuildContext context) {
-    // Center + a Column that is allowed to be its natural height: this widget is
-    // the Scaffold body, so it fills the viewport and the content lands in the
-    // middle both vertically and horizontally.
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 48, color: SpotterfyTheme.muted),
-            const SizedBox(height: 16),
-            Text(
-              'Nothing found for "$query"',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: SpotterfyTheme.text,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'No playlists or profiles include "$query".\nCheck the spelling or try a different search.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            TextButton.icon(
-              onPressed: onClear,
-              icon: const Icon(
-                Icons.clear,
-                color: SpotterfyTheme.primary,
-                size: 18,
-              ),
-              label: const Text(
-                'Clear search',
-                style: TextStyle(color: SpotterfyTheme.primary),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Radio stations list page
 class _RadioStationsPage extends StatelessWidget {
   final List<Map<String, dynamic>> stations;
