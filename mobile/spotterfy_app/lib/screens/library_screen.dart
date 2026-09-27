@@ -81,6 +81,22 @@ class _LibraryScreenState extends State<LibraryScreen>
   /// tab shows the list immediately instead of a blocking spinner.
   bool _storageScanning = false;
 
+  /// Local file path -> real length in ms.
+  ///
+  /// A storage [TrackModel] is built from a path, so it starts with
+  /// `durationMs: 0`. Populated by [_rememberStorageDuration] as tracks are
+  /// played - the player writes the real length back once it has loaded the
+  /// file. Deliberately *not* pre-measured across the whole library: reading
+  /// every file's tags is expensive enough to freeze the UI on large libraries.
+  final Map<String, int> _storageDurations = {};
+
+  /// Memo for [_tracksForFiles]. Building a TrackModel per song, for every
+  /// folder, on every rebuild is the dominant cost of this tab - and the list
+  /// rebuilds on every playback tick. Bumped by [_memoGeneration] whenever the
+  /// scan changes so stale entries can never be served.
+  final Map<String, List<TrackModel>> _tracksMemo = {};
+  int _memoGeneration = 0;
+
   /// Cached permission probe - re-ran on every rebuild before, which on its own
   /// was slow enough to be visible as a stall.
   bool? _storagePermGranted;
@@ -132,6 +148,8 @@ class _LibraryScreenState extends State<LibraryScreen>
     try {
       final files = (await _listMusicFiles()).whereType<File>().toList();
       if (!mounted) return;
+      // Invalidate memoised track lists: the folder contents just changed.
+      _memoGeneration++;
       setState(() {
         _storageFiles = files;
         _storageLoaded = true;
@@ -402,6 +420,15 @@ class _LibraryScreenState extends State<LibraryScreen>
 
   Widget _storageContent() {
     {
+      // One dependency for the whole tab rather than one per row. Also picks up
+      // any length the player has since learned for a local file, so rows show
+      // real times without re-reading tags.
+      final player = context.watch<PlayerProvider>();
+      final cur = player.currentTrack;
+      final durMs = player.duration.inMilliseconds;
+      if (cur != null && durMs > 0 && cur.sourceUrl.startsWith('/storage/')) {
+        _rememberStorageDuration(cur.sourceUrl, durMs);
+      }
       final files = _storageFiles ?? const <File>[];
       if (files.isEmpty) {
         return RefreshIndicator(
@@ -703,7 +730,6 @@ class _LibraryScreenState extends State<LibraryScreen>
                           final j = i - subfolders.length;
                           final f = detailFiles[j];
                           final t = folderTracks[j];
-                          final player = context.watch<PlayerProvider>();
                           final isSelected = player.currentTrack?.id == t.id;
                           final isPlaying = isSelected && player.isPlaying;
                           return TrackTile(
@@ -750,7 +776,9 @@ class _LibraryScreenState extends State<LibraryScreen>
             final allSongs = entry.songs;
             final count = allSongs.length;
             final folderTracks = _tracksForFiles(allSongs, folderName);
-            final player = context.watch<PlayerProvider>();
+            // The player is watched once for the whole list, not per row: a
+            // per-row `context.watch` rebuilt every visible item on every
+            // position tick.
             final curTrack = player.currentTrack;
             final prefix = entry.folderPath == null
                 ? '$folderName/'
@@ -947,27 +975,53 @@ class _LibraryScreenState extends State<LibraryScreen>
     }
   }
 
+  /// Records a real length for a local file so later builds show it.
+  void _rememberStorageDuration(String path, int ms) {
+    if (ms <= 0 || _storageDurations[path] == ms) return;
+    _storageDurations[path] = ms;
+  }
+
   List<TrackModel> _tracksForFiles(List<File> files, String folderName) {
-    return files.map((f) {
-      final path = f.path;
-      final name = path
-          .split('/')
-          .last
-          .replaceAll(
-            RegExp(r'\.(mp3|m4a|opus|flac|wav|ogg|aac)$', caseSensitive: false),
-            '',
+    // Keyed on the generation plus the set's shape: within one scan a folder
+    // always yields the same list, so this is safe to reuse across rebuilds.
+    final key =
+        '$_memoGeneration|$folderName|${files.length}|'
+        '${files.isEmpty ? '' : files.first.path}|'
+        '${files.isEmpty ? '' : files.last.path}';
+    final hit = _tracksMemo[key];
+    if (hit != null) return hit;
+
+    final out =
+        files.map((f) {
+          final path = f.path;
+          final name = path
+              .split('/')
+              .last
+              .replaceAll(
+                RegExp(
+                  r'\.(mp3|m4a|opus|flac|wav|ogg|aac)$',
+                  caseSensitive: false,
+                ),
+                '',
+              );
+          return TrackModel(
+            id: 'storage_${path.hashCode}',
+            title: name.isEmpty ? 'Unknown' : name,
+            artists: folderName,
+            album: 'Local',
+            cover: '',
+            sourceUrl: path,
+            // Real length, once the file has been loaded and reported one.
+            durationMs: _storageDurations[path] ?? 0,
           );
-      return TrackModel(
-        id: 'storage_${path.hashCode}',
-        title: name.isEmpty ? 'Unknown' : name,
-        artists: folderName,
-        album: 'Local',
-        cover: '',
-        sourceUrl: path,
-      );
-    }).toList()..sort(
-      (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-    );
+        }).toList()..sort(
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        );
+
+    // Keep the cache bounded; a stale entry is cheap, a leak is not.
+    if (_tracksMemo.length > 300) _tracksMemo.clear();
+    _tracksMemo[key] = out;
+    return out;
   }
 
   Future<bool> _hasStoragePerm() async {

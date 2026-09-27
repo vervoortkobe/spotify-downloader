@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/queue_sheet.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -17,27 +18,94 @@ class PlayerScreen extends StatefulWidget {
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends State<PlayerScreen> {
-  /// Accumulated downward drag distance, used together with release velocity so
-  /// a slow deliberate swipe-down also dismisses the page.
+class _PlayerScreenState extends State<PlayerScreen>
+    with SingleTickerProviderStateMixin {
+  /// Downward drag distance accumulated by the swipe-down-to-close gesture.
   double _dragDy = 0;
 
-  /// 0..1 drag progress, drives the sheet-like offset + handle highlight.
-  /// A ValueNotifier (not setState) so dragging only rebuilds this subtree
-  /// instead of the whole page every frame.
+  /// 0..1 of [dismissDistance] reached. Drives only the scale feedback - the
+  /// page is never translated or made transparent, so it can never look like
+  /// it is stuck halfway open.
   final ValueNotifier<double> _dragProgress = ValueNotifier(0);
+
+  /// Eases the scale back to rest when the swipe falls short of the threshold.
+  late final AnimationController _springCtrl;
+
+  bool _thresholdHapticDone = false;
+  bool _dismissing = false;
 
   static const double _dismissDistance = 110;
 
   @override
+  void initState() {
+    super.initState();
+    _springCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+  }
+
+  @override
   void dispose() {
+    _springCtrl.dispose();
     _dragProgress.dispose();
     super.dispose();
   }
 
-  void _resetDrag() {
+  void _onDragUpdate(DragUpdateDetails d) {
+    _springCtrl.stop();
+    if (d.delta.dy > 0) _dragDy += d.delta.dy;
+    if (_dragDy < 0) _dragDy = 0;
+    final p = (_dragDy / _dismissDistance).clamp(0.0, 1.0);
+    _dragProgress.value = p;
+    // Tell the user the moment the gesture becomes a dismiss, so releasing
+    // early doesn't feel broken.
+    if (!_thresholdHapticDone && p >= 0.8) {
+      _thresholdHapticDone = true;
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  void _onDragEnd(DragEndDetails d) {
+    final flung = (d.primaryVelocity ?? 0) > 500;
+    if (_dragDy > _dismissDistance * 0.8 || flung) {
+      _dismiss();
+    } else {
+      _springBack();
+    }
+  }
+
+  Future<void> _springBack() async {
     _dragDy = 0;
-    _dragProgress.value = 0;
+    _thresholdHapticDone = false;
+    if (_springCtrl.isAnimating) return;
+    final from = _dragProgress.value;
+    if (from <= 0.001) {
+      _dragProgress.value = 0;
+      return;
+    }
+    final tween = Tween<double>(
+      begin: from,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _springCtrl, curve: Curves.easeOutCubic));
+    void tick() => _dragProgress.value = tween.value;
+    _springCtrl.addListener(tick);
+    try {
+      await _springCtrl.forward(from: 0);
+    } finally {
+      _springCtrl.removeListener(tick);
+      _dragProgress.value = 0;
+    }
+  }
+
+  /// Closes the page. All of the motion is the route's own transition, which is
+  /// configured to match the queue's bottom sheet.
+  void _dismiss() {
+    if (_dismissing) return;
+    _dismissing = true;
+    _springCtrl.stop();
+    HapticFeedback.lightImpact();
+    Navigator.pop(context);
   }
 
   @override
@@ -75,283 +143,246 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
 
     return Scaffold(
-      // Transparent so the page underneath stays visible: the backdrop below
-      // paints Spotify black at rest, but dissolves as the sheet is pulled
-      // down, revealing the list behind it.
-      backgroundColor: Colors.transparent,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        // Plain arrow, no extra wrapper/padding chrome.
-        leading: IconButton(
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: Colors.white,
-            size: 30,
+      // Fully opaque Spotify black. The page used to be a translucent "sheet"
+      // that dissolved as it was dragged, which is what made it look like it
+      // opened halfway and went see-through. It is now a plain full-screen page
+      // whose only motion is the route transition.
+      backgroundColor: const Color(0xFF000000),
+      // No AppBar on purpose. The buttons are positioned in the body instead:
+      // a transparent AppBar still sits *on top* of the body and swallows taps
+      // across its whole 56px band, which is what made the offset queue button
+      // unreachable (and visually clipped) before.
+      body: Stack(
+        children: [
+          const Positioned.fill(child: _AnimatedGreenBackdrop()),
+          // Swipe down anywhere to close. Feedback is a slight scale-down only:
+          // no translation and no opacity change, so the page stays solid and
+          // fully open while the gesture is in progress. Horizontal swipes are
+          // untouched, so the cover carousel still works.
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onVerticalDragUpdate: _onDragUpdate,
+            onVerticalDragEnd: _onDragEnd,
+            onVerticalDragCancel: _springBack,
+            child: ValueListenableBuilder<double>(
+              valueListenable: _dragProgress,
+              child: SafeArea(
+                child: Padding(
+                  // Top padding clears the arrow and the queue button sitting in
+                  // the corners above.
+                  padding: const EdgeInsets.fromLTRB(28, 74, 28, 20),
+                  child: Column(
+                    children: [
+                      // Slightly less space above the cover than below the
+                      // controls, so the whole block rides a little above the
+                      // vertical centre of the page.
+                      const Spacer(flex: 2),
+                      if (!isRadio && queue.length > 1)
+                        _CoverCarousel(
+                          key: ValueKey(
+                            'carousel-${queue.length}-${queue.first.id}-${queue.last.id}',
+                          ),
+                          tracks: queue,
+                          currentIndex: currentIndex,
+                          onPageSelected: (i) {
+                            if (i != player.currentIndex) {
+                              player.playFromQueue(i);
+                            }
+                          },
+                        )
+                      else
+                        _StaticCover(track: track),
+                      const Spacer(flex: 2),
+                      // Title block in a fixed-width column so the text stays
+                      // centred and never collides with the controls below.
+                      SizedBox(
+                        width: double.infinity,
+                        child: Column(
+                          children: [
+                            Text(
+                              track.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.3,
+                                height: 1.2,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              track.artists,
+                              style: const TextStyle(
+                                color: SpotterfyTheme.muted,
+                                fontSize: 15,
+                                height: 1.3,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      _SeekBar(
+                        progress: sliderVal.clamp(0.0, 1.0),
+                        buffered: dur.inMilliseconds > 0
+                            ? (player.buffered.inMilliseconds /
+                                      dur.inMilliseconds)
+                                  .clamp(0.0, 1.0)
+                            : 0.0,
+                        onSeek: (v) {
+                          final raw = Duration(
+                            milliseconds: (v * dur.inMilliseconds).round(),
+                          );
+                          final newPos = isRadio
+                              ? Duration(
+                                  milliseconds: raw.inMilliseconds.clamp(
+                                    0,
+                                    player.radioMaxListened.inMilliseconds,
+                                  ),
+                                )
+                              : raw;
+                          player.seekTo(newPos);
+                        },
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _fmtDuration(pos),
+                              style: const TextStyle(
+                                color: SpotterfyTheme.muted,
+                                fontSize: 12,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                            Text(
+                              _fmtDuration(dur),
+                              style: const TextStyle(
+                                color: SpotterfyTheme.muted,
+                                fontSize: 12,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      // Controls: symmetric layout so play/pause is always dead
+                      // centre regardless of whether the skip buttons are shown.
+                      _PlayerControls(player: player, isRadio: isRadio),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        height: 20,
+                        child: Center(
+                          child: !isRadio
+                              ? Text(
+                                  '${currentIndex + 1} / ${player.queue.length} in queue',
+                                  style: const TextStyle(
+                                    color: SpotterfyTheme.muted,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                )
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'LIVE',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Radio • can seek back ${player.radioMaxListened.inSeconds ~/ 60} min',
+                                      style: const TextStyle(
+                                        color: SpotterfyTheme.muted,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Larger than the top spacer, which is what tips the
+                      // content up above the centre line.
+                      const Spacer(flex: 3),
+                    ],
+                  ),
+                ),
+              ),
+              builder: (context, drag, content) => Transform.scale(
+                // Slight shrink while swiping. Deliberately not a translation
+                // or a fade, so the page never looks half-open or see-through.
+                scale: 1 - drag * 0.04,
+                child: content,
+              ),
+            ),
           ),
-          tooltip: 'Minimise',
-          onPressed: () => Navigator.pop(context),
-        ),
-        // Queue sits opposite the minimise arrow. Deliberately larger than the
-        // other circular controls since it is a primary destination, and
-        // translucent so it blends into the black rather than popping out of it.
-        actions: [
+          // Layered last so the buttons win hit-testing over the content.
+          _pageChrome(player, isRadio),
+        ],
+      ),
+    );
+  }
+
+  /// Top-left minimise arrow + top-right queue button.
+  ///
+  /// Returned as a full-size [Stack] with [Positioned] children so it can be
+  /// layered over the page content (and therefore take taps) without consuming
+  /// any vertical space in the layout.
+  Widget _pageChrome(PlayerProvider player, bool isRadio) {
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 2,
+            left: 6,
+            child: IconButton(
+              // Plain arrow, no extra wrapper/padding chrome.
+              icon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
+              tooltip: 'Minimise',
+              onPressed: _dismiss,
+            ),
+          ),
           if (!isRadio)
-            Padding(
-              padding: const EdgeInsets.only(right: 10),
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 20,
+              right: 10,
               child: _CircleControlButton(
                 icon: Icons.queue_music_rounded,
                 tooltip: 'Queue',
                 size: 48,
                 iconSize: 27,
-                onTap: () => _showQueueDialog(context, player, track),
+                onTap: () => showQueueSheet(context, player),
               ),
             ),
         ],
-      ),
-      body: ValueListenableBuilder<double>(
-        valueListenable: _dragProgress,
-        child: GestureDetector(
-          // Swipe down anywhere to dismiss. Driven by accumulated drag
-          // distance as well as release velocity so a slow, deliberate
-          // downward drag works, not just a fast flick.
-          behavior: HitTestBehavior.translucent,
-          onVerticalDragUpdate: (d) {
-            // Only track downward drags; upward is ignored.
-            if (d.delta.dy > 0) _dragDy += d.delta.dy;
-            _dragProgress.value = (_dragDy / _dismissDistance).clamp(0.0, 1.0);
-          },
-          onVerticalDragEnd: (d) {
-            final flung = (d.primaryVelocity ?? 0) > 500;
-            if (_dragDy > _dismissDistance * 0.8 || flung) {
-              HapticFeedback.lightImpact();
-              Navigator.pop(context);
-            }
-            _resetDrag();
-          },
-          onVerticalDragCancel: _resetDrag,
-          child: SafeArea(
-            child: ValueListenableBuilder<double>(
-              valueListenable: _dragProgress,
-              builder: (context, drag, child) {
-                return Transform.translate(
-                  // Tracks the finger 1:1 (drag * _dismissDistance == _dragDy)
-                  // so the page can be pulled down and held at any point.
-                  offset: Offset(0, drag * _dismissDistance),
-                  child: Opacity(
-                    // Slight fade only; the page must stay readable so the
-                    // layout above the revealed area is still clear.
-                    opacity: 1 - drag * 0.25,
-                    child: child,
-                  ),
-                );
-              },
-              child: Padding(
-                // Top padding clears the transparent app bar so the drag
-                // handle is fully visible.
-                padding: const EdgeInsets.fromLTRB(28, 52, 28, 20),
-                child: Column(
-                  children: [
-                    // Drag handle at the very top - swipe down here (or
-                    // anywhere on the page) to dismiss.
-                    ValueListenableBuilder<double>(
-                      valueListenable: _dragProgress,
-                      builder: (context, drag, _) => Container(
-                        width: 40 + drag * 14,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 14),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(
-                            alpha: 0.22 + drag * 0.5,
-                          ),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    // Even space above the cover and below the controls, so the
-                    // whole block sits in the middle of the page instead of
-                    // hugging the top and bottom.
-                    const Spacer(flex: 3),
-                    if (!isRadio && queue.length > 1)
-                      _CoverCarousel(
-                        key: ValueKey(
-                          'carousel-${queue.length}-${queue.first.id}-${queue.last.id}',
-                        ),
-                        tracks: queue,
-                        currentIndex: currentIndex,
-                        onPageSelected: (i) {
-                          if (i != player.currentIndex) {
-                            player.playFromQueue(i);
-                          }
-                        },
-                      )
-                    else
-                      _StaticCover(track: track),
-                    const Spacer(flex: 2),
-                    // Title block in a fixed-width column so the text stays
-                    // centred and never collides with the controls below.
-                    SizedBox(
-                      width: double.infinity,
-                      child: Column(
-                        children: [
-                          Text(
-                            track.title,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.3,
-                              height: 1.2,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            track.artists,
-                            style: const TextStyle(
-                              color: SpotterfyTheme.muted,
-                              fontSize: 15,
-                              height: 1.3,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-                    _SeekBar(
-                      progress: sliderVal.clamp(0.0, 1.0),
-                      buffered: dur.inMilliseconds > 0
-                          ? (player.buffered.inMilliseconds /
-                                    dur.inMilliseconds)
-                                .clamp(0.0, 1.0)
-                          : 0.0,
-                      onSeek: (v) {
-                        final raw = Duration(
-                          milliseconds: (v * dur.inMilliseconds).round(),
-                        );
-                        final newPos = isRadio
-                            ? Duration(
-                                milliseconds: raw.inMilliseconds.clamp(
-                                  0,
-                                  player.radioMaxListened.inMilliseconds,
-                                ),
-                              )
-                            : raw;
-                        player.seekTo(newPos);
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _fmtDuration(pos),
-                            style: const TextStyle(
-                              color: SpotterfyTheme.muted,
-                              fontSize: 12,
-                              fontFeatures: [FontFeature.tabularFigures()],
-                            ),
-                          ),
-                          Text(
-                            _fmtDuration(dur),
-                            style: const TextStyle(
-                              color: SpotterfyTheme.muted,
-                              fontSize: 12,
-                              fontFeatures: [FontFeature.tabularFigures()],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // Controls: symmetric layout so play/pause is always dead
-                    // centre regardless of whether the skip buttons are shown.
-                    _PlayerControls(player: player, isRadio: isRadio),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      height: 20,
-                      child: Center(
-                        child: !isRadio
-                            ? Text(
-                                '${currentIndex + 1} / ${player.queue.length} in queue',
-                                style: const TextStyle(
-                                  color: SpotterfyTheme.muted,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              )
-                            : Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.red,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  const Text(
-                                    'LIVE',
-                                    style: TextStyle(
-                                      color: Colors.red,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 1.2,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Radio • can seek back ${player.radioMaxListened.inSeconds ~/ 60} min',
-                                    style: const TextStyle(
-                                      color: SpotterfyTheme.muted,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // Matches the top spacer, which pulls the content up into
-                    // the centre of the screen.
-                    const Spacer(flex: 3),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        builder: (context, drag, content) {
-          return ClipRRect(
-            // Top corners round off as the sheet is pulled down, reinforcing
-            // that it is a layer sitting above the page rather than that page.
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(30 * drag),
-            ),
-            child: Stack(
-              children: [
-                Opacity(
-                  // The Spotify-black + green backdrop dissolves as the sheet
-                  // drops, letting the page underneath show through. This is
-                  // what makes the player look like it is floating above it.
-                  opacity: 1 - drag * 0.88,
-                  child: const SizedBox.expand(child: _AnimatedGreenBackdrop()),
-                ),
-                content!,
-              ],
-            ),
-          );
-        },
       ),
     );
   }
@@ -360,166 +391,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-
-  void _showQueueDialog(
-    BuildContext context,
-    PlayerProvider player,
-    TrackModel currentTrack,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: SpotterfyTheme.surface,
-      isScrollControlled: true,
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Up Next',
-                    style: TextStyle(
-                      color: SpotterfyTheme.text,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (player.queue.length > 1)
-                    TextButton(
-                      onPressed: () => player.clearQueue(),
-                      child: Text(
-                        'Clear',
-                        style: TextStyle(
-                          color: SpotterfyTheme.primary,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (player.queue.isEmpty)
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Text(
-                    'No tracks in queue',
-                    style: TextStyle(color: SpotterfyTheme.muted),
-                  ),
-                )
-              else
-                ...player.queue.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final track = entry.value;
-                  final isCurrent = player.currentIndex == index;
-                  return GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      player.playFromQueue(index);
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isCurrent
-                            ? SpotterfyTheme.card
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: SpotterfyTheme.card,
-                          width: isCurrent ? 0 : 0.5,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          if (isCurrent)
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: SpotterfyTheme.primary,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.music_note_rounded,
-                                color: Colors.black,
-                                size: 14,
-                              ),
-                            )
-                          else
-                            const Icon(
-                              Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  track.title,
-                                  style: TextStyle(
-                                    color: isCurrent
-                                        ? SpotterfyTheme.text
-                                        : SpotterfyTheme.muted,
-                                    fontWeight: isCurrent
-                                        ? FontWeight.w600
-                                        : FontWeight.normal,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  track.artists,
-                                  style: TextStyle(
-                                    color: isCurrent
-                                        ? SpotterfyTheme.muted
-                                        : SpotterfyTheme.mutedDark,
-                                    fontSize: 12,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (!isCurrent)
-                            IconButton(
-                              icon: const Icon(
-                                Icons.close_rounded,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                              onPressed: () {
-                                HapticFeedback.lightImpact();
-                                player.removeFromQueue(index);
-                              },
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-              const SizedBox(height: 12),
-              Center(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    'Close',
-                    style: TextStyle(color: SpotterfyTheme.muted),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 }
 
@@ -542,7 +413,7 @@ class _AnimatedGreenBackdropState extends State<_AnimatedGreenBackdrop>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 18),
+      duration: const Duration(seconds: 24),
     )..repeat();
   }
 
@@ -595,8 +466,14 @@ class _AnimatedGreenBackdropState extends State<_AnimatedGreenBackdrop>
               const Positioned.fill(
                 child: ColoredBox(color: Color(0xFF000000)),
               ),
-              // Three slow-drifting greenish spots on different periods, so the
-              // motion never looks like a single looping blob.
+              // Three slow-drifting greenish spots.
+              //
+              // Every term is an INTEGER multiple of [t]. That matters: [t] runs
+              // 0..2*pi and the controller loops, so any fractional multiple
+              // (t*0.8, t*0.6, ...) lands on a different value at the loop
+              // boundary and makes the spots visibly jump every cycle. Integer
+              // multiples repeat exactly, so the loop is seamless while the
+              // three spots still move at different speeds.
               spot(
                 Alignment(
                   -0.45 + 0.34 * math.sin(t),
@@ -608,23 +485,20 @@ class _AnimatedGreenBackdropState extends State<_AnimatedGreenBackdrop>
                 0.12,
               ),
               spot(
-                Alignment(
-                  0.60 + 0.28 * math.cos(t * 0.8),
-                  0.30 + 0.22 * math.sin(t * 0.7),
-                ),
+                Alignment(0.60 + 0.28 * math.cos(t), 0.30 + 0.22 * math.sin(t)),
                 0.80,
                 SpotterfyTheme.primaryDark,
-                0.30 + 0.07 * math.cos(t * 1.2),
+                0.30 + 0.07 * math.cos(t),
                 0.09,
               ),
               spot(
                 Alignment(
-                  0.12 * math.cos(t * 0.6),
-                  0.78 + 0.14 * math.sin(t * 1.1),
+                  0.12 * math.cos(2 * t),
+                  0.78 + 0.14 * math.sin(2 * t),
                 ),
                 0.72,
                 SpotterfyTheme.primary,
-                0.18 + 0.05 * math.sin(t * 0.9),
+                0.18 + 0.05 * math.sin(2 * t),
                 0.05,
               ),
               // Radial vignette: darkens the edges so the art and text stay the
@@ -790,16 +664,18 @@ class _CoverCarouselState extends State<_CoverCarousel> {
   /// what makes the previous/next cover peek in - the neighbours are already
   /// partly visible before you swipe, instead of only appearing once a page has
   /// scrolled all the way over.
-  static const double _viewportFraction = 0.76;
+  ///
+  /// Kept small enough that the neighbours (which are further shrunk by
+  /// [_inactiveScale]) still reach the screen edge and stay visible in the
+  /// peek strip.
+  static const double _viewportFraction = 0.72;
 
   /// Gap between a cover and the edges of its page, so neighbouring covers
   /// don't touch.
   static const double _pageInset = 8;
 
-  /// How far a neighbour shrinks once it is a full page away. Kept close to 1
-  /// so the shrunk cover still reaches the screen edge and stays visible in the
-  /// peek strip; the page size difference already reads strongly.
-  static const double _inactiveScale = 0.9;
+  /// How far a neighbour shrinks once it is a full page away.
+  static const double _inactiveScale = 0.84;
 
   /// Fractional scroll position. Tracked continuously while dragging so covers
   /// grow/shrink in step with the finger rather than snapping on page change.
@@ -913,21 +789,17 @@ class _CarouselPage extends StatelessWidget {
         final d = (pos - index).abs().clamp(0.0, 1.0);
         // Eased so the shrink settles rather than tracking the finger linearly.
         final e = Curves.easeOutCubic.transform(d);
+        // No vertical offset: every cover stays on the same centre line, so the
+        // neighbours line up horizontally with the middle (playing) cover
+        // instead of sitting slightly lower than it.
         return Center(
-          child: Transform.translate(
-            // Neighbours sink slightly, which adds depth to the size change.
-            offset: Offset(0, 8 * e),
-            child: Transform.scale(
-              scale: 1 - (1 - inactiveScale) * e,
-              child: Opacity(
-                opacity: 1 - 0.4 * e,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22 - 6 * e),
-                  child: ColoredBox(
-                    color: SpotterfyTheme.surface,
-                    child: cover,
-                  ),
-                ),
+          child: Transform.scale(
+            scale: 1 - (1 - inactiveScale) * e,
+            child: Opacity(
+              opacity: 1 - 0.4 * e,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22 - 6 * e),
+                child: ColoredBox(color: SpotterfyTheme.surface, child: cover),
               ),
             ),
           ),

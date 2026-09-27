@@ -129,38 +129,30 @@ Route<T> swipeRoute<T>(Widget page) => SlidePageRoute(child: page) as Route<T>;
 
 /// Vertical "sheet" route used to open the now-playing screen.
 ///
-/// The open transition slides + fades the page **up** from the bottom edge,
-/// which reads as the page growing out of the mini player, and the close
-/// transition plays the exact reverse (slide + fade back down) so the page
-/// appears to collapse back into the mini player.
+/// Deliberately matches the motion of the queue's `showModalBottomSheet` so
+/// both feel like the same surface rising: 250ms in / 200ms out on
+/// `Curves.decelerate`, sliding up from the bottom edge with **no** fade.
 ///
-/// The route is deliberately **non-opaque**: the page underneath stays in the
-/// tree and remains visible, so the player reads as a sheet floating *above*
-/// the other page and the list behind it can be seen while it is dragged.
+/// The route is **opaque**: the page is a solid black full-screen page, and the
+/// only motion is this transition. (It used to be non-opaque so the page below
+/// could show through as the page was dragged down, but that made the page look
+/// see-through and stop halfway as it opened.)
 class VerticalSheetRoute extends PageRouteBuilder {
   final Widget child;
 
   VerticalSheetRoute({required this.child})
     : super(
-        opaque: false,
-        barrierColor: Colors.transparent,
-        transitionDuration: const Duration(milliseconds: 380),
-        reverseTransitionDuration: const Duration(milliseconds: 320),
+        opaque: true,
+        transitionDuration: const Duration(milliseconds: 250),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
         pageBuilder: (_, _, _) => child,
         transitionsBuilder: (_, anim, _, child) {
-          // begin at the bottom edge and rise to rest.
+          // Same curve the modal bottom sheet uses by default.
           final position = Tween<Offset>(
             begin: const Offset(0, 1),
             end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic));
-          final fade = Tween<double>(
-            begin: 0.0,
-            end: 1.0,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut));
-          return SlideTransition(
-            position: position,
-            child: FadeTransition(opacity: fade, child: child),
-          );
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.decelerate));
+          return SlideTransition(position: position, child: child);
         },
       );
 }

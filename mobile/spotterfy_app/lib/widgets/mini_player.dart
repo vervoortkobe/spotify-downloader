@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotterfy_app/widgets/queue_sheet.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,7 +7,6 @@ import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
-import 'package:spotterfy_app/widgets/animated_equalizer.dart';
 import 'package:spotterfy_app/main.dart';
 
 class MiniPlayer extends StatelessWidget {
@@ -27,7 +27,14 @@ class MiniPlayer extends StatelessWidget {
     if (track == null) return const SizedBox.shrink();
 
     final pos = player.position;
-    final dur = player.duration;
+    // Prefer the player's live duration, but fall back to the length stored on
+    // the track. Live radio reports no duration, and a track can be rendered
+    // before just_audio has reported one - without this the mini player showed
+    // 0:00.
+    final durMs = player.duration.inMilliseconds > 0
+        ? player.duration.inMilliseconds
+        : track.durationMs;
+    final dur = Duration(milliseconds: durMs);
     final progress = dur.inMilliseconds > 0
         ? pos.inMilliseconds / dur.inMilliseconds
         : 0.0;
@@ -179,15 +186,18 @@ class MiniPlayer extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     // Roomier tap targets: 44px buttons with real spacing so
-                    // they are easy to hit without crowding each other.
+                    // they are easy to hit without crowding each other. The
+                    // play/pause is the only filled + glowing control, so it
+                    // reads as the primary one.
                     _MiniIconButton(
                       icon: player.isPlaying
                           ? Icons.pause_rounded
                           : Icons.play_arrow_rounded,
                       tooltip: player.isPlaying ? 'Pause' : 'Play',
                       size: 42,
-                      iconSize: 22,
+                      iconSize: 24,
                       background: SpotterfyTheme.primary,
+                      glow: SpotterfyTheme.primary,
                       foreground: Colors.black,
                       onPressed: () {
                         HapticFeedback.lightImpact();
@@ -196,18 +206,19 @@ class MiniPlayer extends StatelessWidget {
                     ),
                     if (showQueueButton && player.queue.length > 1) ...[
                       const SizedBox(width: 6),
+                      // Same translucent white circle as the queue button on the
+                      // now-playing page, so the two read as one control.
                       _MiniIconButton(
                         icon: Icons.queue_music_rounded,
                         tooltip: 'Queue',
-                        size: 40,
-                        iconSize: 19,
-                        background: SpotterfyTheme.primary.withValues(
-                          alpha: 0.14,
-                        ),
-                        foreground: SpotterfyTheme.primary,
+                        size: 42,
+                        iconSize: 21,
+                        background: Colors.white.withValues(alpha: 0.10),
+                        borderColor: Colors.white.withValues(alpha: 0.14),
+                        foreground: Colors.white,
                         onPressed: () {
                           HapticFeedback.lightImpact();
-                          _showQueueDialog(context, player);
+                          showQueueSheet(context, player);
                         },
                       ),
                     ],
@@ -224,137 +235,6 @@ class MiniPlayer extends StatelessWidget {
   void _openPlayer() {
     HapticFeedback.selectionClick();
     navigatorKey.currentState?.push(nowPlayingRoute(const PlayerScreen()));
-  }
-
-  void _showQueueDialog(BuildContext context, PlayerProvider player) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: SpotterfyTheme.surface,
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Up Next',
-                style: TextStyle(
-                  color: SpotterfyTheme.text,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (player.queue.isEmpty)
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Text(
-                    'No tracks in queue',
-                    style: TextStyle(color: SpotterfyTheme.muted),
-                  ),
-                )
-              else
-                ...player.queue.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final track = entry.value;
-                  final isCurrent = player.currentIndex == index;
-                  return GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      player.playFromQueue(index);
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isCurrent
-                            ? SpotterfyTheme.card
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          isCurrent && player.isPlaying
-                              ? const AnimatedEqualizer(
-                                  size: 18,
-                                  color: SpotterfyTheme.primary,
-                                )
-                              : Icon(
-                                  isCurrent
-                                      ? Icons.music_note
-                                      : Icons.play_arrow,
-                                  color: isCurrent
-                                      ? SpotterfyTheme.primary
-                                      : Colors.white,
-                                  size: 20,
-                                ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  track.title,
-                                  style: TextStyle(
-                                    color: isCurrent
-                                        ? SpotterfyTheme.text
-                                        : SpotterfyTheme.muted,
-                                    fontWeight: isCurrent
-                                        ? FontWeight.w600
-                                        : FontWeight.normal,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  track.artists,
-                                  style: TextStyle(
-                                    color: isCurrent
-                                        ? SpotterfyTheme.muted
-                                        : SpotterfyTheme.mutedDark,
-                                    fontSize: 12,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (index != player.currentIndex)
-                            IconButton(
-                              icon: Icon(
-                                Icons.close,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                              onPressed: () {
-                                HapticFeedback.lightImpact();
-                                player.removeFromQueue(index);
-                                Navigator.pop(context);
-                              },
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-              const SizedBox(height: 8),
-              Center(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    'Close',
-                    style: TextStyle(color: SpotterfyTheme.muted),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 }
 
@@ -395,7 +275,7 @@ class _MiniProgressBar extends StatelessWidget {
 }
 
 /// Circular mini player control with a guaranteed 40px+ tap target.
-class _MiniIconButton extends StatelessWidget {
+class _MiniIconButton extends StatefulWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback onPressed;
@@ -403,6 +283,13 @@ class _MiniIconButton extends StatelessWidget {
   final double iconSize;
   final Color background;
   final Color foreground;
+
+  /// Hairline rim, matching the circular controls on the now-playing page.
+  final Color? borderColor;
+
+  /// Soft coloured halo. Only the primary (play/pause) control uses it, so the
+  /// eye lands there first.
+  final Color? glow;
 
   const _MiniIconButton({
     required this.icon,
@@ -412,22 +299,66 @@ class _MiniIconButton extends StatelessWidget {
     required this.iconSize,
     required this.background,
     required this.foreground,
+    this.borderColor,
+    this.glow,
   });
 
   @override
+  State<_MiniIconButton> createState() => _MiniIconButtonState();
+}
+
+class _MiniIconButtonState extends State<_MiniIconButton> {
+  bool _held = false;
+
+  @override
   Widget build(BuildContext context) {
+    final glow = widget.glow;
     return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: background,
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          child: SizedBox(
-            width: size,
-            height: size,
-            child: Icon(icon, color: foreground, size: iconSize),
+      message: widget.tooltip,
+      child: Semantics(
+        button: true,
+        label: widget.tooltip,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _held = true),
+          onTapUp: (_) => setState(() => _held = false),
+          onTapCancel: () => setState(() => _held = false),
+          onTap: widget.onPressed,
+          child: AnimatedScale(
+            // Press-in, so the tap is acknowledged before the state changes.
+            scale: _held ? 0.88 : 1.0,
+            duration: const Duration(milliseconds: 130),
+            curve: Curves.easeOut,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              width: widget.size,
+              height: widget.size,
+              decoration: BoxDecoration(
+                color: _held && glow != null
+                    ? Color.lerp(widget.background, Colors.white, 0.18)
+                    : widget.background,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _held && glow != null
+                      ? Colors.transparent
+                      : (widget.borderColor ?? Colors.transparent),
+                ),
+                boxShadow: [
+                  if (glow != null)
+                    BoxShadow(
+                      color: glow.withValues(alpha: _held ? 0.55 : 0.35),
+                      blurRadius: _held ? 18 : 12,
+                      spreadRadius: _held ? 1 : 0,
+                    ),
+                ],
+              ),
+              child: Icon(
+                widget.icon,
+                color: widget.foreground,
+                size: widget.iconSize,
+              ),
+            ),
           ),
         ),
       ),

@@ -104,6 +104,9 @@ def _run_scrape_job(input_url, service, progress_job_id):
                     "releaseDate": track.release_date or "",
                     "downloadLink": "",
                     "sourceUrl": yt_url,
+                    # The client shows this in the mini player, queue and
+                    # playlist rows, so it has to travel with the track.
+                    "durationMs": int(track.duration_ms or 0),
                 })
                 playlist_name = f"{track.title} - {track.artists}"
             else:
@@ -129,6 +132,8 @@ def _run_scrape_job(input_url, service, progress_job_id):
                         "releaseDate": track.release_date or "",
                         "downloadLink": "",
                         "sourceUrl": yt_url,
+                        # See above: needed for lengths in the client.
+                        "durationMs": int(track.duration_ms or 0),
                     }
 
                 progress_lock = threading.Lock()

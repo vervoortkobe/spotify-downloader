@@ -41,9 +41,14 @@ class TrackModel {
     'durationMs': durationMs,
   };
 
-  TrackModel copyWith({String? sourceUrl}) => TrackModel(
-    id: id, title: title, artists: artists, album: album,
-    cover: cover, releaseDate: releaseDate,
-    sourceUrl: sourceUrl ?? this.sourceUrl, durationMs: durationMs,
+  TrackModel copyWith({String? sourceUrl, int? durationMs}) => TrackModel(
+    id: id,
+    title: title,
+    artists: artists,
+    album: album,
+    cover: cover,
+    releaseDate: releaseDate,
+    sourceUrl: sourceUrl ?? this.sourceUrl,
+    durationMs: durationMs ?? this.durationMs,
   );
 }

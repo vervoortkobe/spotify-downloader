@@ -451,6 +451,9 @@ def scrape_external_data(url, service, url_type, progress_job_id=None):
                 "releaseDate": "",
                 "downloadLink": "",
                 "sourceUrl": entry_url,
+                # Flat playlist entries usually have no duration, but include it
+                # when yt-dlp did resolve one so the client can show lengths.
+                "durationMs": int(entry.get("duration") or 0) * 1000,
             })
             if progress_job_id and (i % 5 == 0 or i == len(entries) - 1):
                 p = scrape_job_progress.get(progress_job_id)
@@ -478,6 +481,8 @@ def scrape_external_data(url, service, url_type, progress_job_id=None):
             "releaseDate": "",
             "downloadLink": "",
             "sourceUrl": entry_url,
+            # Single items are fully extracted, so the duration is real.
+            "durationMs": int(info.get("duration") or 0) * 1000,
         }]
         playlist_name = f"{info.get('title', 'Track')} - {artists}" if artists else info.get('title', 'Track')
 
