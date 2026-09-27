@@ -155,6 +155,34 @@ class ApiService {
     return '$_baseUrl/stream?source_url=${Uri.encodeComponent(sourceUrl)}';
   }
 
+  /// This build's version, shown in Settings.
+  static const String appVersion = '1.0.0';
+  static const String appVersionLabel = 'Beta';
+
+  /// Latest published version, for the "Check for updates" action.
+  ///
+  /// Returns null when the check could not be made (offline, server error), so
+  /// the caller can tell "up to date" apart from "couldn't check".
+  static Future<Map<String, String>?> checkForUpdates() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/app-version'),
+        headers: _headers(),
+      );
+      if (response.statusCode != 200) return null;
+      final body = jsonDecode(response.body);
+      if (body is! Map) return null;
+      return {
+        'version': (body['version'] as String?) ?? '',
+        'label': (body['label'] as String?) ?? '',
+        'notes': (body['notes'] as String?) ?? '',
+      };
+    } catch (e) {
+      debugPrint('checkForUpdates failed: $e');
+      return null;
+    }
+  }
+
   /// Song lookup. Returns real results (title, artist, artwork, length) so the
   /// search bar can find individual songs, not just playlists.
   static Future<List<TrackModel>?> searchTracks(

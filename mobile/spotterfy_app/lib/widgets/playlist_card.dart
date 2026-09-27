@@ -9,6 +9,9 @@ class PlaylistCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onDelete;
   final VoidCallback? onPlay;
+
+  /// Long-press action, used for the destructive "delete from library" option.
+  final VoidCallback? onLongPress;
   final bool showDelete;
   final Widget? trailing;
 
@@ -22,6 +25,7 @@ class PlaylistCard extends StatelessWidget {
     this.onTap,
     this.onDelete,
     this.onPlay,
+    this.onLongPress,
     this.showDelete = false,
     this.trailing,
     this.isPlaying = false,
@@ -34,6 +38,7 @@ class PlaylistCard extends StatelessWidget {
     final hasPlay = onPlay != null && playlist.tracks.isNotEmpty;
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),

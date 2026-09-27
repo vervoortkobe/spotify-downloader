@@ -20,6 +20,60 @@ service cloud.firestore {
       match /dataUsage/{monthId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      // ---- Friendships ----
+      // Only the owner can read/write their own friend list, so a friendship is
+      // established by each side accepting (the app writes both sides in one
+      // batch, each under its own uid).
+      match /friends/{friendId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // ---- Friend requests ----
+      // A request is written to *both* users' subcollections: the recipient's
+      // copy is `incoming`, the sender's is `outgoing`. Each side may only
+      // touch its own copy, which is what keeps this from being usable to forge
+      // a request in someone else's name.
+      match /friendRequests/{otherId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId;
+        allow update, delete: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // ---- Notifications ----
+      // The owner reads and clears their own; anyone signed in may create one
+      // for a user (that's how a friend request or a message notifies you).
+      match /notifications/{notificationId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null;
+        allow update, delete: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // ---- Direct messages ----
+    // Access is gated on being a listed member, so a chat cannot be read or
+    // written by anyone else. The members list is immutable once written, which
+    // stops someone being added to a conversation after the fact.
+    match /chats/{chatId} {
+      allow create: if request.auth != null
+        && request.resource.data.members is list
+        && request.auth.uid in request.resource.data.members;
+      allow read: if request.auth != null
+        && request.auth.uid in resource.data.members;
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.members
+        && request.resource.data.members == resource.data.members;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members;
+        // Only the sender may write a message, and the sender must be a member.
+        allow create: if request.auth != null
+          && request.resource.data.senderUid == request.auth.uid
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members;
+        allow update, delete: if false;
+      }
     }
 
     // ---- Top-level playlists: playlists/{id} with creatorUid ----
@@ -31,7 +85,17 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.creatorUid == request.auth.uid
         && request.resource.data.keys().hasAll(['creatorUid','name']);
-      allow update, delete: if request.auth != null
+      // Owner, or a user removing *only themselves* from `sharedWith` so they
+      // can drop a shared playlist from their own library. The diff check keeps
+      // this narrow: the update may touch nothing but `sharedWith`, and the
+      // resulting list must be the old one minus exactly this uid, so it can
+      // never be used to add or evict other people.
+      allow update: if request.auth != null
+        && (resource.data.creatorUid == request.auth.uid
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sharedWith'])
+            && request.resource.data.sharedWith
+              == resource.data.sharedWith.removeAll([request.auth.uid])));
+      allow delete: if request.auth != null
         && resource.data.creatorUid == request.auth.uid;
 
       match /tracks/{trackId} {

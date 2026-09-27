@@ -4,6 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
+import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/playlist_card.dart';
@@ -228,7 +229,9 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   Widget _playlistsTab(PlaylistProvider prov) {
-    var list = prov.playlists;
+    // "My library" is both what you created and what was shared with you, so
+    // both lists are shown here. Ownership is what decides what deleting does.
+    var list = [...prov.playlists, ...prov.sharedPlaylists];
     if (_query.isNotEmpty) {
       list = list
           .where(
@@ -239,7 +242,7 @@ class _LibraryScreenState extends State<LibraryScreen>
           .toList();
     }
     // Show loading spinner over cache while first sync runs
-    if (prov.isLoading && prov.playlists.isEmpty) {
+    if (prov.isLoading && list.isEmpty) {
       return const Center(
         child: CircularProgressIndicator(color: SpotterfyTheme.primary),
       );
@@ -341,10 +344,76 @@ class _LibraryScreenState extends State<LibraryScreen>
                       queue: p.tracks,
                     );
                   },
+            // Long press for the destructive option. A confirm dialog is
+            // required because the consequence differs by ownership: your own
+            // playlist disappears for everyone who had it.
+            onLongPress: () => _confirmDeletePlaylist(context, p),
           );
         },
       ),
     );
+  }
+
+  /// Confirms and performs a library delete, spelling out the difference
+  /// between removing your own playlist (which also removes it from other
+  /// people's libraries) and dropping someone else's from your own.
+  Future<void> _confirmDeletePlaylist(
+    BuildContext context,
+    PlaylistModel p,
+  ) async {
+    final auth = context.read<AuthProvider>();
+    final prov = context.read<PlaylistProvider>();
+    final uid = auth.user?.uid;
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to manage playlists')),
+      );
+      return;
+    }
+    final isOwner = p.creatorUid == uid || p.creatorUid.isEmpty;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: SpotterfyTheme.surface,
+        title: Text(
+          isOwner ? 'Delete playlist?' : 'Remove from your library?',
+          style: const TextStyle(
+            color: SpotterfyTheme.text,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          isOwner
+              ? '"${p.name}" will be deleted for you and for everyone it was shared with. This cannot be undone.'
+              : '"${p.name}" will be removed from your library. The owner keeps it.',
+          style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: SpotterfyTheme.muted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              isOwner ? 'Delete' : 'Remove',
+              style: const TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final message = await prov.deletePlaylistFromLibrary(uid, p);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _storageTab() {

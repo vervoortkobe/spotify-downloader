@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
@@ -9,6 +10,7 @@ import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/audio_handler.dart';
 import 'package:spotterfy_app/services/auto_media_library.dart';
+import 'package:spotterfy_app/services/download_service.dart';
 import 'package:spotterfy_app/providers/equalizer_provider.dart';
 
 class PlayerProvider extends ChangeNotifier {
@@ -236,7 +238,6 @@ class PlayerProvider extends ChangeNotifier {
     if (_isLocalPath(track.sourceUrl)) {
       final path = track.sourceUrl.replaceFirst('file://', '');
       try {
-        await _player.stop();
         await _player.setFilePath(path).timeout(const Duration(seconds: 30));
         await _player.play().timeout(const Duration(seconds: 30));
         await _onTrackStarted();
@@ -246,6 +247,25 @@ class PlayerProvider extends ChangeNotifier {
       _starting = false;
       _savePlayerState();
       return;
+    }
+
+    // A track downloaded from inside the app is played from disk, so it starts
+    // instantly and costs no bandwidth. Falls through to streaming when the
+    // file is absent or unreadable.
+    final downloaded = await _downloadedPathFor(track);
+    if (downloaded != null) {
+      try {
+        await _player
+            .setFilePath(downloaded)
+            .timeout(const Duration(seconds: 30));
+        await _player.play().timeout(const Duration(seconds: 30));
+        await _onTrackStarted();
+        _starting = false;
+        _savePlayerState();
+        return;
+      } catch (e) {
+        debugPrint('[Player] downloaded file failed, streaming instead: $e');
+      }
     }
     // Radio live streams (icecast etc) play directly, not via backend proxy
     final primary = track.sourceUrl.isNotEmpty
@@ -311,6 +331,34 @@ class PlayerProvider extends ChangeNotifier {
             .then((_) {}, onError: (_) {});
       } catch (_) {}
     });
+  }
+
+  /// Absolute path of the app-downloaded file for [track], if one exists.
+  ///
+  /// Looks the track up by id **and** by source URL: tracks can be re-imported
+  /// or matched across playlists with different ids, and the download index is
+  /// keyed on whichever id was used when it was saved.
+  Future<String?> _downloadedPathFor(TrackModel track) async {
+    try {
+      await DownloadService.instance.ensureLoaded();
+      final svc = DownloadService.instance;
+      final candidates = <String>[track.id, track.sourceUrl];
+      // Also try the id without a `yt_`-style prefix, and the URL without query.
+      for (final c in candidates) {
+        final p = svc.localPathFor(c);
+        if (p != null && await File(p).exists()) return p;
+      }
+      for (final e in svc.entries.values) {
+        if (track.sourceUrl.isNotEmpty && e.title == track.title) {
+          final p = svc.localPathFor(e.trackId);
+          if (p != null && await File(p).exists()) return p;
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[Player] download lookup failed: $e');
+      return null;
+    }
   }
 
   /// Marks a track as genuinely started.

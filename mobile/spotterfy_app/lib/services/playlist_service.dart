@@ -130,6 +130,67 @@ class PlaylistService {
     await _deleteCache(uid, playlistId);
   }
 
+  /// Removes a playlist from [uid]'s library **without** deleting it for
+  /// everyone else.
+  ///
+  /// A shared playlist is a single `playlists/{id}` document with a
+  /// `sharedWith` array, so a non-owner "deleting" it just drops their own uid
+  /// from that array. Returns true when the removal was written; false when the
+  /// document no longer lists this user (nothing to do).
+  Future<bool> removeSharedPlaylistWithMe(String uid, String playlistId) async {
+    final ref = _firestore.collection('playlists').doc(playlistId);
+    final snap = await ref.get();
+    final data = snap.data();
+    if (data == null) return true; // already gone
+    final shared = (data['sharedWith'] as List?)?.cast<String>() ?? const [];
+    if (!shared.contains(uid)) return true;
+    // arrayRemove is idempotent and cannot widen the list, which is what the
+    // Firestore rule for this path permits.
+    await ref.update({
+      'sharedWith': FieldValue.arrayRemove([uid]),
+    });
+    return true;
+  }
+
+  /// How many other users currently have [playlistId] in their library.
+  /// Used to tell the owner what deleting will affect.
+  Future<int> countOtherHolders(String playlistId) async {
+    try {
+      final snap = await _firestore
+          .collection('playlists')
+          .doc(playlistId)
+          .get();
+      final shared = (snap.data()?['sharedWith'] as List?) ?? const [];
+      return shared.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Public profile fields for [uid], for rendering someone else's profile page.
+  Future<Map<String, String>?> getUserProfile(String uid) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      final data = snap.data();
+      if (!snap.exists || data == null) return null;
+      final display = (data['displayName'] as String?)?.trim() ?? '';
+      return {
+        'uid': uid,
+        'displayName': display.isNotEmpty
+            ? display
+            : ((data['email'] as String?) ?? 'User'),
+        'email': (data['email'] as String?) ?? '',
+        'photoUrl': (data['photoUrl'] as String?) ?? '',
+      };
+    } catch (e) {
+      debugPrint('getUserProfile($uid) failed: $e');
+      return null;
+    }
+  }
+
   Future<void> sharePlaylist(
     String uid,
     String playlistId,

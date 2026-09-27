@@ -8,6 +8,8 @@ import 'providers/equalizer_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/jam_provider.dart';
 import 'providers/admin_provider.dart';
+import 'providers/download_provider.dart';
+import 'providers/social_provider.dart';
 import 'providers/status_provider.dart';
 import 'services/network_stats_service.dart';
 import 'screens/splash_screen.dart';
@@ -33,8 +35,18 @@ class SpotterfyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PlayerProvider(), lazy: true),
         ChangeNotifierProvider(create: (_) => JamProvider(), lazy: true),
         ChangeNotifierProvider(create: (_) => AdminProvider(), lazy: true),
+        ChangeNotifierProvider(
+          create: (_) => DownloadProvider()..load(),
+          lazy: true,
+        ),
+        // Social state follows the signed-in uid; the splash screen starts it
+        // once auth is resolved.
+        ChangeNotifierProvider(create: (_) => SocialProvider(), lazy: true),
         ChangeNotifierProvider(create: (_) => StatusProvider(), lazy: true),
-        ChangeNotifierProvider(create: (_) => NetworkStatsService(), lazy: true),
+        ChangeNotifierProvider(
+          create: (_) => NetworkStatsService(),
+          lazy: true,
+        ),
       ],
       child: MaterialApp(
         navigatorKey: navigatorKey,

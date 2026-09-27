@@ -330,9 +330,63 @@ class PlaylistProvider extends ChangeNotifier {
     return created;
   }
 
+  /// Deletes a playlist from the signed-in user's library.
+  ///
+  /// The two cases are genuinely different, so they are not collapsed:
+  ///  - **Your own playlist**: the document is deleted outright. Because a
+  ///    shared playlist is one document with a `sharedWith` array, that removes
+  ///    it from everyone who had it in their library at the same time.
+  ///  - **Someone else's playlist**: only you are removed, by dropping your uid
+  ///    from `sharedWith`. The playlist itself survives for its owner and for
+  ///    anyone else it is shared with.
+  ///
+  /// Returns a human-readable summary of what happened.
+  Future<String> deletePlaylistFromLibrary(
+    String uid,
+    PlaylistModel playlist,
+  ) async {
+    final isOwner = playlist.creatorUid == uid || playlist.creatorUid.isEmpty;
+
+    // Local state first so the UI responds immediately, then reconcile cloud.
+    _playlists.removeWhere((p) => p.id == playlist.id);
+    _sharedPlaylists.removeWhere((p) => p.id == playlist.id);
+    if (_currentPlaylist?.id == playlist.id) _currentPlaylist = null;
+    await _saveCachedPlaylists();
+    notifyListeners();
+
+    if (isOwner) {
+      final others = await _playlistService.countOtherHolders(playlist.id);
+      await _playlistService.deletePlaylist(uid, playlist.id);
+      // Refresh so the shared list reflects the document we just removed.
+      _sharedPlaylists = await _playlistService.getSharedPlaylists(uid);
+      await _saveCachedPlaylists();
+      notifyListeners();
+      return others == 0
+          ? 'Playlist deleted'
+          : 'Deleted for everyone ($others ${others == 1 ? 'person' : 'people'} had it too)';
+    }
+
+    try {
+      await _playlistService.removeSharedPlaylistWithMe(uid, playlist.id);
+      await _saveCachedPlaylists();
+      notifyListeners();
+      return 'Removed from your library';
+    } catch (e) {
+      _error = 'Could not remove playlist';
+      debugPrint('deletePlaylistFromLibrary(shared) failed: $e');
+      notifyListeners();
+      // Put it back so the UI matches the cloud state.
+      _sharedPlaylists.add(playlist);
+      await _saveCachedPlaylists();
+      notifyListeners();
+      return 'Could not remove playlist';
+    }
+  }
+
   Future<void> deletePlaylist(String uid, String playlistId) async {
     await _playlistService.deletePlaylist(uid, playlistId);
     _playlists.removeWhere((p) => p.id == playlistId);
+    _sharedPlaylists.removeWhere((p) => p.id == playlistId);
     await _saveCachedPlaylists();
     notifyListeners();
   }

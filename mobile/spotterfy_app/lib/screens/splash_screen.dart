@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
+import 'package:spotterfy_app/providers/social_provider.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
 import 'package:spotterfy_app/screens/onboarding_screen.dart';
 import 'package:spotterfy_app/screens/admin_screen.dart';
@@ -80,6 +81,12 @@ class _SplashScreenState extends State<SplashScreen>
   void _maybeNavigate(AuthProvider auth) {
     if (_navigated || auth.isLoading) return;
     _navigated = true;
+    // Friend/notification/message streams only start once we know who is
+    // signed in, otherwise they'd subscribe as a null uid and silently do
+    // nothing.
+    if (auth.isLoggedIn && mounted) {
+      context.read<SocialProvider>().syncUid(auth.user?.uid);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Widget target;

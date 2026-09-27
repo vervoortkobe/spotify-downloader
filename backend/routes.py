@@ -25,6 +25,11 @@ from utils import get_yt_info, get_playlist_client, download_track_logic, detect
 
 routes = Blueprint("routes", __name__)
 
+# Published app version. Bump on release; the Android build reads the same
+# string for its Settings row so the two can be compared server-side.
+APP_VERSION = "1.0.0"
+APP_VERSION_LABEL = "Beta"
+
 
 @routes.after_request
 def add_no_cache_headers(response):
@@ -244,6 +249,20 @@ def get_progress(track_id):
     if track_id == "all":
         return jsonify(progress_store)
     return jsonify({"progress": progress_store.get(track_id, 0)})
+
+
+@routes.route("/api/app-version", methods=["GET"])
+def app_version():
+    """Latest published version, so the app's "Check for updates" can compare.
+
+    Bump APP_VERSION whenever a release ships. The client compares it against
+    its own build and reports whether an update is available.
+    """
+    return jsonify({
+        "version": APP_VERSION,
+        "label": APP_VERSION_LABEL,
+        "notes": "Bug fixes and performance improvements.",
+    })
 
 
 @routes.route("/api/search-tracks", methods=["GET", "POST"])

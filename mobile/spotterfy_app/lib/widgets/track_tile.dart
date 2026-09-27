@@ -19,6 +19,21 @@ class TrackTile extends StatelessWidget {
   final bool isPlaying;
   final double progress;
 
+  /// Long-press to start a multi-select. Supplied by the playlist screen.
+  final VoidCallback? onLongPress;
+
+  /// Multi-select state. In selection mode a tap toggles the row instead of
+  /// playing, and a leading checkbox replaces the artwork.
+  final bool selectionMode;
+  final bool selected;
+
+  /// Shows the round "downloaded" check.
+  final bool isDownloaded;
+
+  /// This track is currently being fetched, so the row shows a spinner in place
+  /// of its inline actions.
+  final bool isDownloading;
+
   /// Local file path for embedded cover art (storage tracks with empty [track.cover]).
   final String? coverPath;
 
@@ -29,6 +44,11 @@ class TrackTile extends StatelessWidget {
     this.onDownload,
     this.onSave,
     this.isSaved = false,
+    this.onLongPress,
+    this.selectionMode = false,
+    this.selected = false,
+    this.isDownloaded = false,
+    this.isDownloading = false,
     this.isSelected = false,
     this.isPlaying = false,
     this.progress = 0,
@@ -128,14 +148,16 @@ class TrackTile extends StatelessWidget {
       child: Container(
         margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
-          color: active
+          color: selected
+              ? Color(0xFF10b981).withValues(alpha: 0.18)
+              : active
               ? Color(0xFF10b981).withValues(alpha: 0.15)
               : isSelected
               ? Color(0xFF10b981).withValues(alpha: 0.1)
               : Color(0xFF0f1d17),
           borderRadius: BorderRadius.circular(12),
-          border: active
-              ? Border.all(color: Color(0xFF10b981).withValues(alpha: 0.5))
+          border: selected || active
+              ? Border.all(color: Color(0xFF10b981).withValues(alpha: 0.6))
               : isSelected
               ? Border.all(color: Color(0xFF10b981).withValues(alpha: 0.3))
               : Border.all(color: Color(0xFF1a3a2a).withValues(alpha: 0.3)),
@@ -150,40 +172,63 @@ class TrackTile extends StatelessWidget {
         ),
         child: ListTile(
           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          leading: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: track.cover.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: track.cover,
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                    placeholder: (_, _) => Container(
-                      color: Color(0xFF1a1a2e),
-                      child: Icon(Icons.music_note, color: Colors.grey[600]),
-                    ),
-                    errorWidget: (_, _, _) => Container(
-                      color: Color(0xFF1a1a2e),
-                      child: Icon(Icons.music_note, color: Colors.grey[600]),
-                    ),
-                  )
-                : (coverPath != null
-                      ? StorageCover(
-                          path: coverPath!,
-                          size: 48,
-                          iconSize: 24,
-                          radius: 6,
-                        )
-                      : Container(
+          onTap: onPlay,
+          onLongPress: onLongPress,
+          // In selection mode the artwork is replaced by a checkbox so the
+          // selected state is obvious without reading the highlight colour.
+          leading: selectionMode
+              ? Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(
+                    selected
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    color: selected
+                        ? const Color(0xFF10b981)
+                        : const Color(0xFF4a4a4a),
+                    size: 26,
+                  ),
+                )
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: track.cover.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: track.cover,
                           width: 48,
                           height: 48,
-                          color: Color(0xFF1a1a2e),
-                          child: Icon(
-                            Icons.music_note,
-                            color: Colors.grey[600],
+                          fit: BoxFit.cover,
+                          placeholder: (_, _) => Container(
+                            color: Color(0xFF1a1a2e),
+                            child: Icon(
+                              Icons.music_note,
+                              color: Colors.grey[600],
+                            ),
                           ),
-                        )),
-          ),
+                          errorWidget: (_, _, _) => Container(
+                            color: Color(0xFF1a1a2e),
+                            child: Icon(
+                              Icons.music_note,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        )
+                      : (coverPath != null
+                            ? StorageCover(
+                                path: coverPath!,
+                                size: 48,
+                                iconSize: 24,
+                                radius: 6,
+                              )
+                            : Container(
+                                width: 48,
+                                height: 48,
+                                color: Color(0xFF1a1a2e),
+                                child: Icon(
+                                  Icons.music_note,
+                                  color: Colors.grey[600],
+                                ),
+                              )),
+                ),
           title: Text(
             track.title,
             style: TextStyle(
@@ -194,11 +239,29 @@ class TrackTile extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          subtitle: Text(
-            track.artists,
-            style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          subtitle: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  track.artists,
+                  style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // Round check marking the track as available offline.
+              if (isDownloaded) ...[
+                const SizedBox(width: 6),
+                const Tooltip(
+                  message: 'Downloaded',
+                  child: Icon(
+                    Icons.check_circle,
+                    color: Color(0xFF10b981),
+                    size: 14,
+                  ),
+                ),
+              ],
+            ],
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -227,16 +290,33 @@ class TrackTile extends StatelessWidget {
                     ),
                   ),
                 ),
-              if (onDownload != null && progress == 0)
+              if (onDownload != null && progress == 0 && !isDownloading)
                 IconButton(
                   icon: Icon(
-                    Icons.download,
-                    color: Color(0xFFa1a1aa),
+                    isDownloaded ? Icons.download_done : Icons.download,
+                    color: isDownloaded
+                        ? const Color(0xFF10b981)
+                        : Color(0xFFa1a1aa),
                     size: 20,
                   ),
+                  tooltip: isDownloaded
+                      ? 'Downloaded — tap to remove'
+                      : 'Download',
                   onPressed: onDownload,
                   padding: EdgeInsets.zero,
                   constraints: BoxConstraints(),
+                ),
+              if (isDownloading)
+                const Padding(
+                  padding: EdgeInsets.only(right: 8),
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF10b981),
+                    ),
+                  ),
                 ),
               if (onSave != null)
                 IconButton(

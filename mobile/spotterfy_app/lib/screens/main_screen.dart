@@ -6,6 +6,7 @@ import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/services/network_stats_service.dart';
 import 'package:spotterfy_app/widgets/app_bottom_nav.dart';
 import 'package:spotterfy_app/widgets/mini_player.dart';
+import 'package:spotterfy_app/widgets/tab_navigator.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
 import 'yt_search_screen.dart';
@@ -18,9 +19,28 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen>
+    with SingleTickerProviderStateMixin {
   int _currentIndex = 2;
+
+  /// Tab we are animating *away* from, so both ends of the switch can be drawn
+  /// during the transition.
+  int _leavingIndex = 2;
+
+  /// +1 when moving right, -1 when moving left.
   int _slideDir = 1;
+
+  late final AnimationController _tabCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 300),
+    // Start settled, otherwise the first frame would draw the initial tab
+    // part-way through the enter transition (40% opacity, offset).
+    value: 1.0,
+  );
+  late final Animation<double> _tabAnim = CurvedAnimation(
+    parent: _tabCtrl,
+    curve: Curves.easeOutCubic,
+  );
 
   @override
   void initState() {
@@ -33,7 +53,16 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  final List<Widget> _screens = const [
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
+  }
+
+  /// The four tab roots. These are `const`, so the widgets - and therefore the
+  /// per-tab [TabNavigator]s and their route stacks - are created once and kept
+  /// for the lifetime of this screen.
+  final List<Widget> _tabs = const [
     SearchScreen(), // Home - Discover
     YtSearchScreen(), // Search - YT
     LibraryScreen(), // Library - playlists + storage
@@ -41,11 +70,13 @@ class _MainScreenState extends State<MainScreen> {
   ];
 
   void _goToTab(int i) {
-    if (i == _currentIndex || i < 0 || i >= _screens.length) return;
+    if (i == _currentIndex || i < 0 || i >= _tabs.length) return;
     setState(() {
       _slideDir = i > _currentIndex ? 1 : -1;
+      _leavingIndex = _currentIndex;
       _currentIndex = i;
     });
+    _tabCtrl.forward(from: 0);
   }
 
   @override
@@ -69,39 +100,74 @@ class _MainScreenState extends State<MainScreen> {
       // (track tiles, mini player, library tabs). Tab switching lives on the navbar.
       body: Stack(
         children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 320),
-            reverseDuration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOutQuint,
-            switchOutCurve: Curves.easeInQuad,
-            layoutBuilder: (currentChild, previousChildren) => Stack(
-              children: [...previousChildren, ?currentChild],
-            ),
-            transitionBuilder: (child, animation) {
-              final slide = Tween<Offset>(begin: Offset(0.22 * _slideDir, 0), end: Offset.zero).animate(animation);
-              final fade = Tween<double>(begin: 0.4, end: 1.0).animate(animation);
-              final scale = Tween<double>(begin: 0.985, end: 1.0).animate(animation);
-              return ClipRect(
-                child: SlideTransition(
-                  position: slide,
-                  child: FadeTransition(
-                    opacity: fade,
-                    child: ScaleTransition(scale: scale, child: child),
-                  ),
-                ),
+          AnimatedBuilder(
+            animation: _tabAnim,
+            builder: (context, _) {
+              // Every tab is kept mounted in a plain Stack. Deliberately NOT an
+              // IndexedStack/KeyedSubtree keyed on the current index: re-keying
+              // it on every switch would dispose all four tab subtrees, taking
+              // each tab's navigation stack (and any open sub-page's state) with
+              // it. Tabs outside the transition are Offstage, which keeps their
+              // state alive while skipping paint and ticks.
+              return Stack(
+                fit: StackFit.expand,
+                children: [for (var i = 0; i < _tabs.length; i++) _tabLayer(i)],
               );
             },
-            child: KeyedSubtree(
-              key: ValueKey<int>(_currentIndex),
-              child: IndexedStack(index: _currentIndex, children: _screens),
-            ),
           ),
-          const Positioned(left: 0, right: 0, bottom: 0, child: _MainMiniPlayerWrapper()),
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _MainMiniPlayerWrapper(),
+          ),
         ],
       ),
       bottomNavigationBar: AppBottomNav(
         currentIndex: _currentIndex,
         onSelect: _goToTab,
+      ),
+    );
+  }
+
+  /// Draws one tab, animating it in when it is the target of the current switch
+  /// and out when it is the tab being left behind.
+  Widget _tabLayer(int i) {
+    final tab = TabNavigator(tabIndex: i, root: _tabs[i]);
+    final entering = i == _currentIndex;
+    final leaving = i == _leavingIndex;
+
+    if (!entering && (!leaving || _tabCtrl.isCompleted)) {
+      return Offstage(child: TickerMode(enabled: false, child: tab));
+    }
+
+    final t = _tabAnim.value;
+    final double opacity;
+    final double dx;
+    final double scale;
+    if (entering) {
+      opacity = 0.4 + 0.6 * t;
+      dx = _slideDir * 0.22 * (1 - t);
+      scale = 0.985 + 0.015 * t;
+    } else {
+      opacity = 1.0 - t;
+      dx = -_slideDir * 0.22 * t;
+      scale = 1.0 - 0.015 * t;
+    }
+
+    return IgnorePointer(
+      // The incoming tab shouldn't take taps while it's still sliding in.
+      ignoring: !entering || t < 1,
+      child: Opacity(
+        opacity: opacity.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(dx, 0),
+          child: Transform.scale(
+            scale: scale,
+            // Clip so the sliding tab doesn't paint over its neighbour.
+            child: ClipRect(child: tab),
+          ),
+        ),
       ),
     );
   }
