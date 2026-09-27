@@ -248,34 +248,24 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
     // Radio live streams (icecast etc) play directly, not via backend proxy
-    bool isDirectRadio(String url) {
-      final u = url.toLowerCase();
-      return u.contains('icecast.vrtcdn.be') ||
-          u.contains('qmusic.be') ||
-          u.contains('joe.be') ||
-          u.contains('streamtheworld.com') ||
-          u.contains('.mp3') && u.contains('dist=') ||
-          track.id.startsWith('radio_');
-    }
-
     final primary = track.sourceUrl.isNotEmpty
-        ? (isDirectRadio(track.sourceUrl)
+        ? (isDirectRadioUrl(track.sourceUrl) || track.id.startsWith('radio_')
               ? track.sourceUrl
               : ApiService.streamTrackUrl(track.sourceUrl))
         : null;
     final fallback = ApiService.streamTrackUrl(
       'ytsearch1:${track.title} ${track.artists} audio',
     );
-    Future<void> warm(String url) async {
-      try {
-        await http.head(Uri.parse(url)).timeout(const Duration(seconds: 3));
-      } catch (_) {}
-    }
 
+    // No pre-flight HEAD request here on purpose. `setAudioSource` performs the
+    // real request anyway, and doing a throwaway HEAD first just added a full
+    // extra round-trip *in front of* it on every single track. The next track is
+    // primed in the background instead (see [_prefetchNextSource]), so by the
+    // time it is needed the server-side extraction is already cached.
     try {
-      await _player.stop();
       final url = primary ?? fallback;
-      await warm(url);
+      // No explicit `stop()`: `setAudioSource` stops the current source itself,
+      // so calling it first was a wasted platform round-trip per track.
       await _player
           .setAudioSource(AudioSource.uri(Uri.parse(url)))
           .timeout(const Duration(seconds: 30));
@@ -284,8 +274,6 @@ class PlayerProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('[Player] primary failed: $e');
       try {
-        await _player.stop();
-        await warm(fallback);
         await _player
             .setAudioSource(AudioSource.uri(Uri.parse(fallback)))
             .timeout(const Duration(seconds: 35));
@@ -297,6 +285,32 @@ class PlayerProvider extends ChangeNotifier {
     }
     _starting = false;
     _savePlayerState();
+  }
+
+  /// Warms the server-side extraction for the *next* queue track.
+  ///
+  /// The backend caches the resolved audio URL, so touching it a couple of
+  /// seconds early means the next track skips the slow yt-dlp resolution and
+  /// starts almost immediately. Fire-and-forget: a failure here is harmless
+  /// because the real load still falls back normally.
+  void _prefetchNextSource() {
+    if (!isRadio) return;
+    final next = _currentIndex + 1;
+    if (next < 0 || next >= _queue.length) return;
+    final upcoming = _queue[next];
+    // Local files and direct radio streams need no resolution.
+    if (_isLocalPath(upcoming.sourceUrl)) return;
+    if (isDirectRadioUrl(upcoming.sourceUrl)) return;
+    final url = ApiService.streamTrackUrl(upcoming.sourceUrl);
+    _prefetchTimer?.cancel();
+    _prefetchTimer = Timer(const Duration(seconds: 2), () {
+      try {
+        http
+            .head(Uri.parse(url))
+            .timeout(const Duration(seconds: 8))
+            .then((_) {}, onError: (_) {});
+      } catch (_) {}
+    });
   }
 
   /// Marks a track as genuinely started.
@@ -314,6 +328,8 @@ class PlayerProvider extends ChangeNotifier {
     }
     _isPlaying = true;
     notifyListeners();
+    // Get the following track resolving on the server while this one plays.
+    _prefetchNextSource();
   }
 
   Future<void> _startPlayback() async {
@@ -335,6 +351,20 @@ class PlayerProvider extends ChangeNotifier {
 
   /// The user pressed pause before the track finished loading.
   bool _pauseRequested = false;
+
+  Timer? _prefetchTimer;
+
+  /// Live radio streams are played directly rather than through the backend
+  /// proxy. Shared by [play] and [_prefetchNextSource] so both agree on what
+  /// needs resolving.
+  static bool isDirectRadioUrl(String url) {
+    final u = url.toLowerCase();
+    return u.contains('icecast.vrtcdn.be') ||
+        u.contains('qmusic.be') ||
+        u.contains('joe.be') ||
+        u.contains('streamtheworld.com') ||
+        (u.contains('.mp3') && u.contains('dist='));
+  }
 
   /// Guards against overlapping play/pause requests: `_startPlayback()` can
   /// await network work for seconds.
@@ -535,6 +565,7 @@ class PlayerProvider extends ChangeNotifier {
   @override
   void dispose() {
     _radioDriftTimer?.cancel();
+    _prefetchTimer?.cancel();
     _savePlayerState();
     _player.dispose();
     super.dispose();

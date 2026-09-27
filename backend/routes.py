@@ -21,7 +21,7 @@ from audio_client import (
 )
 
 from config import progress_store, scrape_job_progress, scrape_job_results, CANCELLED_TRACKS, CANCELLED_PLAYLIST_JOBS, JOB_STORE, COMPLETED_JOBS_DIR
-from utils import get_yt_info, get_playlist_client, download_track_logic, detect_url_service, scrape_external_data, extract_info, open_audio_stream
+from utils import get_yt_info, get_playlist_client, download_track_logic, detect_url_service, scrape_external_data, extract_info, open_audio_stream, _best_thumbnail_url, _get_proxy_for_ytdlp, _youtube_extractor_args, _log_warp_context
 
 routes = Blueprint("routes", __name__)
 
@@ -244,6 +244,66 @@ def get_progress(track_id):
     if track_id == "all":
         return jsonify(progress_store)
     return jsonify({"progress": progress_store.get(track_id, 0)})
+
+
+@routes.route("/api/search-tracks", methods=["GET", "POST"])
+def search_tracks():
+    """Song lookup for the in-app search bar.
+
+    Searches YouTube and returns real results - title, artist, artwork and
+    length - so searching finds *songs*, not just playlists. Flat extraction is
+    used so this stays a single fast round-trip instead of N per-video
+    extractions; duration is included when YouTube's search payload has it and
+    the client fills in the rest from playback.
+    """
+    data = request.get_json(silent=True) or {}
+    query = str(data.get("query") or request.args.get("q") or "").strip()
+    if not query:
+        return jsonify({"error": "No query provided"}), 400
+
+    try:
+        limit = int(data.get("limit") or request.args.get("limit") or 20)
+    except (TypeError, ValueError):
+        limit = 20
+    limit = max(1, min(limit, 30))
+
+    try:
+        _log_warp_context("search_tracks")
+        opts = {
+            "quiet": True,
+            "noplaylist": True,
+            "skip_download": True,
+            "extract_flat": "in_playlist",
+            "extractor_args": _youtube_extractor_args(),
+            "remote_components": ["ejs:github"],
+        }
+        proxy_url = _get_proxy_for_ytdlp()
+        if proxy_url:
+            opts["proxy"] = proxy_url
+
+        info = extract_info(f"ytsearch{limit}:{query}", opts, download=False)
+        entries = [e for e in (info.get("entries") or []) if e]
+
+        tracks = []
+        for entry in entries:
+            vid = entry.get("id") or ""
+            if not vid:
+                continue
+            tracks.append({
+                "id": f"yt_{vid}",
+                "title": entry.get("title") or "",
+                "artists": entry.get("channel") or entry.get("uploader") or "",
+                "album": "",
+                "cover": _best_thumbnail_url(
+                    entry.get("thumbnails") or [], entry.get("thumbnail") or ""
+                ),
+                "durationMs": int(entry.get("duration") or 0) * 1000,
+                "sourceUrl": f"https://www.youtube.com/watch?v={vid}",
+            })
+        return jsonify({"tracks": tracks})
+    except Exception as e:
+        print(f"[Search] '{query}' failed: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
 
 
 @routes.route("/api/resolve-youtube-url", methods=["POST"])

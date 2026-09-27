@@ -8,14 +8,19 @@ import 'network_stats_service.dart';
 class ApiService {
   static const String _baseUrl = 'https://spotdl.vervoortkobe.be.eu.org/api';
   // Set via --dart-define=SPOTTERFY_API_KEY=xxx (must match backend SPOTTERFY_API_KEY)
-  static const String _apiKey = String.fromEnvironment('SPOTTERFY_API_KEY', defaultValue: '');
+  static const String _apiKey = String.fromEnvironment(
+    'SPOTTERFY_API_KEY',
+    defaultValue: '',
+  );
   static Map<String, String> _headers({bool json = true}) => {
-        if (json) 'Content-Type': 'application/json',
-        if (_apiKey.isNotEmpty) 'X-Spotterfy-Key': _apiKey,
-      };
+    if (json) 'Content-Type': 'application/json',
+    if (_apiKey.isNotEmpty) 'X-Spotterfy-Key': _apiKey,
+  };
 
-  static void _trackUp(String body) => NetworkStatsService.instance?.addUp(body.length);
-  static void _trackDown(int bytes) => NetworkStatsService.instance?.addDown(bytes);
+  static void _trackUp(String body) =>
+      NetworkStatsService.instance?.addUp(body.length);
+  static void _trackDown(int bytes) =>
+      NetworkStatsService.instance?.addDown(bytes);
 
   /// Strip an owner suffix for STORAGE only (Firebase save path).
   /// The UI keeps the raw title so the author stays visible; only the
@@ -51,7 +56,9 @@ class ApiService {
         body: reqBody,
       );
       _trackDown(startRes.bodyBytes.length);
-      debugPrint('scrapePlaylist start status=${startRes.statusCode} body=${startRes.body.substring(0, startRes.body.length > 1000 ? 1000 : startRes.body.length)}');
+      debugPrint(
+        'scrapePlaylist start status=${startRes.statusCode} body=${startRes.body.substring(0, startRes.body.length > 1000 ? 1000 : startRes.body.length)}',
+      );
       if (startRes.statusCode != 200) {
         debugPrint('scrapePlaylist non-200');
         return null;
@@ -75,13 +82,18 @@ class ApiService {
       }
       final jobId = startData['jobId'] as String?;
       if (jobId == null) {
-        debugPrint('scrapePlaylist no jobId and not legacy complete: keys=${startData.keys.toList()}');
+        debugPrint(
+          'scrapePlaylist no jobId and not legacy complete: keys=${startData.keys.toList()}',
+        );
         return null;
       }
       debugPrint('scrapePlaylist jobId=$jobId polling...');
       for (int i = 0; i < 120; i++) {
         await Future.delayed(const Duration(milliseconds: 500));
-        final progRes = await http.get(Uri.parse('$_baseUrl/scrape-progress/$jobId'), headers: _headers(json: false));
+        final progRes = await http.get(
+          Uri.parse('$_baseUrl/scrape-progress/$jobId'),
+          headers: _headers(json: false),
+        );
         _trackDown(progRes.bodyBytes.length);
         if (progRes.statusCode != 200) continue;
         final prog = jsonDecode(progRes.body) as Map<String, dynamic>;
@@ -95,7 +107,10 @@ class ApiService {
         }
         if (i % 4 == 0) debugPrint('scrapePlaylist progress $i: $prog');
       }
-      final resultRes = await http.get(Uri.parse('$_baseUrl/scrape-result/$jobId'), headers: _headers(json: false));
+      final resultRes = await http.get(
+        Uri.parse('$_baseUrl/scrape-result/$jobId'),
+        headers: _headers(json: false),
+      );
       _trackDown(resultRes.bodyBytes.length);
       debugPrint('scrapePlaylist result status=${resultRes.statusCode}');
       if (resultRes.statusCode != 200) {
@@ -113,9 +128,13 @@ class ApiService {
       // Prefer the canonical entity URL the backend resolved (matters for
       // Spotify short share links like open.spotify.com/s/<code>), so the same
       // playlist always gets the same id regardless of how it was shared.
-      final canonical = (result['canonicalUrl'] as String? ?? '').split('?').first;
+      final canonical = (result['canonicalUrl'] as String? ?? '')
+          .split('?')
+          .first;
       final identityUrl = canonical.isNotEmpty ? canonical : cleanUrl;
-      debugPrint('scrapePlaylist success tracks=${tracks.length} playlistName=${result['playlistName']}');
+      debugPrint(
+        'scrapePlaylist success tracks=${tracks.length} playlistName=${result['playlistName']}',
+      );
       return PlaylistModel(
         id: identityUrl.hashCode.toString(),
         // Raw title for display — stripping happens only on save (toFirestore).
@@ -134,6 +153,33 @@ class ApiService {
 
   static String streamTrackUrl(String sourceUrl) {
     return '$_baseUrl/stream?source_url=${Uri.encodeComponent(sourceUrl)}';
+  }
+
+  /// Song lookup. Returns real results (title, artist, artwork, length) so the
+  /// search bar can find individual songs, not just playlists.
+  static Future<List<TrackModel>?> searchTracks(
+    String query, {
+    int limit = 20,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '$_baseUrl/search-tracks',
+        ).replace(queryParameters: {'q': query, 'limit': '$limit'}),
+        headers: _headers(),
+      );
+      if (response.statusCode != 200) return null;
+      final body = jsonDecode(response.body);
+      final raw = (body is Map ? body['tracks'] : null);
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map>()
+          .map((m) => TrackModel.fromJson(Map<String, dynamic>.from(m)))
+          .toList();
+    } catch (e) {
+      debugPrint('Track search failed: $e');
+      return null;
+    }
   }
 
   static Future<List<int>?> downloadTrack(

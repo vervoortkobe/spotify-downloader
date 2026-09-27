@@ -10,9 +10,15 @@ class TrackTile extends StatelessWidget {
   final TrackModel track;
   final VoidCallback? onPlay;
   final VoidCallback? onDownload;
+
+  /// Saves the track to the library (e.g. a song found via search). Shows a
+  /// bookmark button when provided.
+  final VoidCallback? onSave;
+  final bool isSaved;
   final bool isSelected;
   final bool isPlaying;
   final double progress;
+
   /// Local file path for embedded cover art (storage tracks with empty [track.cover]).
   final String? coverPath;
 
@@ -21,6 +27,8 @@ class TrackTile extends StatelessWidget {
     required this.track,
     this.onPlay,
     this.onDownload,
+    this.onSave,
+    this.isSaved = false,
     this.isSelected = false,
     this.isPlaying = false,
     this.progress = 0,
@@ -33,160 +41,269 @@ class TrackTile extends StatelessWidget {
     return Dismissible(
       key: ValueKey('track-${track.id}'),
       direction: DismissDirection.horizontal,
-      dismissThresholds: const {DismissDirection.startToEnd: 0.35, DismissDirection.endToStart: 0.35},
+      dismissThresholds: const {
+        DismissDirection.startToEnd: 0.35,
+        DismissDirection.endToStart: 0.35,
+      },
       // startToEnd = swipe RIGHT (finger moves right) -> Play Now (immediate primary action)
       // endToStart = swipe LEFT (finger moves left) -> Add to Queue (secondary)
       background: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(color: const Color(0xFF10b981), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10b981),
+          borderRadius: BorderRadius.circular(12),
+        ),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 24),
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.play_arrow, color: Colors.white, size: 18), SizedBox(width: 6), Text('Play Now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12))]),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.play_arrow, color: Colors.white, size: 18),
+            SizedBox(width: 6),
+            Text(
+              'Play Now',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
       ),
       secondaryBackground: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(color: const Color(0xFF1a3a2a), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1a3a2a),
+          borderRadius: BorderRadius.circular(12),
+        ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
-        child: const Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [Text('Add to Queue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)), SizedBox(width: 6), Icon(Icons.queue_music, color: Colors.white, size: 18)]),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text(
+              'Add to Queue',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            SizedBox(width: 6),
+            Icon(Icons.queue_music, color: Colors.white, size: 18),
+          ],
+        ),
       ),
       confirmDismiss: (dir) async {
         HapticFeedback.lightImpact();
         final player = context.read<PlayerProvider>();
         if (dir == DismissDirection.startToEnd) {
           // Swipe RIGHT -> play immediately (natural forward gesture)
-          player.play(track, queue: [track, ...player.queue.where((t) => t.id != track.id)]);
+          player.play(
+            track,
+            queue: [track, ...player.queue.where((t) => t.id != track.id)],
+          );
         } else {
           // Swipe LEFT -> queue at end, keep current position
           final q = [...player.queue, track];
-          final currentIdx = player.currentIndex.clamp(0, player.queue.isEmpty ? 0 : player.queue.length - 1);
+          final currentIdx = player.currentIndex.clamp(
+            0,
+            player.queue.isEmpty ? 0 : player.queue.length - 1,
+          );
           player.setQueue(q, startIndex: player.queue.isEmpty ? 0 : currentIdx);
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added "${track.title}" to queue'), duration: const Duration(milliseconds: 900), backgroundColor: const Color(0xFF0f1d17)));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Added "${track.title}" to queue'),
+                duration: const Duration(milliseconds: 900),
+                backgroundColor: const Color(0xFF0f1d17),
+              ),
+            );
           }
         }
         return false;
       },
       child: Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: active
-            ? Color(0xFF10b981).withValues(alpha: 0.15)
-            : isSelected
-                ? Color(0xFF10b981).withValues(alpha: 0.1)
-                : Color(0xFF0f1d17),
-        borderRadius: BorderRadius.circular(12),
-        border: active
-            ? Border.all(color: Color(0xFF10b981).withValues(alpha: 0.5))
-            : isSelected
-                ? Border.all(color: Color(0xFF10b981).withValues(alpha: 0.3))
-                : Border.all(color: Color(0xFF1a3a2a).withValues(alpha: 0.3)),
-        boxShadow: active ? [BoxShadow(color: Color(0xFF10b981).withValues(alpha: 0.25), blurRadius: 12)] : null,
-      ),
-      child: ListTile(
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        leading: ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: track.cover.isNotEmpty
-              ? CachedNetworkImage(
-                  imageUrl: track.cover,
-                  width: 48,
-                  height: 48,
-                  fit: BoxFit.cover,
-                  placeholder: (_, _) => Container(
-                    color: Color(0xFF1a1a2e),
-                    child: Icon(Icons.music_note, color: Colors.grey[600]),
+        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(
+          color: active
+              ? Color(0xFF10b981).withValues(alpha: 0.15)
+              : isSelected
+              ? Color(0xFF10b981).withValues(alpha: 0.1)
+              : Color(0xFF0f1d17),
+          borderRadius: BorderRadius.circular(12),
+          border: active
+              ? Border.all(color: Color(0xFF10b981).withValues(alpha: 0.5))
+              : isSelected
+              ? Border.all(color: Color(0xFF10b981).withValues(alpha: 0.3))
+              : Border.all(color: Color(0xFF1a3a2a).withValues(alpha: 0.3)),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: Color(0xFF10b981).withValues(alpha: 0.25),
+                    blurRadius: 12,
                   ),
-                  errorWidget: (_, _, _) => Container(
-                    color: Color(0xFF1a1a2e),
-                    child: Icon(Icons.music_note, color: Colors.grey[600]),
-                  ),
-                )
-              : (coverPath != null
-                  ? StorageCover(path: coverPath!, size: 48, iconSize: 24, radius: 6)
-                  : Container(
-                      width: 48,
-                      height: 48,
+                ]
+              : null,
+        ),
+        child: ListTile(
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: track.cover.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: track.cover,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    placeholder: (_, _) => Container(
                       color: Color(0xFF1a1a2e),
                       child: Icon(Icons.music_note, color: Colors.grey[600]),
-                    )),
-        ),
-        title: Text(
-          track.title,
-          style: TextStyle(
-            color: active ? Color(0xFF6ee7b7) : Colors.white,
-            fontSize: 14,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                    errorWidget: (_, _, _) => Container(
+                      color: Color(0xFF1a1a2e),
+                      child: Icon(Icons.music_note, color: Colors.grey[600]),
+                    ),
+                  )
+                : (coverPath != null
+                      ? StorageCover(
+                          path: coverPath!,
+                          size: 48,
+                          iconSize: 24,
+                          radius: 6,
+                        )
+                      : Container(
+                          width: 48,
+                          height: 48,
+                          color: Color(0xFF1a1a2e),
+                          child: Icon(
+                            Icons.music_note,
+                            color: Colors.grey[600],
+                          ),
+                        )),
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+          title: Text(
+            track.title,
+            style: TextStyle(
+              color: active ? Color(0xFF6ee7b7) : Colors.white,
+              fontSize: 14,
+              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            track.artists,
+            style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (progress > 0 && progress < 100)
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    value: progress / 100,
+                    strokeWidth: 2,
+                    color: Color(0xFF10b981),
+                  ),
+                ),
+              if (progress >= 100)
+                Icon(Icons.check_circle, color: Color(0xFF10b981), size: 20),
+              if (track.durationMs > 0)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text(
+                    _fmtDuration(Duration(milliseconds: track.durationMs)),
+                    style: TextStyle(
+                      color: Color(0xFFa1a1aa),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              if (onDownload != null && progress == 0)
+                IconButton(
+                  icon: Icon(
+                    Icons.download,
+                    color: Color(0xFFa1a1aa),
+                    size: 20,
+                  ),
+                  onPressed: onDownload,
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(),
+                ),
+              if (onSave != null)
+                IconButton(
+                  icon: Icon(
+                    isSaved
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
+                    color: isSaved
+                        ? const Color(0xFF10b981)
+                        : const Color(0xFFa1a1aa),
+                    size: 20,
+                  ),
+                  tooltip: isSaved ? 'Saved to library' : 'Save to library',
+                  onPressed: onSave,
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(),
+                ),
+              // Queue button
+              IconButton(
+                icon: Icon(
+                  Icons.queue_music,
+                  color: isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa),
+                  size: 20,
+                ),
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  final player = context.read<PlayerProvider>();
+                  final newQueue = [...player.queue, track];
+                  player.setQueue(newQueue, startIndex: player.currentIndex);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Added "${track.title}" to queue'),
+                      duration: Duration(milliseconds: 900),
+                      backgroundColor: Color(0xFF0f1d17),
+                    ),
+                  );
+                },
+                padding: EdgeInsets.zero,
+                constraints: BoxConstraints(),
+              ),
+              if (onPlay != null)
+                IconButton(
+                  icon: Icon(
+                    active
+                        ? Icons.pause_circle_filled
+                        : Icons.play_circle_filled,
+                    color: active
+                        ? Color(0xFF10b981)
+                        : isSelected
+                        ? Color(0xFF10b981)
+                        : Color(0xFFa1a1aa),
+                    size: 28,
+                  ),
+                  onPressed: onPlay,
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(),
+                ),
+            ],
+          ),
         ),
-subtitle: Text(
-           track.artists,
-           style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
-           maxLines: 1,
-           overflow: TextOverflow.ellipsis,
-         ),
-         trailing: Row(
-           mainAxisSize: MainAxisSize.min,
-           children: [
-             if (progress > 0 && progress < 100)
-               SizedBox(
-                 width: 24,
-                 height: 24,
-                 child: CircularProgressIndicator(
-                   value: progress / 100,
-                   strokeWidth: 2,
-                   color: Color(0xFF10b981),
-                 ),
-               ),
-             if (progress >= 100) Icon(Icons.check_circle, color: Color(0xFF10b981), size: 20),
-             if (track.durationMs > 0)
-               Padding(
-                 padding: const EdgeInsets.only(right: 8),
-                 child: Text(
-                   _fmtDuration(Duration(milliseconds: track.durationMs)),
-                   style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 11, fontWeight: FontWeight.w500),
-                 ),
-               ),
-             if (onDownload != null && progress == 0)
-               IconButton(icon: Icon(Icons.download, color: Color(0xFFa1a1aa), size: 20), onPressed: onDownload, padding: EdgeInsets.zero, constraints: BoxConstraints()),
-             // Queue button
-             IconButton(
-               icon: Icon(Icons.queue_music, color: isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa), size: 20),
-               onPressed: () {
-                 HapticFeedback.lightImpact();
-                 final player = context.read<PlayerProvider>();
-                 final newQueue = [...player.queue, track];
-                 player.setQueue(newQueue, startIndex: player.currentIndex);
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   SnackBar(
-                     content: Text('Added "${track.title}" to queue'),
-                     duration: Duration(milliseconds: 900),
-                     backgroundColor: Color(0xFF0f1d17),
-                   ),
-                 );
-               },
-               padding: EdgeInsets.zero,
-               constraints: BoxConstraints(),
-             ),
-             if (onPlay != null)
-               IconButton(
-                 icon: Icon(active ? Icons.pause_circle_filled : Icons.play_circle_filled, color: active ? Color(0xFF10b981) : isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa), size: 28),
-                 onPressed: onPlay,
-                 padding: EdgeInsets.zero,
-                 constraints: BoxConstraints(),
-               ),
-           ],
-         ),
-       ),
-       ),
-     );
-   }
+      ),
+    );
+  }
 
-   String _fmtDuration(Duration d) {
-     final m = d.inMinutes.remainder(60);
-     final s = d.inSeconds.remainder(60);
-     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-   }
- }
+  String _fmtDuration(Duration d) {
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+}

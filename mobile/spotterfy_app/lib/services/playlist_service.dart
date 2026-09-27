@@ -3,12 +3,52 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../models/playlist_model.dart';
 import '../models/track_model.dart';
 
 class PlaylistService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  /// spotify url -> artwork, resolved lazily. Empty results are cached too so a
+  /// URL that has no artwork is only ever looked up once.
+  static final Map<String, String> _coverCache = {};
+
+  /// Resolves real playlist artwork from Spotify's public oEmbed endpoint.
+  ///
+  /// Discover cards fall back to a placeholder whenever the playlist is not in
+  /// the local cache, which made every one of them render the identical
+  /// music-note icon. oEmbed needs no auth and returns a thumbnail directly, so
+  /// the real cover can be filled in on demand.
+  static Future<String> resolveSpotifyCover(String spotifyUrl) async {
+    final url = spotifyUrl.split('?').first;
+    if (url.isEmpty) return '';
+    final cached = _coverCache[url];
+    if (cached != null) return cached;
+
+    try {
+      final res = await http
+          .get(
+            Uri.parse(
+              'https://open.spotify.com/oembed?url=${Uri.encodeComponent(url)}',
+            ),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200) {
+        _coverCache[url] = '';
+        return '';
+      }
+      final body = jsonDecode(res.body);
+      final thumb = (body is Map ? body['thumbnail_url'] : null);
+      final out = (thumb is String && thumb.isNotEmpty) ? thumb : '';
+      _coverCache[url] = out;
+      return out;
+    } catch (_) {
+      // Don't cache failures as "no artwork" - a later attempt may succeed.
+      return '';
+    }
+  }
 
   Future<File> _cacheFile(String uid, String playlistId) async {
     final dir = await getApplicationDocumentsDirectory();
@@ -17,10 +57,16 @@ class PlaylistService {
     return File('${cacheDir.path}/${uid}_$playlistId.json');
   }
 
-  Future<void> _saveTracksToCache(String uid, String playlistId, List<TrackModel> tracks) async {
+  Future<void> _saveTracksToCache(
+    String uid,
+    String playlistId,
+    List<TrackModel> tracks,
+  ) async {
     try {
       final file = await _cacheFile(uid, playlistId);
-      await file.writeAsString(jsonEncode(tracks.map((t) => t.toJson()).toList()));
+      await file.writeAsString(
+        jsonEncode(tracks.map((t) => t.toJson()).toList()),
+      );
     } catch (e) {
       debugPrint('Track cache write failed: $e');
     }
@@ -31,12 +77,17 @@ class PlaylistService {
   Future<List<TrackModel>> loadCachedTracks(String uid, String playlistId) =>
       _loadTracksFromCache(uid, playlistId);
 
-  Future<List<TrackModel>> _loadTracksFromCache(String uid, String playlistId) async {
+  Future<List<TrackModel>> _loadTracksFromCache(
+    String uid,
+    String playlistId,
+  ) async {
     try {
       final file = await _cacheFile(uid, playlistId);
       if (!await file.exists()) return [];
       final data = jsonDecode(await file.readAsString()) as List<dynamic>;
-      return data.map((t) => TrackModel.fromJson(t as Map<String, dynamic>)).toList();
+      return data
+          .map((t) => TrackModel.fromJson(t as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       debugPrint('Track cache read failed: $e');
       return [];
@@ -79,7 +130,11 @@ class PlaylistService {
     await _deleteCache(uid, playlistId);
   }
 
-  Future<void> sharePlaylist(String uid, String playlistId, String friendUid) async {
+  Future<void> sharePlaylist(
+    String uid,
+    String playlistId,
+    String friendUid,
+  ) async {
     await _firestore.collection('playlists').doc(playlistId).update({
       'sharedWith': FieldValue.arrayUnion([friendUid]),
     });
@@ -90,7 +145,9 @@ class PlaylistService {
         .collection('playlists')
         .where('sharedWith', arrayContains: uid)
         .get();
-    return snap.docs.map((d) => PlaylistModel.fromJson(d.data(), d.id)).toList();
+    return snap.docs
+        .map((d) => PlaylistModel.fromJson(d.data(), d.id))
+        .toList();
   }
 
   /// Reads the community catalogue (playlists created by *other* users),
@@ -137,13 +194,19 @@ class PlaylistService {
     String query, {
     String? excludeUid,
     int limit = 20,
-  }) =>
-      getCommunityPlaylists(excludeUid: excludeUid, limit: limit, nameQuery: query);
+  }) => getCommunityPlaylists(
+    excludeUid: excludeUid,
+    limit: limit,
+    nameQuery: query,
+  );
 
   /// Playlists created by [uid], newest first. Used by the Discover profile
   /// lookup so a found profile can show that user's playlists. Ordered before
   /// limiting so the newest N are the ones returned.
-  Future<List<PlaylistModel>> getPlaylistsByCreator(String uid, {int limit = 30}) async {
+  Future<List<PlaylistModel>> getPlaylistsByCreator(
+    String uid, {
+    int limit = 30,
+  }) async {
     try {
       // Uses the (creatorUid ASC, createdAt DESC) composite index.
       final snap = await _firestore
@@ -160,7 +223,11 @@ class PlaylistService {
           debugPrint('skipping malformed playlist ${d.id}: $e');
         }
       }
-      list.sort((a, b) => (b.lastTrackSync ?? b.createdAt).compareTo(a.lastTrackSync ?? a.createdAt));
+      list.sort(
+        (a, b) => (b.lastTrackSync ?? b.createdAt).compareTo(
+          a.lastTrackSync ?? a.createdAt,
+        ),
+      );
       return list;
     } catch (e) {
       debugPrint('getPlaylistsByCreator failed: $e');
@@ -168,7 +235,11 @@ class PlaylistService {
     }
   }
 
-  Future<void> addTrackToPlaylist(String uid, String playlistId, TrackModel track) async {
+  Future<void> addTrackToPlaylist(
+    String uid,
+    String playlistId,
+    TrackModel track,
+  ) async {
     await _firestore
         .collection('playlists')
         .doc(playlistId)
@@ -232,15 +303,23 @@ class PlaylistService {
   /// playlists now, which previously made the whole query fail.)
   static const int _whereInChunk = 10;
 
-  Future<List<PlaylistModel>> getDiscoverPlaylists(List<String> spotifyUrls) async {
+  Future<List<PlaylistModel>> getDiscoverPlaylists(
+    List<String> spotifyUrls,
+  ) async {
     if (spotifyUrls.isEmpty) return [];
     final cleanUrls = spotifyUrls.map((u) => u.split('?').first).toList();
     final byUrl = <String, PlaylistModel>{};
     for (var i = 0; i < cleanUrls.length; i += _whereInChunk) {
-      final chunk = cleanUrls.sublist(i, (i + _whereInChunk).clamp(0, cleanUrls.length));
+      final chunk = cleanUrls.sublist(
+        i,
+        (i + _whereInChunk).clamp(0, cleanUrls.length),
+      );
       if (chunk.isEmpty) continue;
       try {
-        final snap = await _firestore.collection('discoverCache').where('spotifyUrl', whereIn: chunk).get();
+        final snap = await _firestore
+            .collection('discoverCache')
+            .where('spotifyUrl', whereIn: chunk)
+            .get();
         for (final d in snap.docs) {
           try {
             final u = (d.data()['spotifyUrl'] as String?) ?? '';
@@ -256,46 +335,77 @@ class PlaylistService {
     return cleanUrls.map((u) => byUrl[u]).whereType<PlaylistModel>().toList();
   }
 
-  Stream<List<PlaylistModel>> streamDiscoverPlaylists(List<String> spotifyUrls) {
+  Stream<List<PlaylistModel>> streamDiscoverPlaylists(
+    List<String> spotifyUrls,
+  ) {
     if (spotifyUrls.isEmpty) return Stream.value([]);
     final cleanUrls = spotifyUrls.map((u) => u.split('?').first).toList();
     // Merge the per-chunk streams into one.
     final streams = <Stream<QuerySnapshot<Map<String, dynamic>>>>[];
     for (var i = 0; i < cleanUrls.length; i += _whereInChunk) {
-      final chunk = cleanUrls.sublist(i, (i + _whereInChunk).clamp(0, cleanUrls.length));
+      final chunk = cleanUrls.sublist(
+        i,
+        (i + _whereInChunk).clamp(0, cleanUrls.length),
+      );
       if (chunk.isEmpty) continue;
-      streams.add(_firestore.collection('discoverCache').where('spotifyUrl', whereIn: chunk).snapshots());
+      streams.add(
+        _firestore
+            .collection('discoverCache')
+            .where('spotifyUrl', whereIn: chunk)
+            .snapshots(),
+      );
     }
     late StreamController<List<PlaylistModel>> out;
     final subs = <StreamSubscription<dynamic>>[];
-    out = StreamController<List<PlaylistModel>>.broadcast(onCancel: () async {
-      for (final s in subs) {
-        await s.cancel();
-      }
-    });
-    for (final c in streams) {
-      subs.add(c.listen((snap) {
-        if (out.isClosed) return;
-        final byUrl = <String, PlaylistModel>{};
-        for (final d in snap.docs) {
-          try {
-            final u = (d.data()['spotifyUrl'] as String?) ?? '';
-            byUrl[u] = PlaylistModel.fromJson(d.data(), d.id);
-          } catch (_) {}
+    out = StreamController<List<PlaylistModel>>.broadcast(
+      onCancel: () async {
+        for (final s in subs) {
+          await s.cancel();
         }
-        out.add(cleanUrls.map((u) => byUrl[u]).whereType<PlaylistModel>().toList());
-      }, onError: (Object e) {
-        debugPrint('streamDiscoverPlaylists chunk error: $e');
-      }));
+      },
+    );
+    for (final c in streams) {
+      subs.add(
+        c.listen(
+          (snap) {
+            if (out.isClosed) return;
+            final byUrl = <String, PlaylistModel>{};
+            for (final d in snap.docs) {
+              try {
+                final u = (d.data()['spotifyUrl'] as String?) ?? '';
+                byUrl[u] = PlaylistModel.fromJson(d.data(), d.id);
+              } catch (_) {}
+            }
+            out.add(
+              cleanUrls
+                  .map((u) => byUrl[u])
+                  .whereType<PlaylistModel>()
+                  .toList(),
+            );
+          },
+          onError: (Object e) {
+            debugPrint('streamDiscoverPlaylists chunk error: $e');
+          },
+        ),
+      );
     }
     return out.stream;
   }
 
   Future<void> cacheDiscoverPlaylist(PlaylistModel playlist) async {
-    final clean = (playlist.spotifyUrl.isNotEmpty ? playlist.spotifyUrl : playlist.id).split('?').first;
+    final clean =
+        (playlist.spotifyUrl.isNotEmpty ? playlist.spotifyUrl : playlist.id)
+            .split('?')
+            .first;
     // Query-first to find existing doc id, else create with stable id
-    final existing = await _firestore.collection('discoverCache').where('spotifyUrl', isEqualTo: clean).limit(1).get();
-    final docId = existing.docs.isNotEmpty ? existing.docs.first.id : _stableId(clean);
+    final existing = await _firestore
+        .collection('discoverCache')
+        .where('spotifyUrl', isEqualTo: clean)
+        .limit(1)
+        .get();
+    final docId = existing.docs.isNotEmpty
+        ? existing.docs.first.id
+        : _stableId(clean);
     await _firestore.collection('discoverCache').doc(docId).set({
       ...playlist.toFirestore(),
       'spotifyUrl': clean,
@@ -304,18 +414,29 @@ class PlaylistService {
     }, SetOptions(merge: true));
   }
 
-  Future<PlaylistModel?> fetchDiscoverPlaylistWithCache(String spotifyUrl, {required Future<PlaylistModel?> Function() fetcher}) async {
+  Future<PlaylistModel?> fetchDiscoverPlaylistWithCache(
+    String spotifyUrl, {
+    required Future<PlaylistModel?> Function() fetcher,
+  }) async {
     final clean = spotifyUrl.split('?').first;
     // Query by field (covers both legacy hashCode docs and new md5 docs)
-    final q = await _firestore.collection('discoverCache').where('spotifyUrl', isEqualTo: clean).limit(1).get();
+    final q = await _firestore
+        .collection('discoverCache')
+        .where('spotifyUrl', isEqualTo: clean)
+        .limit(1)
+        .get();
     if (q.docs.isNotEmpty) {
       final doc = q.docs.first;
       final data = doc.data();
       final ts = (data['lastScrapedAt'] as Timestamp?);
-      final ageHours = ts == null ? 999 : DateTime.now().difference(ts.toDate()).inHours;
+      final ageHours = ts == null
+          ? 999
+          : DateTime.now().difference(ts.toDate()).inHours;
       if (ageHours < 12) return PlaylistModel.fromJson(data, doc.id);
       if (ageHours < 48) {
-        fetcher().then((fresh) { if (fresh != null) cacheDiscoverPlaylist(fresh); });
+        fetcher().then((fresh) {
+          if (fresh != null) cacheDiscoverPlaylist(fresh);
+        });
         return PlaylistModel.fromJson(data, doc.id);
       }
     }

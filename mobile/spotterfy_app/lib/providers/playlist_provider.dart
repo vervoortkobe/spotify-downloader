@@ -279,6 +279,57 @@ class PlaylistProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Id of the library playlist that collects individually saved songs.
+  static const String likedSongsId = 'liked_songs';
+
+  /// Saves a single track (e.g. a song found via search) into the library.
+  ///
+  /// [playlistId] targets an existing playlist; pass [likedSongsId] (or null)
+  /// to file it under "Liked songs", which is created on first use. Returns a
+  /// short message describing the outcome, or null if [track] was already
+  /// present.
+  Future<String?> saveTrackToLibrary(
+    String uid,
+    TrackModel track, {
+    String? playlistId,
+  }) async {
+    final target = playlistId == null || playlistId == likedSongsId
+        ? _ensureLikedSongs(uid)
+        : _playlists.firstWhere(
+            (p) => p.id == playlistId,
+            orElse: () => _ensureLikedSongs(uid),
+          );
+
+    if (target.tracks.any((t) => t.id == track.id)) return null;
+    target.tracks = [...target.tracks, track];
+    // Reuse the first track's artwork so the playlist never shows the generic
+    // placeholder (imported playlists have no cover of their own).
+    if (target.coverUrl.isEmpty && track.cover.isNotEmpty) {
+      target.coverUrl = track.cover;
+    }
+    await savePlaylist(uid, target);
+    return playlistId == null || playlistId == likedSongsId
+        ? 'Saved to Liked songs'
+        : 'Added to ${target.name}';
+  }
+
+  /// Returns the "Liked songs" playlist, creating (and persisting) it on first
+  /// use. Not exposed as a member so it can't be called without persisting.
+  PlaylistModel _ensureLikedSongs(String uid) {
+    final existing = _playlists.where((p) => p.id == likedSongsId);
+    if (existing.isNotEmpty) return existing.first;
+    final created = PlaylistModel(
+      id: likedSongsId,
+      name: 'Liked songs',
+      owner: 'You',
+      tracks: const [],
+      source: 'youtube',
+      creatorUid: uid,
+    );
+    _playlists.insert(0, created);
+    return created;
+  }
+
   Future<void> deletePlaylist(String uid, String playlistId) async {
     await _playlistService.deletePlaylist(uid, playlistId);
     _playlists.removeWhere((p) => p.id == playlistId);

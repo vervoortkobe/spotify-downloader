@@ -19,6 +19,7 @@ import 'package:spotterfy_app/services/firebase_service.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
 import 'package:spotterfy_app/widgets/no_results_view.dart';
+import 'package:spotterfy_app/widgets/track_tile.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -150,7 +151,148 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _refetching = false;
   Timer? _profileSearchTimer;
   Timer? _searchPlaylistTimer;
+  Timer? _trackSearchTimer;
   String? _myUid;
+
+  /// Song results for the current query.
+  List<TrackModel> _trackResults = [];
+
+  /// Ids of search results already saved to the library, so the bookmark icon
+  /// reflects the real state rather than always looking unsaved.
+  final Set<String> _savedTrackIds = {};
+
+  /// Lets a searched song be filed into the library: either "Liked songs" or any
+  /// existing playlist.
+  Future<void> _showSaveSheet(BuildContext context, TrackModel track) async {
+    final auth = context.read<AuthProvider>();
+    final prov = context.read<PlaylistProvider>();
+    final uid = auth.user?.uid;
+    if (uid == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Sign in to save songs')));
+      return;
+    }
+
+    // Reflect the real library state when the sheet opens.
+    final liked = prov.playlists.where(
+      (p) => p.id == PlaylistProvider.likedSongsId,
+    );
+    if (liked.isNotEmpty) {
+      for (final t in liked.first.tracks) {
+        _savedTrackIds.add(t.id);
+      }
+    }
+    for (final p in prov.playlists) {
+      for (final t in p.tracks) {
+        _savedTrackIds.add(t.id);
+      }
+    }
+    if (mounted) setState(() {});
+
+    final target = await showModalBottomSheet<String?>(
+      context: context,
+      backgroundColor: SpotterfyTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+              child: Text(
+                'Save "${track.title}"',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: SpotterfyTheme.text,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.favorite_rounded,
+                color: SpotterfyTheme.primary,
+              ),
+              title: const Text('Liked songs'),
+              subtitle: const Text(
+                'Your saved songs',
+                style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+              ),
+              onTap: () =>
+                  Navigator.pop(sheetCtx, PlaylistProvider.likedSongsId),
+            ),
+            if (prov.playlists.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 10, 20, 4),
+                child: Text(
+                  'Add to a playlist',
+                  style: TextStyle(
+                    color: SpotterfyTheme.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: prov.playlists.length,
+                  itemBuilder: (_, i) {
+                    final p = prov.playlists[i];
+                    return ListTile(
+                      leading: const Icon(
+                        Icons.queue_music_rounded,
+                        color: SpotterfyTheme.muted,
+                      ),
+                      title: Text(
+                        p.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: SpotterfyTheme.text,
+                          fontSize: 14,
+                        ),
+                      ),
+                      onTap: () => Navigator.pop(sheetCtx, p.id),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+    if (target == null || !mounted) return;
+
+    final message = await prov.saveTrackToLibrary(
+      uid,
+      track,
+      playlistId: target,
+    );
+    if (!mounted) return;
+    setState(() {
+      if (message != null) _savedTrackIds.add(track.id);
+    });
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message ?? 'Already in your library'),
+        backgroundColor: const Color(0xFF0f1d17),
+      ),
+    );
+  }
+
+  /// A search is in flight. Until it settles the page must NOT claim there is
+  /// nothing found - previously the panel flashed on the very first keystroke,
+  /// because the results are debounced and had not arrived yet.
+  bool _searching = false;
 
   @override
   void initState() {
@@ -160,7 +302,11 @@ class _SearchScreenState extends State<SearchScreen> {
       setState(() => _query = _searchController.text.trim().toLowerCase());
       _profileSearchTimer?.cancel();
       _searchPlaylistTimer?.cancel();
+      _trackSearchTimer?.cancel();
       if (_query.length >= 2) {
+        // Mark as searching immediately so the "nothing found" panel is
+        // suppressed while the debounced lookups are still pending.
+        setState(() => _searching = true);
         _profileSearchTimer = Timer(
           const Duration(milliseconds: 400),
           () async {
@@ -183,9 +329,25 @@ class _SearchScreenState extends State<SearchScreen> {
             setState(() => _searchPlaylistResults = results);
           },
         );
+        _trackSearchTimer = Timer(const Duration(milliseconds: 400), () async {
+          final wanted = _query;
+          final results = _isOnline
+              ? await ApiService.searchTracks(_query)
+              : null;
+          if (!mounted) return;
+          // Discard a response for a query the user has already moved on
+          // from, otherwise results flash in for the wrong text.
+          if (wanted != _query) return;
+          setState(() {
+            _trackResults = results ?? const [];
+            _searching = false;
+          });
+        });
       } else {
         _profiles = [];
         _searchPlaylistResults = [];
+        _trackResults = [];
+        _searching = false;
       }
     });
     _initConnectivity();
@@ -480,7 +642,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return BasePageScaffold(
       searchController: _searchController,
-      searchHint: 'Search Discover',
+      searchHint: 'Search the community',
       query: _query,
       // Same "Check for updates" refetch icon button the Library playlist
       // detail screen uses (Icons.sync + spinner while working).
@@ -532,6 +694,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     clickableTitle: _query.isEmpty,
                   ),
                   _radioSection(context, _query),
+                  _songsSection(context, _query),
                   if (_searchPlaylistResults.isNotEmpty && _query.isNotEmpty)
                     _searchResultsSection(),
                   if (_profiles.isNotEmpty) _profilesSection(),
@@ -542,11 +705,14 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  /// True while searching and not a single category produced a hit. Every
-  /// section hides itself in that case, so without this the page would just
-  /// look blank with no explanation.
+  /// True only once the search for the current query has actually finished and
+  /// nothing matched. While a lookup is in flight the page shows progress
+  /// instead, which is what stopped "nothing found" flashing on the first
+  /// keystroke.
   bool get _showNoResults {
     if (_query.isEmpty) return false;
+    if (_searching) return false;
+    if (_trackResults.isNotEmpty) return false;
     if (_profiles.isNotEmpty) return false;
     if (_searchPlaylistResults.isNotEmpty) return false;
     bool nameHit(List<PlaylistModel> list) =>
@@ -557,6 +723,93 @@ class _SearchScreenState extends State<SearchScreen> {
       return false;
     }
     return true;
+  }
+
+  /// Song results, shown as a list of playable rows. This is what makes the
+  /// search bar find individual songs (with artwork and length) instead of only
+  /// matching cached playlist names.
+  Widget _songsSection(BuildContext context, String query) {
+    if (query.isEmpty) return const SizedBox.shrink();
+    if (_searching && _trackResults.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(16, 18, 16, 8),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: SpotterfyTheme.primary,
+              ),
+            ),
+            SizedBox(width: 10),
+            Text(
+              'Searching songs...',
+              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_trackResults.isEmpty) return const SizedBox.shrink();
+
+    final player = context.watch<PlayerProvider>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              Text(
+                'Songs',
+                style: TextStyle(
+                  color: SpotterfyTheme.text,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${_trackResults.length}',
+                  style: const TextStyle(
+                    color: SpotterfyTheme.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ..._trackResults.map((t) {
+          final isSelected = player.currentTrack?.id == t.id;
+          return TrackTile(
+            track: t,
+            isSelected: isSelected,
+            isPlaying: isSelected && player.isPlaying,
+            onPlay: () {
+              // Play the whole result set so the queue is browsable, starting
+              // from the row that was tapped.
+              player.setQueue(
+                _trackResults,
+                startIndex: _trackResults.indexOf(t),
+              );
+              player.play(t, queue: _trackResults);
+            },
+            onSave: () => _showSaveSheet(context, t),
+            isSaved: _savedTrackIds.contains(t.id),
+          );
+        }),
+      ],
+    );
   }
 
   Widget _radioSection(BuildContext context, String query) {
@@ -1080,6 +1333,7 @@ class _SearchScreenState extends State<SearchScreen> {
               return _DiscoverCard(
                 width: cardW,
                 coverUrl: p.coverUrl,
+                spotifyUrl: p.spotifyUrl,
                 title: p.name,
                 margin: EdgeInsets.only(
                   right: i == display.length - 1 ? 0 : 10,
@@ -1202,9 +1456,74 @@ class _SearchScreenState extends State<SearchScreen> {
 
 /// Square playlist cover with the title overlaid on a blurred strip at the
 /// bottom, covering part of the cover.
+/// Artwork for a discover card.
+///
+/// Discover playlists that are not in the local cache arrive as placeholders
+/// with no cover, so every one of them used to render the same music-note icon.
+/// When that happens the real artwork is fetched once from Spotify's oEmbed
+/// endpoint and faded in; the result is cached process-wide.
+class _DiscoverCover extends StatefulWidget {
+  final String coverUrl;
+  final String spotifyUrl;
+
+  const _DiscoverCover({required this.coverUrl, required this.spotifyUrl});
+
+  @override
+  State<_DiscoverCover> createState() => _DiscoverCoverState();
+}
+
+class _DiscoverCoverState extends State<_DiscoverCover> {
+  String? _resolved;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.coverUrl.isEmpty && widget.spotifyUrl.isNotEmpty) {
+      _resolve();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _DiscoverCover oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.coverUrl.isEmpty && widget.spotifyUrl.isNotEmpty) _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final url = await PlaylistService.resolveSpotifyCover(widget.spotifyUrl);
+    if (!mounted || url.isEmpty || widget.coverUrl.isNotEmpty) return;
+    setState(() => _resolved = url);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = widget.coverUrl.isNotEmpty
+        ? widget.coverUrl
+        : (_resolved ?? '');
+    if (url.isEmpty) return _placeholder();
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      memCacheWidth: 220,
+      placeholder: (_, _) => _placeholder(),
+      errorWidget: (_, _, _) => _placeholder(),
+    );
+  }
+
+  Widget _placeholder() => Container(
+    color: SpotterfyTheme.surface,
+    child: const Center(
+      child: Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 28),
+    ),
+  );
+}
+
 class _DiscoverCard extends StatelessWidget {
   final double width;
   final String coverUrl;
+
+  /// Used to resolve artwork on demand when [coverUrl] is empty.
+  final String spotifyUrl;
   final String title;
   final EdgeInsets margin;
   final VoidCallback onTap;
@@ -1212,6 +1531,7 @@ class _DiscoverCard extends StatelessWidget {
   const _DiscoverCard({
     required this.width,
     required this.coverUrl,
+    this.spotifyUrl = '',
     required this.title,
     this.margin = EdgeInsets.zero,
     required this.onTap,
@@ -1232,34 +1552,10 @@ class _DiscoverCard extends StatelessWidget {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: coverUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: coverUrl,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 220,
-                            placeholder: (_, _) =>
-                                Container(color: SpotterfyTheme.surface),
-                            errorWidget: (_, _, _) => Container(
-                              color: SpotterfyTheme.surface,
-                              child: const Center(
-                                child: Icon(
-                                  Icons.music_note,
-                                  color: SpotterfyTheme.muted,
-                                  size: 28,
-                                ),
-                              ),
-                            ),
-                          )
-                        : Container(
-                            color: SpotterfyTheme.surface,
-                            child: const Center(
-                              child: Icon(
-                                Icons.music_note,
-                                color: SpotterfyTheme.muted,
-                                size: 28,
-                              ),
-                            ),
-                          ),
+                    child: _DiscoverCover(
+                      coverUrl: coverUrl,
+                      spotifyUrl: spotifyUrl,
+                    ),
                   ),
                   Positioned(
                     left: 0,
@@ -1508,8 +1804,9 @@ class _SectionPageState extends State<_SectionPage> {
           }
           final p = _displayed[i];
           return _DiscoverCard(
-            width: double.infinity,
+            width: 110,
             coverUrl: p.coverUrl,
+            spotifyUrl: p.spotifyUrl,
             title: p.name,
             onTap: () async {
               if (widget.onTap != null) {
