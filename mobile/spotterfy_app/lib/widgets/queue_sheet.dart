@@ -1,18 +1,17 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
-/// The "Up Next" queue sheet.
+/// Opens the "Up Next" queue sheet.
 ///
 /// Shared by the now-playing page and the mini player so both queue buttons
 /// open the *same* page - they used to be two independent copies that had
 /// drifted apart.
 void showQueueSheet(BuildContext context, PlayerProvider player) {
-  final queue = List<TrackModel>.from(player.queue);
-  final currentIndex = player.currentIndex;
   showModalBottomSheet(
     context: context,
     // The sheet draws its own surface, so the route stays transparent and the
@@ -21,194 +20,465 @@ void showQueueSheet(BuildContext context, PlayerProvider player) {
     barrierColor: Colors.black.withValues(alpha: 0.55),
     isScrollControlled: true,
     useSafeArea: true,
-    // Explicit timing/curve instead of relying on the defaults, so opening
-    // the queue and opening the player page feel like the same surface.
+    // Explicit timing/curve instead of relying on the defaults, so opening the
+    // queue and opening the player page feel like the same surface.
     sheetAnimationStyle: const AnimationStyle(
       duration: Duration(milliseconds: 250),
       reverseDuration: Duration(milliseconds: 200),
       curve: Curves.decelerate,
       reverseCurve: Curves.decelerate,
     ),
-    builder: (sheetCtx) {
-      return Container(
-        decoration: BoxDecoration(
-          color: SpotterfyTheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              blurRadius: 28,
-              offset: const Offset(0, -6),
-            ),
-          ],
-        ),
-        // Height of the sheet. Combined with `MainAxisSize.max` below, this is
-        // the *final* height rather than a ceiling, so the sheet always opens up
-        // to the top of the page instead of hugging a short queue at the bottom.
-        // The track list scrolls inside it - without this bound the Column
-        // overflowed, which is what made the sheet look broken while opening.
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(sheetCtx).height * 0.92,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.max,
-          children: [
-            // Grabber, matching the drag handle on the player page.
-            Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 4),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 12, 6),
-              child: Row(
-                children: [
-                  Text(
-                    'Up Next',
-                    style: TextStyle(
-                      color: SpotterfyTheme.text,
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (queue.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '${queue.length}',
-                        style: TextStyle(
-                          color: SpotterfyTheme.muted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  const Spacer(),
-                  if (queue.length > 1)
-                    TextButton.icon(
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        player.clearQueue();
-                      },
-                      icon: const Icon(
-                        Icons.playlist_remove_rounded,
-                        size: 16,
-                        color: SpotterfyTheme.muted,
-                      ),
-                      label: const Text(
-                        'Clear',
-                        style: TextStyle(
-                          color: SpotterfyTheme.muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: SpotterfyTheme.muted,
-                      size: 20,
-                    ),
-                    tooltip: 'Close',
-                    onPressed: () => Navigator.pop(sheetCtx),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: Color(0x14FFFFFF)),
-            if (queue.isEmpty)
-              // The sheet is always full height now, so centre the empty state
-              // in the space below the header instead of leaving it stranded at
-              // the top.
-              const Expanded(
-                child: Center(
-                  child: Text(
-                    'Nothing queued',
-                    style: TextStyle(color: SpotterfyTheme.muted),
-                  ),
-                ),
-              )
-            else
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                  itemCount: queue.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 2),
-                  itemBuilder: (_, index) {
-                    final track = queue[index];
-                    final isCurrent = index == currentIndex;
-                    return _QueueRow(
-                      track: track,
-                      index: index,
-                      isCurrent: isCurrent,
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        player.playFromQueue(index);
-                        Navigator.pop(sheetCtx);
-                      },
-                      onRemove: isCurrent
-                          ? null
-                          : () {
-                              HapticFeedback.lightImpact();
-                              player.removeFromQueue(index);
-                            },
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
-      );
-    },
+    builder: (_) => const QueueSheet(),
   );
 }
 
-/// One row in the Up Next sheet: cover, title/artist, length, and a remove
-/// action. The current track gets a green tint plus animated equaliser bars.
+/// Queue sheet: swipe a row away to remove it, long-press to multi-select, and
+/// reorder the selection with the up/down actions.
+///
+/// Reads the queue from the provider rather than a snapshot taken when the sheet
+/// opened, so a track skipped or removed from elsewhere is reflected live.
+class QueueSheet extends StatefulWidget {
+  const QueueSheet({super.key});
+
+  @override
+  State<QueueSheet> createState() => _QueueSheetState();
+}
+
+class _QueueSheetState extends State<QueueSheet> {
+  /// Selected row indices, held as indices into the queue.
+  final Set<int> _selected = {};
+
+  bool get _selecting => _selected.isNotEmpty;
+
+  void _toggle(int index) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (!_selected.remove(index)) _selected.add(index);
+    });
+  }
+
+  void _clearSelection() => setState(_selected.clear);
+
+  void _selectAll(int count) => setState(() {
+    _selected
+      ..clear()
+      ..addAll(List.generate(count, (i) => i));
+  });
+
+  void _afterChange(String? message) {
+    if (!mounted) return;
+    setState(_selected.clear);
+    if (message != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: const Color(0xFF0f1d17),
+        ),
+      );
+    }
+  }
+
+  String _fmtDuration(int ms) {
+    final total = (ms / 1000).round();
+    final h = total ~/ 3600;
+    final m = (total % 3600) ~/ 60;
+    final s = total % 60;
+    if (h > 0) {
+      return '$h hr ${m.toString().padLeft(2, '0')} min';
+    }
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.watch<PlayerProvider>();
+    final queue = player.queue;
+    final currentIndex = player.currentIndex;
+    final totalMs = queue.fold<int>(0, (sum, t) => sum + t.durationMs);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: SpotterfyTheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 28,
+            offset: const Offset(0, -6),
+          ),
+        ],
+      ),
+      // Opens up to the top of the screen; the list scrolls inside it.
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          // Grabber.
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 4),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          if (_selecting)
+            _selectionBar(player)
+          else
+            _normalBar(player, totalMs),
+          const Divider(height: 1, color: Color(0x14FFFFFF)),
+          if (queue.isEmpty)
+            const Expanded(
+              child: Center(
+                child: Text(
+                  'Nothing queued',
+                  style: TextStyle(color: SpotterfyTheme.muted),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                itemCount: queue.length,
+                itemBuilder: (_, index) {
+                  final track = queue[index];
+                  final isCurrent = index == currentIndex;
+                  return _SwipeToRemove(
+                    key: ValueKey('queue-${track.id}-$index'),
+                    enabled: !_selecting,
+                    onRemove: () {
+                      HapticFeedback.lightImpact();
+                      player.removeFromQueue(index);
+                      _afterChange('Removed "${track.title}"');
+                    },
+                    child: _QueueRow(
+                      track: track,
+                      index: index,
+                      isCurrent: isCurrent,
+                      isPlaying: isCurrent && player.isPlaying,
+                      selectionMode: _selecting,
+                      selected: _selected.contains(index),
+                      canMoveUp: _selected.isEmpty || index > 0,
+                      canMoveDown:
+                          _selected.isEmpty || index < queue.length - 1,
+                      onTap: () {
+                        if (_selecting) {
+                          _toggle(index);
+                          return;
+                        }
+                        player.playFromQueue(index);
+                        Navigator.pop(context);
+                      },
+                      onLongPress: () => _toggle(index),
+                      onRemove: _selecting
+                          ? null
+                          : () {
+                              player.removeFromQueue(index);
+                              _afterChange('Removed "${track.title}"');
+                            },
+                      onMoveUp: _selecting
+                          ? null
+                          : () => player.moveQueueUp(index),
+                      onMoveDown: _selecting
+                          ? null
+                          : () => player.moveQueueDown(index),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Header when nothing is selected: counts and total length.
+  Widget _normalBar(PlayerProvider player, int totalMs) {
+    final count = player.queue.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 8, 8),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Up Next',
+                style: TextStyle(
+                  color: SpotterfyTheme.text,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                count == 0
+                    ? 'Empty'
+                    : '$count ${count == 1 ? 'song' : 'songs'} • ${_fmtDuration(totalMs)}',
+                style: const TextStyle(
+                  color: SpotterfyTheme.muted,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          if (count > 0)
+            TextButton.icon(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                player.clearQueue();
+                _afterChange('Queue cleared');
+              },
+              icon: const Icon(
+                Icons.playlist_remove_rounded,
+                size: 16,
+                color: SpotterfyTheme.muted,
+              ),
+              label: const Text(
+                'Clear',
+                style: TextStyle(
+                  color: SpotterfyTheme.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          IconButton(
+            icon: const Icon(
+              Icons.close_rounded,
+              color: SpotterfyTheme.muted,
+              size: 20,
+            ),
+            tooltip: 'Close',
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Header in multi-select mode: count plus the bulk actions.
+  Widget _selectionBar(PlayerProvider player) {
+    final indices = _selected.toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 4, 8, 4),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            tooltip: 'Clear selection',
+            onPressed: _clearSelection,
+          ),
+          Text(
+            '${_selected.length} selected',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.done_all, color: Colors.white, size: 20),
+            tooltip: 'Select all',
+            onPressed: () => _selectAll(player.queue.length),
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_upward, color: Colors.white, size: 20),
+            tooltip: 'Move up',
+            onPressed: () {
+              player.moveQueueBlockUp(indices);
+              // Keep the same tracks selected after they shift up a place.
+              setState(() {
+                _selected
+                  ..clear()
+                  ..addAll(indices.map((i) => i - 1).where((i) => i >= 0));
+              });
+            },
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.arrow_downward,
+              color: Colors.white,
+              size: 20,
+            ),
+            tooltip: 'Move down',
+            onPressed: () {
+              final last = player.queue.length - 1;
+              player.moveQueueBlockDown(indices);
+              setState(() {
+                _selected
+                  ..clear()
+                  ..addAll(indices.map((i) => i + 1).where((i) => i <= last));
+              });
+            },
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.delete_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            tooltip: 'Remove selected',
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              player.removeFromQueueMany(indices);
+              _afterChange(
+                'Removed ${indices.length} ${indices.length == 1 ? 'song' : 'songs'}',
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Reveals a red "Remove" affordance when swiped.
+///
+/// Suppressed while multi-selecting, where a stray horizontal swipe would
+/// otherwise delete rows the user was trying to select.
+class _SwipeToRemove extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onRemove;
+  final bool enabled;
+
+  const _SwipeToRemove({
+    super.key,
+    required this.child,
+    required this.onRemove,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled) return child;
+    return Dismissible(
+      key: key ?? const ValueKey('queue-row'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: Colors.redAccent.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Remove',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            SizedBox(width: 6),
+            Icon(Icons.delete_outline, color: Colors.white, size: 18),
+          ],
+        ),
+      ),
+      onDismissed: (_) => onRemove(),
+      child: child,
+    );
+  }
+}
+
 class _QueueRow extends StatelessWidget {
   final TrackModel track;
   final int index;
   final bool isCurrent;
+  final bool isPlaying;
+  final bool selectionMode;
+  final bool selected;
+  final bool canMoveUp;
+  final bool canMoveDown;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
   final VoidCallback? onRemove;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
 
   const _QueueRow({
     required this.track,
     required this.index,
     required this.isCurrent,
+    required this.isPlaying,
+    required this.selectionMode,
+    required this.selected,
+    required this.canMoveUp,
+    required this.canMoveDown,
     required this.onTap,
-    required this.onRemove,
+    required this.onLongPress,
+    this.onRemove,
+    this.onMoveUp,
+    this.onMoveDown,
   });
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isCurrent
-          ? SpotterfyTheme.primary.withValues(alpha: 0.12)
+      color: selected
+          ? SpotterfyTheme.primary.withValues(alpha: 0.16)
+          : isCurrent
+          ? Colors.white.withValues(alpha: 0.04)
           : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
           child: Row(
             children: [
+              // In selection mode a checkbox replaces the artwork, so the
+              // selected state reads without relying on the highlight colour.
+              if (selectionMode)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Icon(
+                    selected
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    color: selected
+                        ? SpotterfyTheme.primary
+                        : const Color(0xFF4a4a4a),
+                    size: 24,
+                  ),
+                )
+              else
+                SizedBox(
+                  width: 22,
+                  child: isCurrent
+                      ? Icon(
+                          isPlaying
+                              ? Icons.graphic_eq_rounded
+                              : Icons.pause_rounded,
+                          color: SpotterfyTheme.primary,
+                          size: 18,
+                        )
+                      : Text(
+                          '${index + 1}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: SpotterfyTheme.mutedDark,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
+              const SizedBox(width: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: SizedBox(
@@ -218,10 +488,13 @@ class _QueueRow extends StatelessWidget {
                       ? CachedNetworkImage(
                           imageUrl: track.cover,
                           fit: BoxFit.cover,
-                          placeholder: (_, _) => _thumbPlaceholder(),
-                          errorWidget: (_, _, _) => _thumbPlaceholder(),
+                          // Decode at 2x the 44px box, not the source size.
+                          memCacheWidth: 88,
+                          maxWidthDiskCache: 240,
+                          placeholder: (_, _) => _thumb(),
+                          errorWidget: (_, _, _) => _thumb(),
                         )
-                      : _thumbPlaceholder(),
+                      : _thumb(),
                 ),
               ),
               const SizedBox(width: 12),
@@ -259,32 +532,18 @@ class _QueueRow extends StatelessWidget {
               const SizedBox(width: 8),
               if (track.durationMs > 0)
                 Text(
-                  _fmtMs(track.durationMs),
+                  _fmt(track.durationMs),
                   style: const TextStyle(
                     color: SpotterfyTheme.mutedDark,
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-              if (isCurrent)
-                const Padding(
-                  padding: EdgeInsets.only(left: 10, right: 6),
-                  child: Icon(
-                    Icons.graphic_eq_rounded,
-                    color: SpotterfyTheme.primary,
-                    size: 18,
-                  ),
-                )
-              else
-                IconButton(
-                  icon: const Icon(
-                    Icons.close_rounded,
-                    size: 17,
-                    color: SpotterfyTheme.mutedDark,
-                  ),
-                  tooltip: 'Remove from queue',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: onRemove,
+              if (!selectionMode)
+                _RowMenu(
+                  onRemove: onRemove,
+                  onMoveUp: canMoveUp ? onMoveUp : null,
+                  onMoveDown: canMoveDown ? onMoveDown : null,
                 ),
             ],
           ),
@@ -293,21 +552,106 @@ class _QueueRow extends StatelessWidget {
     );
   }
 
-  Widget _thumbPlaceholder() {
-    return Container(
-      color: SpotterfyTheme.card,
-      child: const Icon(
-        Icons.music_note_rounded,
-        color: SpotterfyTheme.muted,
-        size: 20,
-      ),
-    );
+  Widget _thumb() => Container(
+    color: SpotterfyTheme.card,
+    child: const Icon(
+      Icons.music_note_rounded,
+      color: SpotterfyTheme.muted,
+      size: 20,
+    ),
+  );
+
+  static String _fmt(int ms) {
+    final total = (ms / 1000).round();
+    final m = total ~/ 60;
+    final s = total % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 }
 
-String _fmtMs(int ms) {
-  final total = (ms / 1000).round();
-  final m = total ~/ 60;
-  final s = total % 60;
-  return '$m:${s.toString().padLeft(2, '0')}';
+/// Per-row overflow menu: move up / move down / remove.
+class _RowMenu extends StatelessWidget {
+  final VoidCallback? onRemove;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
+
+  const _RowMenu({this.onRemove, this.onMoveUp, this.onMoveDown});
+
+  @override
+  Widget build(BuildContext context) {
+    if (onRemove == null) return const SizedBox.shrink();
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: PopupMenuButton<String>(
+        padding: EdgeInsets.zero,
+        icon: const Icon(
+          Icons.more_vert,
+          size: 18,
+          color: SpotterfyTheme.muted,
+        ),
+        color: SpotterfyTheme.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        onSelected: (v) {
+          HapticFeedback.selectionClick();
+          switch (v) {
+            case 'up':
+              onMoveUp?.call();
+            case 'down':
+              onMoveDown?.call();
+            case 'remove':
+              onRemove?.call();
+          }
+        },
+        itemBuilder: (_) => [
+          if (onMoveUp != null)
+            const PopupMenuItem(
+              value: 'up',
+              height: 40,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.arrow_upward,
+                    size: 16,
+                    color: SpotterfyTheme.muted,
+                  ),
+                  SizedBox(width: 10),
+                  Text('Move up', style: TextStyle(fontSize: 13)),
+                ],
+              ),
+            ),
+          if (onMoveDown != null)
+            const PopupMenuItem(
+              value: 'down',
+              height: 40,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.arrow_downward,
+                    size: 16,
+                    color: SpotterfyTheme.muted,
+                  ),
+                  SizedBox(width: 10),
+                  Text('Move down', style: TextStyle(fontSize: 13)),
+                ],
+              ),
+            ),
+          const PopupMenuItem(
+            value: 'remove',
+            height: 40,
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                SizedBox(width: 10),
+                Text(
+                  'Remove',
+                  style: TextStyle(fontSize: 13, color: Colors.redAccent),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

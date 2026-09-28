@@ -28,20 +28,31 @@ class _StorageScreenState extends State<StorageScreen> {
   }
 
   Future<void> _check() async {
-    setState(() { _checking = true; _error = null; });
+    setState(() {
+      _checking = true;
+      _error = null;
+    });
     final status = await _requestPermission();
     if (!status) {
-      setState(() { _granted = false; _checking = false; });
+      setState(() {
+        _granted = false;
+        _checking = false;
+      });
       return;
     }
     await _loadFiles();
-    setState(() { _granted = true; _checking = false; });
+    setState(() {
+      _granted = true;
+      _checking = false;
+    });
   }
 
   Future<bool> _requestPermission() async {
     if (Platform.isAndroid) {
       // Android 13+ uses READ_MEDIA_AUDIO, older uses storage
-      if (await Permission.audio.isGranted || await Permission.storage.isGranted) return true;
+      if (await Permission.audio.isGranted ||
+          await Permission.storage.isGranted)
+        return true;
       var s = await Permission.audio.request();
       if (s.isGranted) return true;
       s = await Permission.storage.request();
@@ -65,11 +76,22 @@ class _StorageScreenState extends State<StorageScreen> {
       for (final d in dirs) {
         try {
           final list = await d.list(recursive: false).toList();
-          all.addAll(list.where((e) => e.path.toLowerCase().endsWith('.mp3') || e.path.toLowerCase().endsWith('.m4a') || e.path.toLowerCase().endsWith('.opus') || e.path.toLowerCase().endsWith('.flac') || e.path.toLowerCase().endsWith('.wav')));
+          all.addAll(
+            list.where(
+              (e) =>
+                  e.path.toLowerCase().endsWith('.mp3') ||
+                  e.path.toLowerCase().endsWith('.m4a') ||
+                  e.path.toLowerCase().endsWith('.opus') ||
+                  e.path.toLowerCase().endsWith('.flac') ||
+                  e.path.toLowerCase().endsWith('.wav'),
+            ),
+          );
         } catch (_) {}
       }
       // Also scan app's download dir via Spotterfy downloads if exists
-      all.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+      all.sort(
+        (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
+      );
       setState(() => _files = all);
     } catch (e) {
       setState(() => _error = e.toString());
@@ -85,70 +107,210 @@ class _StorageScreenState extends State<StorageScreen> {
         elevation: 0,
         automaticallyImplyLeading: false,
         leadingWidth: 52,
-        leading: Consumer<AuthProvider>(builder: (context, auth, child) => GestureDetector(
-          onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
-          child: Padding(padding: const EdgeInsets.only(left: 10), child: Center(child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.6), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]), child: CircleAvatar(radius: 16, backgroundColor: SpotterfyTheme.surface, backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null, child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18) : null))),
-        ))),
+        leading: Consumer<AuthProvider>(
+          builder: (context, auth, child) => GestureDetector(
+            onTap: () =>
+                Navigator.push(context, swipeRoute(const ProfileScreen())),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Center(
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: SpotterfyTheme.card, width: 1.6),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: SpotterfyTheme.surface,
+                    backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false)
+                        ? NetworkImage(auth.user!.photoUrl)
+                        : null,
+                    child: (auth.user?.photoUrl.isEmpty ?? true)
+                        ? Icon(
+                            Icons.person,
+                            color: SpotterfyTheme.muted,
+                            size: 18,
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
         titleSpacing: 8,
-        title: Text('Storage', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+        title: Text(
+          'Storage',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+        ),
       ),
       body: _checking
-          ? Center(child: CircularProgressIndicator(color: SpotterfyTheme.primary))
+          ? Center(
+              child: CircularProgressIndicator(color: SpotterfyTheme.primary),
+            )
           : !_granted
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(Icons.folder_off, size: 56, color: SpotterfyTheme.muted),
-                      const SizedBox(height: 12),
-                      Text('Permission needed', style: TextStyle(color: SpotterfyTheme.text, fontWeight: FontWeight.w600, fontSize: 16)),
-                      const SizedBox(height: 6),
-                      Text('Allow access to phone storage to display your downloaded music.', textAlign: TextAlign.center, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(onPressed: _check, child: const Text('Grant permission')),
-                      TextButton(onPressed: () => openAppSettings(), child: Text('Open settings', style: TextStyle(color: SpotterfyTheme.primary))),
-                    ]),
-                  ),
-                )
-              : _error != null
-                  ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12), textAlign: TextAlign.center)))
-                  : _files.isEmpty
-                  ? Center(
-                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.music_off, size: 56, color: SpotterfyTheme.muted),
-                        const SizedBox(height: 12),
-                        Text('No local music found', style: TextStyle(color: SpotterfyTheme.text, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 6),
-                        Text('Downloaded songs and phone music will appear here.', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(onPressed: _loadFiles, icon: const Icon(Icons.refresh, size: 18), label: const Text('Refresh')),
-                      ]),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadFiles,
-                      color: SpotterfyTheme.primary,
-                      backgroundColor: SpotterfyTheme.surface,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 100, top: 8),
-                        itemCount: _files.length,
-                        itemBuilder: (_, i) {
-                          final f = _files[i];
-                          final name = f.path.split('/').last;
-                          final stat = (() { try { return f.statSync(); } catch (_) { return null; } })();
-                          final size = stat != null ? '${(stat.size / (1024 * 1024)).toStringAsFixed(1)} MB' : '';
-                          return ListTile(
-                            leading: Container(width: 48, height: 48, decoration: BoxDecoration(color: SpotterfyTheme.surface, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.audio_file, color: SpotterfyTheme.primary)),
-                            title: Text(name, style: TextStyle(color: SpotterfyTheme.text, fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(size, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11)),
-                            trailing: IconButton(icon: const Icon(Icons.play_circle_fill, color: SpotterfyTheme.primary), onPressed: () {
-                              HapticFeedback.lightImpact();
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing local: $name')));
-                            }),
-                            onTap: () {},
-                          );
-                        },
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.folder_off,
+                      size: 56,
+                      color: SpotterfyTheme.muted,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Permission needed',
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Allow access to phone storage to display your downloaded music.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: SpotterfyTheme.muted,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _check,
+                      child: const Text('Grant permission'),
+                    ),
+                    TextButton(
+                      onPressed: () => openAppSettings(),
+                      child: Text(
+                        'Open settings',
+                        style: TextStyle(color: SpotterfyTheme.primary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          : _files.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.music_off, size: 56, color: SpotterfyTheme.muted),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No local music found',
+                    style: TextStyle(
+                      color: SpotterfyTheme.text,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Downloaded songs and phone music will appear here.',
+                    style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _loadFiles,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Refresh'),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadFiles,
+              color: SpotterfyTheme.primary,
+              backgroundColor: SpotterfyTheme.surface,
+              child: ListView.builder(
+                padding: const EdgeInsets.only(bottom: 100, top: 8),
+                itemCount: _files.length,
+                itemBuilder: (_, i) {
+                  final f = _files[i];
+                  final name = f.path.split('/').last;
+                  final stat = (() {
+                    try {
+                      return f.statSync();
+                    } catch (_) {
+                      return null;
+                    }
+                  })();
+                  final size = stat != null
+                      ? '${(stat.size / (1024 * 1024)).toStringAsFixed(1)} MB'
+                      : '';
+                  return ListTile(
+                    leading: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: SpotterfyTheme.surface,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.audio_file,
+                        color: SpotterfyTheme.primary,
+                      ),
+                    ),
+                    title: Text(
+                      name,
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      size,
+                      style: TextStyle(
+                        color: SpotterfyTheme.muted,
+                        fontSize: 11,
+                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(
+                        Icons.play_circle_fill,
+                        color: SpotterfyTheme.primary,
+                      ),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Playing local: $name')),
+                        );
+                      },
+                    ),
+                    onTap: () {},
+                  );
+                },
+              ),
+            ),
     );
   }
 }

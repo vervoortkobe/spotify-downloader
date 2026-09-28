@@ -31,6 +31,33 @@ class TabNavController extends ChangeNotifier {
     _pendingRequest = null;
     return value;
   }
+
+  /// Posts "user tapped tab [index]" to whichever navigator owns that tab.
+  ///
+  /// Tabs live in per-tab [Navigator]s, and that navigator is not the one under
+  /// the navbar when a sub-page is open, so a pushed screen cannot reach it
+  /// directly. MainScreen registers them here on first build.
+  final Map<int, NavigatorState> _navigators = {};
+
+  void registerNavigator(int index, NavigatorState? state) {
+    if (state == null) {
+      _navigators.remove(index);
+      return;
+    }
+    _navigators[index] = state;
+  }
+
+  /// Tapping the nav destination for the tab you are already on pops that tab
+  /// back to its root, the same way tapping a folder in a file manager does.
+  ///
+  /// A no-op when the tab is already at its root, so re-tapping the current
+  /// destination does nothing rather than rebuilding the page.
+  void onDestinationTapped(int index) {
+    final nav = _navigators[index];
+    if (nav == null || !nav.canPop()) return;
+    HapticFeedback.selectionClick();
+    nav.popUntil((route) => route.isFirst);
+  }
 }
 
 final tabNavController = TabNavController();
@@ -41,10 +68,14 @@ class AppBottomNav extends StatefulWidget {
   final int currentIndex;
   final ValueChanged<int> onSelect;
 
+  /// Called when the destination for the already-active tab is tapped.
+  final ValueChanged<int>? onReselect;
+
   const AppBottomNav({
     super.key,
     required this.currentIndex,
     required this.onSelect,
+    this.onReselect,
   });
 
   @override
@@ -80,13 +111,37 @@ class _AppBottomNavState extends State<AppBottomNav> {
           backgroundColor: const Color(0xFF121212),
           indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.15),
           selectedIndex: widget.currentIndex.clamp(0, 3),
-          onDestinationSelected: widget.onSelect,
+          // Reselecting the tab you are already on pops that tab back to its
+          // root, so a pushed sub-page is never a dead end.
+          onDestinationSelected: (i) {
+            if (i == widget.currentIndex) {
+              widget.onReselect?.call(i);
+            } else {
+              widget.onSelect(i);
+            }
+          },
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: const [
-            NavigationDestination(icon: Icon(Icons.explore_outlined, color: Colors.white), selectedIcon: Icon(Icons.explore, color: Colors.white), label: 'Discover'),
-            NavigationDestination(icon: Icon(Icons.search, color: Colors.white), selectedIcon: Icon(Icons.search, color: Colors.white), label: 'Search'),
-            NavigationDestination(icon: Icon(Icons.library_music_outlined, color: Colors.white), selectedIcon: Icon(Icons.library_music, color: Colors.white), label: 'Library'),
-            NavigationDestination(icon: Icon(Icons.forum_outlined, color: Colors.white), selectedIcon: Icon(Icons.forum, color: Colors.white), label: 'Chat'),
+            NavigationDestination(
+              icon: Icon(Icons.explore_outlined, color: Colors.white),
+              selectedIcon: Icon(Icons.explore, color: Colors.white),
+              label: 'Discover',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.search, color: Colors.white),
+              selectedIcon: Icon(Icons.search, color: Colors.white),
+              label: 'Search',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.library_music_outlined, color: Colors.white),
+              selectedIcon: Icon(Icons.library_music, color: Colors.white),
+              label: 'Library',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.forum_outlined, color: Colors.white),
+              selectedIcon: Icon(Icons.forum, color: Colors.white),
+              label: 'Chat',
+            ),
           ],
         ),
       ),

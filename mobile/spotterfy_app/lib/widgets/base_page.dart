@@ -49,9 +49,9 @@ class BasePageScaffold extends StatelessWidget {
     this.floatingActionButton,
     this.backgroundColor,
   }) : assert(
-          searchController != null || title != null,
-          'Either searchController or title must be provided',
-        );
+         searchController != null || title != null,
+         'Either searchController or title must be provided',
+       );
 
   @override
   Widget build(BuildContext context) {
@@ -88,19 +88,23 @@ class BasePageScaffold extends StatelessWidget {
           ),
           leading: Consumer<AuthProvider>(
             builder: (context, auth, child) => GestureDetector(
-              onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
+              onTap: () =>
+                  Navigator.push(context, swipeRoute(const ProfileScreen())),
               child: Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: Center(
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: SpotterfyTheme.card, width: 1.6),
+                      border: Border.all(
+                        color: SpotterfyTheme.card,
+                        width: 1.6,
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.25),
                           blurRadius: 5,
-                        )
+                        ),
                       ],
                     ),
                     child: CircleAvatar(
@@ -110,7 +114,11 @@ class BasePageScaffold extends StatelessWidget {
                           ? NetworkImage(auth.user!.photoUrl)
                           : null,
                       child: (auth.user?.photoUrl.isEmpty ?? true)
-                          ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18)
+                          ? Icon(
+                              Icons.person,
+                              color: SpotterfyTheme.muted,
+                              size: 18,
+                            )
                           : null,
                     ),
                   ),
@@ -132,16 +140,33 @@ class BasePageScaffold extends StatelessWidget {
                     onSubmitted: onSearchSubmitted,
                     style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
                     decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.search, color: SpotterfyTheme.muted, size: 18),
-                      prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 36),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: SpotterfyTheme.muted,
+                        size: 18,
+                      ),
+                      prefixIconConstraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 36,
+                      ),
                       hintText: searchHint,
-                      hintStyle: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+                      hintStyle: TextStyle(
+                        color: SpotterfyTheme.muted,
+                        fontSize: 13,
+                      ),
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 12,
+                      ),
                       isDense: true,
                       suffixIcon: query.isNotEmpty
                           ? IconButton(
-                              icon: Icon(Icons.clear, color: SpotterfyTheme.muted, size: 16),
+                              icon: Icon(
+                                Icons.clear,
+                                color: SpotterfyTheme.muted,
+                                size: 16,
+                              ),
                               onPressed: () {
                                 searchController!.clear();
                                 onSearchChanged?.call('');
@@ -169,12 +194,13 @@ class BasePageScaffold extends StatelessWidget {
           actions: action != null
               ? [
                   Center(
-                    child: Padding(padding: const EdgeInsets.only(right: 8), child: action),
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: action,
+                    ),
                   ),
                 ]
-              : const [
-                  SizedBox(width: 12),
-                ],
+              : const [SizedBox(width: 12)],
           bottom: bottom,
         ),
         body: body,

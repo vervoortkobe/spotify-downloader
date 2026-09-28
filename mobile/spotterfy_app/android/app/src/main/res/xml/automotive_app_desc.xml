@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Declares Spotterfy as a media app to Android Auto.
+
+  Without this, Android Auto still finds the MediaSession (so playback controls
+  and the notification work) but refuses to expose the browse tree, and trying
+  to open the library from the car shows a full-screen error instead.
+-->
+<automotiveApp>
+    <uses name="media"/>
+</automotiveApp>

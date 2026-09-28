@@ -34,47 +34,93 @@ class TopBar extends StatelessWidget implements PreferredSizeWidget {
       automaticallyImplyLeading: false,
       titleSpacing: 8,
       leadingWidth: 52,
-      leading: Consumer<AuthProvider>(builder: (_, auth, _) => GestureDetector(
-        onTap: () => Navigator.push(context, swipeRoute(const ProfileScreen())),
-        child: Padding(
-          padding: const EdgeInsets.only(left: 10),
-          child: Center(
-            child: Container(
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: SpotterfyTheme.card, width: 1.6), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 5)]),
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor: SpotterfyTheme.surface,
-                backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false) ? NetworkImage(auth.user!.photoUrl) : null,
-                child: (auth.user?.photoUrl.isEmpty ?? true) ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18) : null,
+      leading: Consumer<AuthProvider>(
+        builder: (_, auth, _) => GestureDetector(
+          onTap: () =>
+              Navigator.push(context, swipeRoute(const ProfileScreen())),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 10),
+            child: Center(
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: SpotterfyTheme.card, width: 1.6),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 5,
+                    ),
+                  ],
+                ),
+                child: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: SpotterfyTheme.surface,
+                  backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false)
+                      ? NetworkImage(auth.user!.photoUrl)
+                      : null,
+                  child: (auth.user?.photoUrl.isEmpty ?? true)
+                      ? Icon(
+                          Icons.person,
+                          color: SpotterfyTheme.muted,
+                          size: 18,
+                        )
+                      : null,
+                ),
               ),
             ),
           ),
         ),
-      )),
+      ),
       title: Container(
         height: 36,
-        decoration: BoxDecoration(color: SpotterfyTheme.card, borderRadius: BorderRadius.circular(18)),
+        decoration: BoxDecoration(
+          color: SpotterfyTheme.card,
+          borderRadius: BorderRadius.circular(18),
+        ),
         child: TextField(
           controller: controller,
           onChanged: onChanged,
           onSubmitted: onSubmitted,
           style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
           decoration: InputDecoration(
-            prefixIcon: Icon(Icons.search, color: SpotterfyTheme.muted, size: 18),
-            prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 36),
+            prefixIcon: Icon(
+              Icons.search,
+              color: SpotterfyTheme.muted,
+              size: 18,
+            ),
+            prefixIconConstraints: const BoxConstraints(
+              minWidth: 40,
+              minHeight: 36,
+            ),
             hintText: hint,
             hintStyle: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
             border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 8,
+              horizontal: 12,
+            ),
             isDense: true,
             suffixIcon: (controller != null && controller!.text.isNotEmpty)
-                ? IconButton(icon: Icon(Icons.clear, color: SpotterfyTheme.muted, size: 16), onPressed: () { controller!.clear(); onChanged?.call(''); }, padding: EdgeInsets.zero, constraints: const BoxConstraints())
+                ? IconButton(
+                    icon: Icon(
+                      Icons.clear,
+                      color: SpotterfyTheme.muted,
+                      size: 16,
+                    ),
+                    onPressed: () {
+                      controller!.clear();
+                      onChanged?.call('');
+                    },
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  )
                 : null,
           ),
         ),
       ),
       actions: [
-        if (action != null) Padding(padding: const EdgeInsets.only(right: 8), child: action!),
+        if (action != null)
+          Padding(padding: const EdgeInsets.only(right: 8), child: action!),
         SizedBox(width: action != null ? 4 : 32),
       ],
     );

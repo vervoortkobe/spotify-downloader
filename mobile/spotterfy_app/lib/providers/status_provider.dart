@@ -12,13 +12,18 @@ class StatusProvider extends ChangeNotifier {
 
   StatusProvider() {
     checkStatus();
-    _statusTimer = Timer.periodic(const Duration(seconds: 30), (_) => checkStatus());
+    _statusTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => checkStatus(),
+    );
   }
 
   /// Single poll: /api/health carries both backend and warp state.
   Future<void> checkStatus() async {
     try {
-      final res = await http.get(Uri.parse('$_baseUrl/health')).timeout(const Duration(seconds: 4));
+      final res = await http
+          .get(Uri.parse('$_baseUrl/health'))
+          .timeout(const Duration(seconds: 4));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         backendOnline = data['online'] == true;

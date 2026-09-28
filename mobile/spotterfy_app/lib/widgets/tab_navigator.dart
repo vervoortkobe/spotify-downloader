@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotterfy_app/widgets/app_bottom_nav.dart';
 
 /// A separate [Navigator] for each bottom-tab.
 ///
@@ -25,14 +26,32 @@ class TabNavigator extends StatelessWidget {
   const TabNavigator({super.key, required this.tabIndex, required this.root});
 
   @override
+  @override
   Widget build(BuildContext context) {
+    // A GlobalKey per tab (memoised on tabIndex) rather than a ValueKey, so the
+    // controller can pop this specific stack when the nav destination is tapped.
+    // The navigator under the navbar is not this one while a sub-page is pushed,
+    // so MainScreen cannot reach it by lookup from a non-ancestor context.
+    final navKey = _keys.putIfAbsent(
+      tabIndex,
+      () => GlobalKey<NavigatorState>(),
+    );
     return Navigator(
-      key: ValueKey('tab-nav-$tabIndex'),
-      // Only consulted for the initial route and named-route pushes; routes
-      // handed to `Navigator.push` directly (everything in this app) bypass it
-      // and land on this navigator because it is the nearest one.
+      key: navKey,
       onGenerateRoute: (settings) =>
           MaterialPageRoute<dynamic>(settings: settings, builder: (_) => root),
     );
+  }
+
+  /// One key per tab index, kept for the lifetime of the app so the stacks stay
+  /// addressable from the nav bar.
+  static final Map<int, GlobalKey<NavigatorState>> _keys = {};
+
+  /// Publishes each tab's navigator to the nav bar. Called from MainScreen
+  /// after the tab layer is built.
+  static void registerAll() {
+    for (final entry in _keys.entries) {
+      tabNavController.registerNavigator(entry.key, entry.value.currentState);
+    }
   }
 }

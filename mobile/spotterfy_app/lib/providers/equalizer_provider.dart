@@ -103,7 +103,10 @@ class EqualizerProvider extends ChangeNotifier {
     final p = presets[name];
     if (p == null || _params == null) return;
     final n = _params!.bands.length;
-    _gains = List<double>.generate(n, (i) => p[(i * p.length / n).floor().clamp(0, p.length - 1)]);
+    _gains = List<double>.generate(
+      n,
+      (i) => p[(i * p.length / n).floor().clamp(0, p.length - 1)],
+    );
     _preset = name;
     await _applyAll();
   }
@@ -122,7 +125,10 @@ class EqualizerProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('eq_enabled', _enabled);
-      await prefs.setStringList('eq_gains', _gains.map((g) => g.toString()).toList());
+      await prefs.setStringList(
+        'eq_gains',
+        _gains.map((g) => g.toString()).toList(),
+      );
       await prefs.setBool('eq_bass', _bassBoost);
       await prefs.setDouble('eq_bass_strength', _bassStrength);
       await prefs.setString('eq_preset', _preset);

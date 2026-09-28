@@ -87,12 +87,16 @@ class _StorageCoverState extends State<StorageCover> {
   }
 
   Widget _fallback() => Container(
-        width: widget.size,
-        height: widget.size,
-        decoration: BoxDecoration(
-          color: SpotterfyTheme.surface,
-          borderRadius: BorderRadius.circular(widget.radius),
-        ),
-        child: Icon(Icons.music_note, color: SpotterfyTheme.muted, size: widget.iconSize),
-      );
+    width: widget.size,
+    height: widget.size,
+    decoration: BoxDecoration(
+      color: SpotterfyTheme.surface,
+      borderRadius: BorderRadius.circular(widget.radius),
+    ),
+    child: Icon(
+      Icons.music_note,
+      color: SpotterfyTheme.muted,
+      size: widget.iconSize,
+    ),
+  );
 }

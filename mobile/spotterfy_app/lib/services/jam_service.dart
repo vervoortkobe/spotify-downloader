@@ -6,7 +6,11 @@ class JamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   StreamSubscription? _subscription;
 
-  Future<String> createJamSession(String uid, String name, List<TrackModel> tracks) async {
+  Future<String> createJamSession(
+    String uid,
+    String name,
+    List<TrackModel> tracks,
+  ) async {
     final docRef = await _firestore.collection('jam_sessions').add({
       'name': name,
       'createdBy': uid,
@@ -32,7 +36,12 @@ class JamService {
     });
   }
 
-  Future<void> updatePlaybackState(String sessionId, {bool? isPlaying, int? positionMs, int? trackIndex}) async {
+  Future<void> updatePlaybackState(
+    String sessionId, {
+    bool? isPlaying,
+    int? positionMs,
+    int? trackIndex,
+  }) async {
     final data = <String, dynamic>{};
     if (isPlaying != null) data['isPlaying'] = isPlaying;
     if (positionMs != null) data['currentPositionMs'] = positionMs;

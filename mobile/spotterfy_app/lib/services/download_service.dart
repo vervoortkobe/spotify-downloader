@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// One downloaded track on disk.
@@ -53,25 +54,35 @@ class DownloadEntry {
 
 /// On-device store for tracks downloaded from inside Spotterfy.
 ///
-/// Files go into the app's own external files directory under
-/// `Spotterfy/Music`. That location is deliberate: it is **outside** the roots
-/// the Library > Storage tab scans (`/Music`, `/Download`, `/Documents`), so
-/// app downloads never show up there as phantom "playlists", and it needs no
-/// storage permission, so downloading works even when the user declined it.
+/// Files live in **public** storage at `/storage/emulated/0/Spotterfy/Music`
+/// rather than app-private `Android/data/…`, so other music apps and file
+/// managers can see and play them. Every write is announced to MediaStore via
+/// a platform channel - the file existing on disk is not enough for another app
+/// to find it.
 ///
-/// A JSON index maps `trackId -> file`, which is what lets the player and the
-/// UI recognise a track as downloaded and play the local copy instead of
-/// streaming it.
+/// The folder is still deliberately **outside** the roots the Library > Storage
+/// tab scans (`/Music`, `/Download`, `/Documents`), so downloads never show up
+/// there as phantom "playlists".
+///
+/// A JSON index maps `trackId -> file`, which is what lets the player and the UI
+/// recognise a track as downloaded and play the local copy instead of streaming.
 class DownloadService {
   DownloadService._internal();
   static final DownloadService instance = DownloadService._internal();
 
+  /// Shared external storage root.
+  static const String _publicRoot = '/storage/emulated/0';
   static const String folderName = 'Spotterfy';
   static const String musicFolder = 'Music';
   static const String indexFileName = 'downloads_index.json';
 
   /// Downloaded audio is always mp3 - the backend pins the mimetype.
   static const String audioExtension = '.mp3';
+
+  /// Bridge to [MainActivity] for MediaStore indexing.
+  static const MethodChannel _mediaStore = MethodChannel(
+    'com.scooby.spotterfy/media_store',
+  );
 
   Map<String, DownloadEntry> _entries = {};
   bool _loaded = false;
@@ -94,9 +105,8 @@ class DownloadService {
 
   Future<Directory> _root() async {
     if (_rootDir != null) return _rootDir!;
-    final base = await getExternalStorageDirectory();
     final dir = Directory(
-      '${base!.path}${Platform.pathSeparator}$folderName'
+      '$_publicRoot${Platform.pathSeparator}$folderName'
       '${Platform.pathSeparator}$musicFolder',
     );
     if (!await dir.exists()) await dir.create(recursive: true);
@@ -129,6 +139,11 @@ class DownloadService {
         }
       });
 
+      // Rescue anything still sitting in the old app-private location BEFORE
+      // pruning, otherwise the prune below would see it as "missing" and drop
+      // the index entry - losing track of files that are perfectly intact.
+      final migrated = await _migrateLegacyInto(parsed);
+
       // Drop anything whose audio file is gone.
       final root = await _root();
       var pruned = false;
@@ -141,10 +156,53 @@ class DownloadService {
         }
       }
       _entries = parsed;
-      if (pruned) await _persist();
+      if (pruned || migrated > 0) await _persist();
     } catch (e) {
       debugPrint('[Downloads] index load failed: $e');
       _entries = {};
+    }
+  }
+
+  /// Moves files from the previous app-private location into the public one.
+  ///
+  /// Assumes the index has already been parsed; called from [ensureLoaded]
+  /// before pruning so existing downloads survive the storage-location change.
+  /// Returns how many files were moved.
+  Future<int> _migrateLegacyInto(Map<String, DownloadEntry> parsed) async {
+    if (parsed.isEmpty) return 0;
+    try {
+      final oldBase = await getExternalStorageDirectory();
+      if (oldBase == null) return 0;
+      final oldDir = Directory(
+        '${oldBase.path}${Platform.pathSeparator}$folderName'
+        '${Platform.pathSeparator}$musicFolder',
+      );
+      if (!await oldDir.exists()) return 0;
+
+      final newDir = await _root();
+      var moved = 0;
+      for (final e in parsed.values.toList()) {
+        final from = File(
+          '${oldDir.path}${Platform.pathSeparator}${e.fileName}',
+        );
+        if (!await from.exists()) continue;
+        final to = File('${newDir.path}${Platform.pathSeparator}${e.fileName}');
+        if (await to.exists()) {
+          // Already migrated by a previous run; drop the stale duplicate.
+          await from.delete();
+        } else {
+          await from.rename(to.path);
+          await _announceToMediaStore(to.path);
+        }
+        moved++;
+      }
+      if (moved > 0) {
+        debugPrint('[Downloads] migrated $moved file(s) to public storage');
+      }
+      return moved;
+    } catch (e) {
+      debugPrint('[Downloads] migration failed: $e');
+      return 0;
     }
   }
 
@@ -193,6 +251,28 @@ class DownloadService {
     return name;
   }
 
+  /// Tells MediaStore about a new file so other music apps can see it.
+  ///
+  /// Best-effort: if the channel fails the file is still on disk and playable
+  /// from Spotterfy, just not indexed elsewhere.
+  static Future<void> _announceToMediaStore(String path) async {
+    try {
+      await _mediaStore.invokeMethod<bool>('scanFile', {'path': path});
+    } catch (e) {
+      debugPrint('[Downloads] media scan failed for $path: $e');
+    }
+  }
+
+  /// Removes a deleted file from the MediaStore index so it stops showing up in
+  /// other players.
+  static Future<void> _unannounceFromMediaStore(String path) async {
+    try {
+      await _mediaStore.invokeMethod<bool>('deleteScan', {'path': path});
+    } catch (e) {
+      debugPrint('[Downloads] media delete scan failed for $path: $e');
+    }
+  }
+
   /// Writes [bytes] for [trackId] and records it in the index. Returns the
   /// stored path, or null on failure.
   Future<String?> save({
@@ -219,6 +299,8 @@ class DownloadService {
         downloadedAt: DateTime.now(),
       );
       await _persist();
+      // Index it so other music apps can play it.
+      await _announceToMediaStore(file.path);
       return file.path;
     } catch (e) {
       debugPrint('[Downloads] save failed for $trackId: $e');
@@ -233,8 +315,12 @@ class DownloadService {
     if (e == null) return false;
     try {
       final dir = await _root();
-      final file = File('${dir.path}${Platform.pathSeparator}${e.fileName}');
-      if (await file.exists()) await file.delete();
+      final path = '${dir.path}${Platform.pathSeparator}${e.fileName}';
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+        await _unannounceFromMediaStore(path);
+      }
     } catch (err) {
       debugPrint('[Downloads] remove failed for $trackId: $err');
     }
@@ -245,6 +331,55 @@ class DownloadService {
   /// Total bytes used by downloaded audio, for the storage screen.
   int get totalBytes =>
       _entries.values.fold<int>(0, (sum, e) => sum + e.sizeBytes);
+
+  /// Re-checks that every indexed file still exists on disk and forgets the
+  /// ones that don't.
+  ///
+  /// Needed because downloads can vanish from outside the app - a file manager
+  /// delete, or the user clearing space. [ensureLoaded] only prunes once per
+  /// process, so without this a deleted file would keep showing as downloaded
+  /// until the app was restarted.
+  ///
+  /// Returns the ids that were dropped.
+  Future<List<String>> pruneMissingFiles() async {
+    if (_entries.isEmpty) return const [];
+    try {
+      await ensureLoaded();
+      final root = await _root();
+      final gone = <String>[];
+      for (final e in _entries.values.toList()) {
+        final f = File('${root.path}${Platform.pathSeparator}${e.fileName}');
+        if (!await f.exists()) {
+          _entries.remove(e.trackId);
+          gone.add(e.trackId);
+        }
+      }
+      if (gone.isNotEmpty) {
+        debugPrint('[Downloads] ${gone.length} file(s) removed externally');
+        await _persist();
+      }
+      return gone;
+    } catch (e) {
+      debugPrint('[Downloads] prune failed: $e');
+      return const [];
+    }
+  }
+
+  /// True when [trackId] is indexed *and* the file is still there.
+  ///
+  /// Use this before acting on a download (e.g. re-downloading), where acting
+  /// on a stale entry would be wrong. Use [isDownloaded] for rendering, where a
+  /// stat call per row per build would be far too expensive.
+  Future<bool> isDownloadedAndPresent(String trackId) async {
+    if (!_entries.containsKey(trackId)) return false;
+    final p = localPathFor(trackId);
+    if (p == null) return false;
+    try {
+      return await File(p).exists();
+    } catch (_) {
+      return false;
+    }
+  }
 
   @visibleForTesting
   void resetForTest() {

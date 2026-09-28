@@ -17,8 +17,12 @@ UserModel? _parseUserIsolate(String cached) {
       isAdmin: data['isAdmin'] as bool? ?? false,
       isApproved: data['isApproved'] as bool? ?? false,
       hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
-      createdAt: data['createdAt'] != null ? DateTime.parse(data['createdAt'] as String) : DateTime.now(),
-      lastSpotifySync: data['lastSpotifySync'] != null ? DateTime.parse(data['lastSpotifySync'] as String) : null,
+      createdAt: data['createdAt'] != null
+          ? DateTime.parse(data['createdAt'] as String)
+          : DateTime.now(),
+      lastSpotifySync: data['lastSpotifySync'] != null
+          ? DateTime.parse(data['lastSpotifySync'] as String)
+          : null,
     );
   } catch (_) {
     return null;
@@ -37,7 +41,10 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoggedIn => _user != null;
   bool get isAdmin => _user?.isAdmin ?? false;
   bool get isApproved => _user?.isApproved ?? false;
-  bool get isProfileCompleted => _user != null && _user!.displayName.trim().length >= 3 && _user!.hasCompletedOnboarding;
+  bool get isProfileCompleted =>
+      _user != null &&
+      _user!.displayName.trim().length >= 3 &&
+      _user!.hasCompletedOnboarding;
   bool get needsOnboarding => _user != null && !isProfileCompleted;
 
   AuthProvider() {
@@ -91,23 +98,27 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _saveCachedUser() async {
     if (_user == null) {
-      await SharedPreferences.getInstance()
-          .then((p) => p.remove('cached_user'));
+      await SharedPreferences.getInstance().then(
+        (p) => p.remove('cached_user'),
+      );
       return;
     }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('cached_user', jsonEncode({
-      'uid': _user!.uid,
-      'email': _user!.email,
-      'displayName': _user!.displayName,
-      'photoUrl': _user!.photoUrl,
-      'spotifyProfileUrl': _user!.spotifyProfileUrl,
-      'isAdmin': _user!.isAdmin,
-      'isApproved': _user!.isApproved,
-      'hasCompletedOnboarding': _user!.hasCompletedOnboarding,
-      'createdAt': _user!.createdAt.toIso8601String(),
-      'lastSpotifySync': _user!.lastSpotifySync?.toIso8601String(),
-    }));
+    await prefs.setString(
+      'cached_user',
+      jsonEncode({
+        'uid': _user!.uid,
+        'email': _user!.email,
+        'displayName': _user!.displayName,
+        'photoUrl': _user!.photoUrl,
+        'spotifyProfileUrl': _user!.spotifyProfileUrl,
+        'isAdmin': _user!.isAdmin,
+        'isApproved': _user!.isApproved,
+        'hasCompletedOnboarding': _user!.hasCompletedOnboarding,
+        'createdAt': _user!.createdAt.toIso8601String(),
+        'lastSpotifySync': _user!.lastSpotifySync?.toIso8601String(),
+      }),
+    );
   }
 
   Future<void> _loadCachedUser() async {
@@ -162,7 +173,8 @@ class AuthProvider extends ChangeNotifier {
   Future<void> updateDisplayName(String name) async {
     if (_user == null) return;
     final trimmed = name.trim();
-    if (trimmed.length < 3) throw Exception('Name must be at least 3 characters');
+    if (trimmed.length < 3)
+      throw Exception('Name must be at least 3 characters');
     try {
       await _authService.updateDisplayName(_user!.uid, trimmed);
     } catch (e) {
@@ -173,15 +185,23 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> completeOnboarding({required String displayName, String spotifyUrl = ''}) async {
+  Future<void> completeOnboarding({
+    required String displayName,
+    String spotifyUrl = '',
+  }) async {
     if (_user == null) return;
     final trimmed = displayName.trim();
-    if (trimmed.length < 3) throw Exception('Name must be at least 3 characters');
+    if (trimmed.length < 3)
+      throw Exception('Name must be at least 3 characters');
     if (spotifyUrl.isNotEmpty && !spotifyUrl.contains('open.spotify.com')) {
       throw Exception('Invalid Spotify URL');
     }
     try {
-      await _authService.completeProfile(_user!.uid, displayName: trimmed, spotifyUrl: spotifyUrl);
+      await _authService.completeProfile(
+        _user!.uid,
+        displayName: trimmed,
+        spotifyUrl: spotifyUrl,
+      );
     } catch (e) {
       debugPrint('completeOnboarding offline, caching locally: $e');
     }
@@ -197,7 +217,10 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateListeningStatus(String? trackId, {String? jamSessionId}) async {
+  Future<void> updateListeningStatus(
+    String? trackId, {
+    String? jamSessionId,
+  }) async {
     if (_user == null) return;
     await _authService.updateListeningStatus(_user!.uid, trackId, jamSessionId);
     _user!.currentListeningTo = trackId;

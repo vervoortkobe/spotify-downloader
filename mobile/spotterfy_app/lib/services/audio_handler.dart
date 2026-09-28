@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:rxdart/rxdart.dart' show BehaviorSubject;
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:rxdart/rxdart.dart' show ValueStream;
 import '../models/track_model.dart';
 import 'auto_media_library.dart';
 
@@ -36,6 +38,33 @@ bool _isRadioTrack(TrackModel t) {
       u.contains('qmusic.be') ||
       u.contains('joe.be') ||
       u.contains('streamtheworld.com');
+}
+
+/// Broadcast channel backing `subscribeToChildren`.
+///
+/// Android Auto keeps the browse tree open and re-reads it whenever this emits,
+/// so one subject is shared across every parent id rather than handing back a
+/// fresh stream per subscription.
+class _ChildrenSubscription {
+  String? parent;
+
+  final _subject = BehaviorSubject<Map<String, dynamic>>.seeded(const {
+    'subscribed': true,
+  });
+
+  ValueStream<Map<String, dynamic>> get stream => _subject.stream;
+
+  void notifyChanged() {
+    if (_subject.isClosed) return;
+    // A distinct map identity each time, so audio_service forwards it rather
+    // than treating it as a duplicate of the seed value.
+    _subject.add({
+      'subscribed': true,
+      'ts': DateTime.now().microsecondsSinceEpoch,
+    });
+  }
+
+  Future<void> cancel() => _subject.close();
 }
 
 bool _initAttempted = false;
@@ -89,6 +118,8 @@ class SpotterfyAudioHandler extends BaseAudioHandler
   // used by PlayerProvider seek bridging
   Future<void> Function(Duration)? onSeekRequested;
 
+  late final _ChildrenSubscription _subscription = _ChildrenSubscription();
+
   // Noize-style throttled broadcast (avoid spam on position ticks)
   Timer? _throttleTimer;
   bool _stateDirty = false;
@@ -99,6 +130,8 @@ class SpotterfyAudioHandler extends BaseAudioHandler
 
   SpotterfyAudioHandler() {
     _initSession();
+    // Push updates into an open Android Auto browse tree.
+    AutoLibraryBridge.addLibraryListener(_onLibraryChanged);
     // Broadcast an initial idle state so Android's MediaSession is aware of this session
     playbackState.add(
       PlaybackState(
@@ -151,6 +184,39 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     // Artwork/durations for storage tracks need disk reads; publish again once
     // resolved so Android Auto shows real lengths and covers.
     _enrichQueue();
+    // Resolve the *playing* track's art on its own, without waiting for the
+    // whole queue. Storage tracks have no cover URL, so the notification and the
+    // Android Auto now-playing view get their picture from embedded ID3 art -
+    // and reading that for a few hundred queued files before publishing the
+    // current one left the cover blank for seconds.
+    _publishCurrentArt();
+  }
+
+  /// Publishes the now-playing item again, this time with artwork resolved.
+  ///
+  /// Only ever touches `mediaItem`, never the queue, so it cannot clobber a
+  /// newer queue, and it re-reads [_index] at call time so a track change that
+  /// landed meanwhile wins.
+  Future<void> _publishCurrentArt() async {
+    if (_tracks.isEmpty) return;
+    final generation = _queueGeneration;
+    final idx = _index;
+    if (idx < 0 || idx >= _tracks.length) return;
+    final track = _tracks[idx];
+    final art = await AutoLibraryBridge.resolveArtUri(track);
+    // A newer setQueue() or track change happened while the art was being read.
+    if (generation != _queueGeneration || _index != idx) return;
+    if (art == null) return;
+    final current = mediaItem.valueOrNull;
+    if (current != null && current.artUri == art) return;
+    mediaItem.add(
+      _toMediaItem(track).copyWith(
+        artUri: art,
+        duration: _duration != Duration.zero
+            ? _duration
+            : (await AutoLibraryBridge.resolveDuration(track)),
+      ),
+    );
   }
 
   /// Bumped whenever the queue changes so a slow enrichment pass can detect that
@@ -208,6 +274,23 @@ class SpotterfyAudioHandler extends BaseAudioHandler
   Future<void> playFromSearch(String query, [Map<String, dynamic>? extras]) =>
       AutoLibraryBridge.instance.playFromSearch(query);
 
+  @override
+  ValueStream<Map<String, dynamic>> subscribeToChildren(String parentMediaId) {
+    // Android Auto holds the browse tree open and expects to be told when its
+    // contents change. Without this it keeps rendering whatever the first
+    // response was - which, if the library was still loading at that moment,
+    // is an empty list that never recovers.
+    _subscription.parent = parentMediaId;
+    return _subscription.stream;
+  }
+
+  void _onLibraryChanged() {
+    _subscription.notifyChanged();
+    // Re-publish the now-playing art too: a storage track that had no cover
+    // when the car first connected can gain one once art extraction lands.
+    _publishCurrentArt();
+  }
+
   Future<void> updateTrack(
     TrackModel track, {
     List<TrackModel>? queue,
@@ -232,6 +315,10 @@ class SpotterfyAudioHandler extends BaseAudioHandler
       ),
     );
     _markDirty(force: true);
+    // Storage tracks start with no artwork, so the first mediaItem has none.
+    // Resolve it now; otherwise the cover only appears after some later
+    // queue-wide enrichment pass happens to come back around.
+    _publishCurrentArt();
   }
 
   void _markDirty({bool force = false}) {

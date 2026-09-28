@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/models/track_model.dart';
+import 'package:spotterfy_app/services/device_library.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 
 /// The playlist sources exposed to the Android Auto browse tree.
@@ -20,13 +21,21 @@ class AutoLibrarySnapshot {
   /// Public playlists from other users (the community catalogue).
   final List<PlaylistModel> community;
 
+  /// Folders of music already on the device, from the Library > Storage tab.
+  final List<PlaylistModel> device;
+
   const AutoLibrarySnapshot({
     this.own = const [],
     this.shared = const [],
     this.community = const [],
+    this.device = const [],
   });
 
-  bool get isEmpty => own.isEmpty && shared.isEmpty && community.isEmpty;
+  bool get isEmpty =>
+      own.isEmpty && shared.isEmpty && community.isEmpty && device.isEmpty;
+
+  /// Every playlist in the tree, used to resolve a tapped media id.
+  List<PlaylistModel> get all => [...own, ...shared, ...community, ...device];
 }
 
 /// Supplies the user's library to the Android Auto browse tree and starts
@@ -60,6 +69,9 @@ class AutoLibraryBridge {
   static const String playlistPrefix = 'playlist:';
   static const String categoryPrefix = 'category:';
 
+  /// Devices are grouped by folder, matching the Library > Storage tab.
+  static const String deviceCategoryPrefix = 'device:';
+
   /// Live queue/current track, pushed in by the handler so the "Up Next" browse
   /// node works even for tracks that are not in any saved playlist.
   List<TrackModel> _queueSnapshot = const [];
@@ -72,7 +84,24 @@ class AutoLibraryBridge {
 
   Future<AutoLibrarySnapshot> _library() async {
     try {
-      return await _libraryLoader?.call() ?? const AutoLibrarySnapshot();
+      final base = await _libraryLoader?.call() ?? const AutoLibrarySnapshot();
+      // Device folders come from disk rather than any provider, so they are
+      // resolved here. They stay useful when signed out, which is exactly the
+      // state Android Auto can wake the app into.
+      if (base.device.isNotEmpty) return base;
+      final device = await DeviceLibrary.load();
+      if (device.isEmpty) return base;
+      final out = AutoLibrarySnapshot(
+        own: base.own,
+        shared: base.shared,
+        community: base.community,
+        device: device,
+      );
+      // A cold Android Auto start can hit this before any screen has read the
+      // library, so this is the first time the device folders are known to the
+      // car. Nudge it to re-read the tree.
+      _notifyLibraryChanged();
+      return out;
     } catch (e) {
       debugPrint('[Auto] library load failed: $e');
       return const AutoLibrarySnapshot();
@@ -101,6 +130,7 @@ class AutoLibraryBridge {
       for (final entry in <(String, String, List<PlaylistModel>)>[
         ('own', 'My Playlists', lib.own),
         ('shared', 'Shared with me', lib.shared),
+        ('device', 'On this device', lib.device),
         ('community', 'Community', lib.community),
       ]) {
         final (id, title, source) = entry;
@@ -110,8 +140,11 @@ class AutoLibraryBridge {
           MediaItem(
             id: '$categoryPrefix$id',
             title: title,
-            album:
-                '${withTracks.length} playlist${withTracks.length == 1 ? '' : 's'}',
+            album: id == 'device'
+                // Folders are songs, not curated playlists, so a song count is
+                // the useful number here.
+                ? '${withTracks.fold<int>(0, (n, p) => n + p.tracks.length)} songs'
+                : '${withTracks.length} playlist${withTracks.length == 1 ? '' : 's'}',
             artUri: await resolveArtUri(withTracks.first.tracks.first),
             playable: false,
           ),
@@ -130,6 +163,7 @@ class AutoLibraryBridge {
       final source = switch (which) {
         'own' => lib.own,
         'shared' => lib.shared,
+        'device' => lib.device,
         'community' => lib.community,
         _ => const <PlaylistModel>[],
       };
@@ -144,7 +178,7 @@ class AutoLibraryBridge {
     if (parentMediaId.startsWith(playlistPrefix)) {
       final id = parentMediaId.substring(playlistPrefix.length);
       final lib = await _library();
-      for (final p in [...lib.own, ...lib.shared, ...lib.community]) {
+      for (final p in lib.all) {
         if (p.id == id) return trackItems(p.tracks);
       }
     }
@@ -163,7 +197,7 @@ class AutoLibraryBridge {
     if (mediaId.startsWith(playlistPrefix)) {
       final pid = mediaId.substring(playlistPrefix.length);
       final lib = await _library();
-      for (final p in [...lib.own, ...lib.shared, ...lib.community]) {
+      for (final p in lib.all) {
         if (p.id == pid && p.tracks.isNotEmpty) return (p.tracks, 0);
       }
       return null;
@@ -172,7 +206,7 @@ class AutoLibraryBridge {
     // A track row: locate it in a playlist so the whole playlist becomes the
     // queue, matching how the app behaves when you tap a track in-app.
     final lib = await _library();
-    for (final p in [...lib.own, ...lib.shared, ...lib.community]) {
+    for (final p in lib.all) {
       final idx = p.tracks.indexWhere((t) => t.id == mediaId);
       if (idx >= 0) return (p.tracks, idx);
     }
@@ -196,7 +230,7 @@ class AutoLibraryBridge {
     List<TrackModel>? bestTracks;
     var bestIndex = 0;
     var bestScore = 1 << 30;
-    for (final p in [...lib.own, ...lib.shared, ...lib.community]) {
+    for (final p in lib.all) {
       final playlistHit = p.name.toLowerCase().contains(q);
       for (var i = 0; i < p.tracks.length; i++) {
         final t = p.tracks[i];
@@ -232,6 +266,30 @@ class AutoLibraryBridge {
   }
 
   // --- MediaItem builders -------------------------------------------------
+
+  /// Fires when the library contents change, so the handler can push a
+  /// subscription update and the car UI refreshes an already-open tree instead
+  /// of showing whatever was there when it first connected.
+  static final List<VoidCallback> _listeners = [];
+
+  /// Tells any open Android Auto browse tree to re-read itself.
+  ///
+  /// The car caches whatever tree it was handed, so without this a playlist
+  /// imported while the car screen was open would not appear until the car
+  /// reconnected.
+  static void libraryChanged() => _notifyLibraryChanged();
+
+  static void addLibraryListener(VoidCallback l) => _listeners.add(l);
+
+  static void removeLibraryListener(VoidCallback l) => _listeners.remove(l);
+
+  static void _notifyLibraryChanged() {
+    for (final l in List.of(_listeners)) {
+      try {
+        l();
+      } catch (_) {}
+    }
+  }
 
   /// Browsable playlist row. The `playlist:` id lets [getChildren] expand it
   /// into tracks and [playFromMediaId] start the whole playlist.

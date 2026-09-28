@@ -197,6 +197,13 @@ class TrackTile extends StatelessWidget {
                           width: 48,
                           height: 48,
                           fit: BoxFit.cover,
+                          // Decode at 2x the 48px box instead of the source's
+                          // full resolution (often 640px). Without this every
+                          // row in a long list decodes ~180x more pixels than it
+                          // displays, which is a large chunk of scroll jank and
+                          // image-cache memory.
+                          memCacheWidth: 96,
+                          maxWidthDiskCache: 240,
                           placeholder: (_, _) => Container(
                             color: Color(0xFF1a1a2e),
                             child: Icon(

@@ -32,7 +32,9 @@ class FirebaseService {
       final display = (data['displayName'] as String?)?.trim() ?? '';
       byUid[uid] = {
         'uid': uid,
-        'displayName': display.isNotEmpty ? display : ((data['email'] as String?) ?? uid),
+        'displayName': display.isNotEmpty
+            ? display
+            : ((data['email'] as String?) ?? uid),
         'email': (data['email'] as String?) ?? '',
         'photoUrl': (data['photoUrl'] as String?) ?? '',
       };

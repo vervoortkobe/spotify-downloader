@@ -140,6 +140,15 @@ class PlaylistProvider extends ChangeNotifier {
     }
     _isLoading = false;
     notifyListeners();
+    // Android Auto caches the browse tree it was handed, so an open car screen
+    // would keep showing the pre-refresh playlists without this.
+    AutoLibraryBridge.libraryChanged();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    AutoLibraryBridge.libraryChanged();
   }
 
   Future<void> _saveCachedPlaylists() async {

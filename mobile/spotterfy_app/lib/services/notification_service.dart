@@ -21,7 +21,9 @@ class NotificationService {
     if (_initialized) return;
     _plugin = FlutterLocalNotificationsPlugin();
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -37,12 +39,16 @@ class NotificationService {
     );
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      final android = _plugin!.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+      final android = _plugin!
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       try {
         await android?.requestNotificationsPermission();
       } catch (e) {
-        debugPrint('[NotificationService] requestNotificationsPermission failed (Activity not ready): $e');
+        debugPrint(
+          '[NotificationService] requestNotificationsPermission failed (Activity not ready): $e',
+        );
       }
       try {
         await android?.createNotificationChannel(
@@ -57,7 +63,9 @@ class NotificationService {
           ),
         );
       } catch (e) {
-        debugPrint('[NotificationService] createNotificationChannel failed: $e');
+        debugPrint(
+          '[NotificationService] createNotificationChannel failed: $e',
+        );
       }
     }
 
@@ -98,7 +106,8 @@ class NotificationService {
   }) async {
     if (!_initialized || _plugin == null) return;
 
-    final sub = '${track.artists}  •  ${_posText(position)} / ${_posText(duration)}';
+    final sub =
+        '${track.artists}  •  ${_posText(position)} / ${_posText(duration)}';
 
     final isLong = duration.inSeconds > 0;
     final prog = isLong ? position.inSeconds.clamp(0, duration.inSeconds) : 0;
@@ -121,7 +130,9 @@ class NotificationService {
       ticker: 'Now Playing: ${track.title}',
       color: const Color(0xFF10b981),
       colorized: true,
-      largeIcon: track.cover.isNotEmpty ? null : const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+      largeIcon: track.cover.isNotEmpty
+          ? null
+          : const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
       showProgress: isLong,
       maxProgress: maxProg,
       progress: prog,
@@ -139,7 +150,9 @@ class NotificationService {
           isPlaying ? 'Pause' : 'Play',
           showsUserInterface: false,
           cancelNotification: false,
-          icon: DrawableResourceAndroidBitmap(isPlaying ? 'ic_media_pause' : 'ic_media_play'),
+          icon: DrawableResourceAndroidBitmap(
+            isPlaying ? 'ic_media_pause' : 'ic_media_play',
+          ),
         ),
         const AndroidNotificationAction(
           'android.intent.action.MEDIA_NEXT',

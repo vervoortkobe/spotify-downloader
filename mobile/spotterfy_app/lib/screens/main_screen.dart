@@ -69,6 +69,15 @@ class _MainScreenState extends State<MainScreen>
     JamScreen(), // Chat
   ];
 
+  /// Nav destination tapped while that tab is already showing.
+  ///
+  /// Pops the tab's own stack to its root. The tab keeps its identity, so
+  /// navigating away and back still lands on whatever sub-page it is showing.
+  void _reselectTab(int i) {
+    if (i < 0 || i >= _tabs.length) return;
+    tabNavController.onDestinationTapped(i);
+  }
+
   void _goToTab(int i) {
     if (i == _currentIndex || i < 0 || i >= _tabs.length) return;
     setState(() {
@@ -84,6 +93,12 @@ class _MainScreenState extends State<MainScreen>
     // Publish the active tab so pushed screens (e.g. a playlist) can render the
     // same nav bar with the correct selection.
     tabNavController.currentIndex = _currentIndex;
+    // Publish each tab's navigator so the nav bar can pop a tab back to its
+    // root. Re-registered every build because a tab's state is only attached
+    // once its layer has been built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) TabNavigator.registerAll();
+    });
     // A pushed screen asked to switch tabs (e.g. tapped a nav destination).
     if (tabNavController.hasPendingRequest) {
       final target = tabNavController.takePendingRequest();
@@ -126,6 +141,9 @@ class _MainScreenState extends State<MainScreen>
       bottomNavigationBar: AppBottomNav(
         currentIndex: _currentIndex,
         onSelect: _goToTab,
+        // Tapping the destination you are already on returns that tab to its
+        // root instead of doing nothing, so a sub-page is never a dead end.
+        onReselect: _reselectTab,
       ),
     );
   }

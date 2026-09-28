@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
 class AnimatedEqualizer extends StatefulWidget {
-  const AnimatedEqualizer({super.key, this.color, this.size = 18, this.barWidth = 3});
+  const AnimatedEqualizer({
+    super.key,
+    this.color,
+    this.size = 18,
+    this.barWidth = 3,
+  });
   final Color? color;
   final double size;
   final double barWidth;
@@ -11,13 +16,17 @@ class AnimatedEqualizer extends StatefulWidget {
   State<AnimatedEqualizer> createState() => _AnimatedEqualizerState();
 }
 
-class _AnimatedEqualizerState extends State<AnimatedEqualizer> with SingleTickerProviderStateMixin {
+class _AnimatedEqualizerState extends State<AnimatedEqualizer>
+    with SingleTickerProviderStateMixin {
   late AnimationController _c;
 
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))..repeat();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..repeat();
   }
 
   @override
@@ -49,7 +58,10 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer> with SingleTicker
                 width: widget.barWidth,
                 height: widget.size * heights[i],
                 margin: const EdgeInsets.symmetric(horizontal: 1.2),
-                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(99)),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(99),
+                ),
               );
             }),
           );

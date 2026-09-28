@@ -27,20 +27,22 @@ class UserModel {
     this.lastSpotifySync,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  factory UserModel.fromFirestore(Map<String, dynamic> data, String uid) => UserModel(
-    uid: uid,
-    email: data['email'] as String? ?? '',
-    displayName: data['displayName'] as String? ?? '',
-    photoUrl: data['photoUrl'] as String? ?? '',
-    spotifyProfileUrl: data['spotifyProfileUrl'] as String? ?? '',
-    isAdmin: data['isAdmin'] as bool? ?? false,
-    isApproved: data['isApproved'] as bool? ?? false,
-    hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
-    createdAt: (data['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
-    currentListeningTo: data['currentListeningTo'] as String?,
-    currentJamSession: data['currentJamSession'] as String?,
-    lastSpotifySync: (data['lastSpotifySync'] as dynamic)?.toDate(),
-  );
+  factory UserModel.fromFirestore(Map<String, dynamic> data, String uid) =>
+      UserModel(
+        uid: uid,
+        email: data['email'] as String? ?? '',
+        displayName: data['displayName'] as String? ?? '',
+        photoUrl: data['photoUrl'] as String? ?? '',
+        spotifyProfileUrl: data['spotifyProfileUrl'] as String? ?? '',
+        isAdmin: data['isAdmin'] as bool? ?? false,
+        isApproved: data['isApproved'] as bool? ?? false,
+        hasCompletedOnboarding:
+            data['hasCompletedOnboarding'] as bool? ?? false,
+        createdAt: (data['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
+        currentListeningTo: data['currentListeningTo'] as String?,
+        currentJamSession: data['currentJamSession'] as String?,
+        lastSpotifySync: (data['lastSpotifySync'] as dynamic)?.toDate(),
+      );
 
   Map<String, dynamic> toFirestore() => {
     'email': email,

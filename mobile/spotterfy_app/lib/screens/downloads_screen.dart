@@ -28,7 +28,12 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<DownloadProvider>().load();
+      if (!mounted) return;
+      final prov = context.read<DownloadProvider>();
+      // This page lists files by path and plays them directly, so re-check
+      // liveness on open - otherwise an externally deleted file would show up
+      // here and fail to play.
+      prov.verify();
     });
   }
 

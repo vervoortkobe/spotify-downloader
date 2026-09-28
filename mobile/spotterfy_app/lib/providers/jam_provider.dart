@@ -17,22 +17,29 @@ class JamProvider extends ChangeNotifier {
   JamProvider() {
     _activeSub = _jamService.getActiveSessions().listen((snap) {
       _activeSessions = snap.docs
-          .map((d) => JamSessionModel(
-                id: d.id,
-                name: d['name'] as String? ?? '',
-                createdBy: d['createdBy'] as String? ?? '',
-                tracks: [],
-                participants: (d['participants'] as List<dynamic>?)
-                        ?.map((e) => e as String)
-                        .toList() ??
-                    [],
-              ))
+          .map(
+            (d) => JamSessionModel(
+              id: d.id,
+              name: d['name'] as String? ?? '',
+              createdBy: d['createdBy'] as String? ?? '',
+              tracks: [],
+              participants:
+                  (d['participants'] as List<dynamic>?)
+                      ?.map((e) => e as String)
+                      .toList() ??
+                  [],
+            ),
+          )
           .toList();
       notifyListeners();
     });
   }
 
-  Future<String> createSession(String uid, String name, List<TrackModel> tracks) async {
+  Future<String> createSession(
+    String uid,
+    String name,
+    List<TrackModel> tracks,
+  ) async {
     final id = await _jamService.createJamSession(uid, name, tracks);
     _sessionSub = _jamService.listenToJamSession(id).listen((snap) {
       _currentSession = JamSessionModel(
@@ -43,7 +50,8 @@ class JamProvider extends ChangeNotifier {
         currentTrackId: snap['currentTrackIndex']?.toString(),
         currentPositionMs: snap['currentPositionMs'] as int? ?? 0,
         isPlaying: snap['isPlaying'] as bool? ?? false,
-        participants: (snap['participants'] as List<dynamic>?)
+        participants:
+            (snap['participants'] as List<dynamic>?)
                 ?.map((e) => e as String)
                 .toList() ??
             [],
@@ -76,7 +84,11 @@ class JamProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updatePlayback({bool? isPlaying, int? positionMs, int? trackIndex}) async {
+  Future<void> updatePlayback({
+    bool? isPlaying,
+    int? positionMs,
+    int? trackIndex,
+  }) async {
     if (_currentSession == null) return;
     await _jamService.updatePlaybackState(
       _currentSession!.id,

@@ -9,11 +9,28 @@ class MonthUsage {
   final String month; // YYYY-MM
   final int wifi;
   final int cellular;
-  const MonthUsage({required this.month, required this.wifi, required this.cellular});
+  const MonthUsage({
+    required this.month,
+    required this.wifi,
+    required this.cellular,
+  });
   int get total => wifi + cellular;
 
   String get shortLabel {
-    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const names = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     final parts = month.split('-');
     if (parts.length != 2) return month;
     final m = int.tryParse(parts[1]) ?? 1;
@@ -78,7 +95,8 @@ class NetworkStatsService extends ChangeNotifier {
   static String formatBytes(int b) {
     if (b < 1024) return '$b B';
     if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(1)} KB';
-    if (b < 1024 * 1024 * 1024) return '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
+    if (b < 1024 * 1024 * 1024)
+      return '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
     return '${(b / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
   }
 
@@ -102,7 +120,9 @@ class NetworkStatsService extends ChangeNotifier {
   /// History for the graph: past months from Firestore + live current month.
   List<MonthUsage> get history {
     final list = _history.where((h) => h.month != _month).toList();
-    list.add(MonthUsage(month: _month, wifi: totalWifi, cellular: totalCellular));
+    list.add(
+      MonthUsage(month: _month, wifi: totalWifi, cellular: totalCellular),
+    );
     list.sort((a, b) => a.month.compareTo(b.month));
     return list.length > 6 ? list.sublist(list.length - 6) : list;
   }
@@ -136,12 +156,14 @@ class NetworkStatsService extends ChangeNotifier {
       final results = await Connectivity().checkConnectivity();
       if (results.contains(ConnectivityResult.mobile)) {
         _connType = 'cellular';
-      } else if (results.contains(ConnectivityResult.wifi) || results.contains(ConnectivityResult.ethernet)) {
+      } else if (results.contains(ConnectivityResult.wifi) ||
+          results.contains(ConnectivityResult.ethernet)) {
         _connType = 'wifi';
       } else if (results.contains(ConnectivityResult.none)) {
         _online = false;
         // Persistent banner when going offline (also on boot if starting offline).
-        if (wasOnline || isFirst) _showBanner('Disconnected from the internet!', offline: true);
+        if (wasOnline || isFirst)
+          _showBanner('Disconnected from the internet!', offline: true);
         notifyListeners();
         return;
       } else {
@@ -164,7 +186,9 @@ class NetworkStatsService extends ChangeNotifier {
         );
       } else {
         _showBanner(
-          _connType == 'cellular' ? 'Switched to mobile data!' : 'Switched to Wi-Fi!',
+          _connType == 'cellular'
+              ? 'Switched to mobile data!'
+              : 'Switched to Wi-Fi!',
           offline: false,
         );
       }
@@ -176,7 +200,10 @@ class NetworkStatsService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final m = prefs.getString('network_month');
       if (m != null && m != _month) {
-        _wifiDown = 0; _wifiUp = 0; _cellularDown = 0; _cellularUp = 0;
+        _wifiDown = 0;
+        _wifiUp = 0;
+        _cellularDown = 0;
+        _cellularUp = 0;
         _month = _currentMonth();
         await prefs.setString('network_month', _month);
         await _persist(prefs);
@@ -208,7 +235,10 @@ class NetworkStatsService extends ChangeNotifier {
     final now = _currentMonth();
     if (now == _month) return;
     await _pushCloud(force: true);
-    _wifiDown = 0; _wifiUp = 0; _cellularDown = 0; _cellularUp = 0;
+    _wifiDown = 0;
+    _wifiUp = 0;
+    _cellularDown = 0;
+    _cellularUp = 0;
     _month = now;
     await _persist();
     notifyListeners();
@@ -218,7 +248,8 @@ class NetworkStatsService extends ChangeNotifier {
   /// Pass null on sign-out to stop cloud sync (local counting continues).
   Future<void> setUserId(String? uid) async {
     if (uid == _uid) {
-      if (uid != null && _history.isEmpty && !_historyLoading) await loadHistory();
+      if (uid != null && _history.isEmpty && !_historyLoading)
+        await loadHistory();
       return;
     }
     await _pushCloud(force: true);
@@ -271,12 +302,12 @@ class NetworkStatsService extends ChangeNotifier {
           .collection('dataUsage')
           .doc(_month)
           .set({
-        'wifiDown': _wifiDown,
-        'wifiUp': _wifiUp,
-        'cellularDown': _cellularDown,
-        'cellularUp': _cellularUp,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+            'wifiDown': _wifiDown,
+            'wifiUp': _wifiUp,
+            'cellularDown': _cellularDown,
+            'cellularUp': _cellularUp,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('dataUsage cloud push failed: $e');
     }

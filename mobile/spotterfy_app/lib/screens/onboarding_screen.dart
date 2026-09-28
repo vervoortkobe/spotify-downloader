@@ -35,21 +35,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _validateNameLive() {
     final t = _nameController.text.trim();
-    final err = t.isEmpty ? 'Name is required' : (t.length < 3 ? 'At least 3 characters' : null);
+    final err = t.isEmpty
+        ? 'Name is required'
+        : (t.length < 3 ? 'At least 3 characters' : null);
     if (err != _nameError) setState(() => _nameError = err);
   }
 
-  bool get _nameValid => _nameError == null && _nameController.text.trim().isNotEmpty;
+  bool get _nameValid =>
+      _nameError == null && _nameController.text.trim().isNotEmpty;
 
   bool _isUrlValid(String v) => v.isEmpty || v.contains('open.spotify.com');
 
   void _next() {
     if (_page == 0) {
       if (!_nameValid) {
-        setState(() => _nameError = _nameController.text.trim().isEmpty ? 'Name is required' : 'At least 3 characters');
+        setState(
+          () => _nameError = _nameController.text.trim().isEmpty
+              ? 'Name is required'
+              : 'At least 3 characters',
+        );
         return;
       }
-      _pageController.animateToPage(1, duration: const Duration(milliseconds: 280), curve: Curves.easeInOut);
+      _pageController.animateToPage(
+        1,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeInOut,
+      );
     } else {
       _complete();
     }
@@ -57,13 +68,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _prev() {
     if (_page == 1) {
-      _pageController.animateToPage(0, duration: const Duration(milliseconds: 280), curve: Curves.easeInOut);
+      _pageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeInOut,
+      );
     }
   }
 
   Future<void> _complete() async {
     if (!_nameValid) {
-      _pageController.animateToPage(0, duration: const Duration(milliseconds: 280), curve: Curves.easeInOut);
+      _pageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeInOut,
+      );
       return;
     }
     final url = _urlController.text.trim();
@@ -77,12 +96,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
     final auth = context.read<AuthProvider>();
     try {
-      await auth.completeOnboarding(displayName: _nameController.text.trim(), spotifyUrl: url);
+      await auth.completeOnboarding(
+        displayName: _nameController.text.trim(),
+        spotifyUrl: url,
+      );
       if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -92,7 +119,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final auth = context.read<AuthProvider>();
     await auth.skipOnboarding();
     if (!mounted) return;
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()));
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const MainScreen()),
+    );
   }
 
   @override
@@ -107,7 +137,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().user;
     final photo = user?.photoUrl ?? '';
-    final firstName = (user?.displayName ?? '').split(' ').firstWhere((e) => e.isNotEmpty, orElse: () => 'there');
+    final firstName = (user?.displayName ?? '')
+        .split(' ')
+        .firstWhere((e) => e.isNotEmpty, orElse: () => 'there');
     return Scaffold(
       backgroundColor: const Color(0xFF07110b),
       body: Stack(
@@ -124,22 +156,61 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       padding: const EdgeInsets.all(3),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF10b981), width: 3),
-                        boxShadow: [BoxShadow(color: const Color(0xFF10b981).withValues(alpha: 0.3), blurRadius: 16)],
+                        border: Border.all(
+                          color: const Color(0xFF10b981),
+                          width: 3,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFF10b981,
+                            ).withValues(alpha: 0.3),
+                            blurRadius: 16,
+                          ),
+                        ],
                       ),
                       child: CircleAvatar(
                         radius: 36,
                         backgroundColor: const Color(0xFF0f1d17),
-                        backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null,
-                        child: photo.isEmpty ? const Icon(Icons.person, size: 36, color: Color(0xFFa1a1aa)) : null,
+                        backgroundImage: photo.isNotEmpty
+                            ? NetworkImage(photo)
+                            : null,
+                        child: photo.isEmpty
+                            ? const Icon(
+                                Icons.person,
+                                size: 36,
+                                color: Color(0xFFa1a1aa),
+                              )
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(user?.displayName ?? 'User', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text(
+                      user?.displayName ?? 'User',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    Text('Hi, $firstName', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                    Text(
+                      'Hi, $firstName',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    const Text('Welcome to Spotterfy', style: TextStyle(color: Color(0xFF10b981), fontSize: 16, fontWeight: FontWeight.w600)),
+                    const Text(
+                      'Welcome to Spotterfy',
+                      style: TextStyle(
+                        color: Color(0xFF10b981),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -147,10 +218,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: PageView(
                     controller: _pageController,
                     onPageChanged: (i) => setState(() => _page = i),
-                    children: [
-                      _buildNamePage(),
-                      _buildSpotifyPage(),
-                    ],
+                    children: [_buildNamePage(), _buildSpotifyPage()],
                   ),
                 ),
                 // dots
@@ -164,7 +232,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       width: active ? 22 : 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: active ? const Color(0xFF10b981) : const Color(0xFF1a3a2a),
+                        color: active
+                            ? const Color(0xFF10b981)
+                            : const Color(0xFF1a3a2a),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     );
@@ -180,23 +250,61 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         Expanded(
                           child: OutlinedButton(
                             onPressed: _loading ? null : _prev,
-                            style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF1a3a2a)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 14)),
-                            child: const Text('Previous', style: TextStyle(color: Color(0xFFa1a1aa), fontWeight: FontWeight.w600)),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFF1a3a2a)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: const Text(
+                              'Previous',
+                              style: TextStyle(
+                                color: Color(0xFFa1a1aa),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         )
                       else
                         TextButton(
                           onPressed: _loading ? null : _skip,
-                          child: const Text('Skip', style: TextStyle(color: Color(0xFF6A6A6A), fontWeight: FontWeight.w600)),
+                          child: const Text(
+                            'Skip',
+                            style: TextStyle(
+                              color: Color(0xFF6A6A6A),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       if (_page == 1) const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton(
                           onPressed: _loading ? null : _next,
-                          style: ElevatedButton.styleFrom(backgroundColor: SpotterfyTheme.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 14)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: SpotterfyTheme.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
                           child: _loading
-                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : Text(_page == 0 ? 'Next' : 'Complete', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Text(
+                                  _page == 0 ? 'Next' : 'Complete',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                         ),
                       ),
                     ],
@@ -204,7 +312,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(_page == 0 ? 'Step 1 of 2 — Display name' : 'Step 2 of 2 — Spotify profile (optional)', style: const TextStyle(color: Color(0xFF6A6A6A), fontSize: 11)),
+                  child: Text(
+                    _page == 0
+                        ? 'Step 1 of 2 — Display name'
+                        : 'Step 2 of 2 — Spotify profile (optional)',
+                    style: const TextStyle(
+                      color: Color(0xFF6A6A6A),
+                      fontSize: 11,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -220,11 +336,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Choose a display name', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text(
+            'Choose a display name',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 6),
-          const Text('This will be visible to others. You can change it later in settings.', style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 13, height: 1.4)),
+          const Text(
+            'This will be visible to others. You can change it later in settings.',
+            style: TextStyle(
+              color: Color(0xFFa1a1aa),
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
           const SizedBox(height: 20),
-          Text('Display name', style: TextStyle(color: const Color(0xFFa1a1aa), fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            'Display name',
+            style: TextStyle(
+              color: const Color(0xFFa1a1aa),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 6),
           TextField(
             controller: _nameController,
@@ -238,18 +375,56 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               hintStyle: const TextStyle(color: Color(0xFF6A6A6A)),
               filled: true,
               fillColor: const Color(0xFF0a1410),
-              prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF10b981), size: 20),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF1a3a2a))),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _nameError != null ? const Color(0xFFef4444) : const Color(0xFF1a3a2a))),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF10b981), width: 1.5)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              prefixIcon: const Icon(
+                Icons.person_outline,
+                color: Color(0xFF10b981),
+                size: 20,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF1a3a2a)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: _nameError != null
+                      ? const Color(0xFFef4444)
+                      : const Color(0xFF1a3a2a),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: Color(0xFF10b981),
+                  width: 1.5,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 14,
+              ),
             ),
           ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: const Color(0xFF0a1410), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1a3a2a))),
-            child: Row(children: const [Icon(Icons.info_outline, color: Color(0xFF10b981), size: 18), SizedBox(width: 8), Expanded(child: Text('At least 3 characters. Swipe or tap Next to continue.', style: TextStyle(color: Color(0xFF6A6A6A), fontSize: 12)))]),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0a1410),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF1a3a2a)),
+            ),
+            child: Row(
+              children: const [
+                Icon(Icons.info_outline, color: Color(0xFF10b981), size: 18),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'At least 3 characters. Swipe or tap Next to continue.',
+                    style: TextStyle(color: Color(0xFF6A6A6A), fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -262,11 +437,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Connect Spotify (optional)', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text(
+            'Connect Spotify (optional)',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 6),
-          const Text('Paste your Spotify profile URL to let friends find your playlists faster. You can skip this.', style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 13, height: 1.4)),
+          const Text(
+            'Paste your Spotify profile URL to let friends find your playlists faster. You can skip this.',
+            style: TextStyle(
+              color: Color(0xFFa1a1aa),
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
           const SizedBox(height: 20),
-          Text('Spotify profile URL', style: TextStyle(color: const Color(0xFFa1a1aa), fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            'Spotify profile URL',
+            style: TextStyle(
+              color: const Color(0xFFa1a1aa),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 6),
           TextField(
             controller: _urlController,
@@ -276,14 +472,40 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             decoration: InputDecoration(
               hintText: 'https://open.spotify.com/user/...',
               errorText: _urlError,
-              hintStyle: const TextStyle(color: Color(0xFF6A6A6A), fontSize: 12),
+              hintStyle: const TextStyle(
+                color: Color(0xFF6A6A6A),
+                fontSize: 12,
+              ),
               filled: true,
               fillColor: const Color(0xFF0a1410),
-              prefixIcon: const Icon(Icons.link, color: Color(0xFF10b981), size: 20),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF1a3a2a))),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _urlError != null ? const Color(0xFFef4444) : const Color(0xFF1a3a2a))),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF10b981), width: 1.5)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              prefixIcon: const Icon(
+                Icons.link,
+                color: Color(0xFF10b981),
+                size: 20,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF1a3a2a)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: _urlError != null
+                      ? const Color(0xFFef4444)
+                      : const Color(0xFF1a3a2a),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: Color(0xFF10b981),
+                  width: 1.5,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 14,
+              ),
             ),
             onChanged: (_) => setState(() => _urlError = null),
           ),
@@ -291,12 +513,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: const Color(0xFF0a1410), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1a3a2a))),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-              Row(children: [Icon(Icons.lightbulb_outline, color: Color(0xFF10b981), size: 18), SizedBox(width: 8), Text('How to find it', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600))]),
-              SizedBox(height: 6),
-              Text('Open Spotify → Your Profile → Share → Copy link', style: TextStyle(color: Color(0xFF6A6A6A), fontSize: 12)),
-            ]),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0a1410),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF1a3a2a)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.lightbulb_outline,
+                      color: Color(0xFF10b981),
+                      size: 18,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'How to find it',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Open Spotify → Your Profile → Share → Copy link',
+                  style: TextStyle(color: Color(0xFF6A6A6A), fontSize: 12),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
           SizedBox(
@@ -304,12 +553,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             height: 48,
             child: OutlinedButton(
               onPressed: _loading ? null : _skip,
-              style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFF1a3a2a)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              child: const Text('Skip for now', style: TextStyle(color: Color(0xFFa1a1aa), fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF1a3a2a)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Skip for now',
+                style: TextStyle(
+                  color: Color(0xFFa1a1aa),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 8),
-          const Center(child: Text('You can complete this later in settings.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF6A6A6A), fontSize: 11))),
+          const Center(
+            child: Text(
+              'You can complete this later in settings.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFF6A6A6A), fontSize: 11),
+            ),
+          ),
         ],
       ),
     );
@@ -320,23 +586,57 @@ class _OnboardingWavesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final p1 = Paint()
-      ..shader = LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [const Color(0xFF10b981).withValues(alpha: 0.12), const Color(0xFF10b981).withValues(alpha: 0.0)]).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          const Color(0xFF10b981).withValues(alpha: 0.12),
+          const Color(0xFF10b981).withValues(alpha: 0.0),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.fill;
     final path1 = Path()
       ..moveTo(0, size.height * 0.65)
-      ..quadraticBezierTo(size.width * 0.3, size.height * 0.55, size.width * 0.6, size.height * 0.6)
-      ..quadraticBezierTo(size.width * 0.8, size.height * 0.65, size.width, size.height * 0.55)
+      ..quadraticBezierTo(
+        size.width * 0.3,
+        size.height * 0.55,
+        size.width * 0.6,
+        size.height * 0.6,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.8,
+        size.height * 0.65,
+        size.width,
+        size.height * 0.55,
+      )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
     canvas.drawPath(path1, p1);
     final p2 = Paint()
-      ..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [const Color(0xFF065f46).withValues(alpha: 0.08), const Color(0xFF065f46).withValues(alpha: 0.0)]).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          const Color(0xFF065f46).withValues(alpha: 0.08),
+          const Color(0xFF065f46).withValues(alpha: 0.0),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.fill;
     final path2 = Path()
       ..moveTo(0, size.height * 0.75)
-      ..quadraticBezierTo(size.width * 0.25, size.height * 0.7, size.width * 0.5, size.height * 0.75)
-      ..quadraticBezierTo(size.width * 0.75, size.height * 0.8, size.width, size.height * 0.72)
+      ..quadraticBezierTo(
+        size.width * 0.25,
+        size.height * 0.7,
+        size.width * 0.5,
+        size.height * 0.75,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.75,
+        size.height * 0.8,
+        size.width,
+        size.height * 0.72,
+      )
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();

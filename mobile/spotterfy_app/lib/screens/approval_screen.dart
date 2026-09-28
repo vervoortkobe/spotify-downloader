@@ -13,11 +13,20 @@ class ApprovalScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.hourglass_empty, color: const Color(0xFF10b981), size: 72),
+              Icon(
+                Icons.hourglass_empty,
+                color: const Color(0xFF10b981),
+                size: 72,
+              ),
               const SizedBox(height: 24),
-              Text('Approval Pending', style: TextStyle(
-                color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold,
-              )),
+              Text(
+                'Approval Pending',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 12),
               Text(
                 'Your account is waiting for admin approval.\nYou\'ll be notified once approved.',

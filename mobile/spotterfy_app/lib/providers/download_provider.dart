@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:permission_handler/permission_handler.dart' as perm;
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/download_service.dart';
@@ -12,7 +13,7 @@ enum DownloadState { idle, downloading, done, failed }
 /// server (a yt-dlp resolve plus a fetch per track), and firing a whole
 /// playlist at it concurrently would slow every track down and make failures
 /// much harder to attribute.
-class DownloadProvider extends ChangeNotifier {
+class DownloadProvider extends ChangeNotifier with WidgetsBindingObserver {
   final _service = DownloadService.instance;
 
   /// trackId -> state, for the rows currently doing something.
@@ -42,6 +43,38 @@ class DownloadProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Drops downloads whose files have disappeared since the index was read -
+  /// deleted in a file manager, or cleared to free space.
+  ///
+  /// Called when the app returns to the foreground, which is exactly when a
+  /// user is likely to have been in a file manager.
+  Future<void> verify() async {
+    final gone = await _service.pruneMissingFiles();
+    if (gone.isEmpty) return;
+    for (final id in gone) {
+      _entries.remove(id);
+    }
+    _entries.addAll(_service.entries);
+    notifyListeners();
+  }
+
+  DownloadProvider() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      verify();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   bool isDownloaded(String trackId) => _entries.containsKey(trackId);
 
   /// Absolute path of the downloaded file, or null.
@@ -51,12 +84,46 @@ class DownloadProvider extends ChangeNotifier {
     return _service.localPathFor(trackId);
   }
 
+  /// Whether the app may write to public storage.
+  ///
+  /// Downloads live in `/storage/emulated/0/Spotterfy/Music` so other music apps
+  /// can see them, which needs all-files access on Android 11+. Older releases
+  /// only need the legacy write permission, which is granted at install time, so
+  /// this only gates the modern case.
+  static Future<bool> canWritePublicStorage() async {
+    try {
+      return await perm.Permission.manageExternalStorage.isGranted;
+    } catch (_) {
+      // If the platform can't answer, let the write attempt decide rather than
+      // blocking the user up front.
+      return true;
+    }
+  }
+
+  /// Asks for the permission, then re-checks. Called when a download is first
+  /// attempted without it, so the prompt appears where the user is trying to do
+  /// something rather than on first launch.
+  static Future<bool> requestPublicStorageAccess() async {
+    try {
+      final status = await perm.Permission.manageExternalStorage.request();
+      return status.isGranted || status.isLimited;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Downloads [track] unless it is already on disk. Returns true on success.
   ///
   /// Safe to call while another track is downloading: the call returns false
   /// rather than interleaving two server round-trips.
   Future<bool> download(TrackModel track) async {
-    if (isDownloaded(track.id)) return true;
+    if (isDownloaded(track.id)) {
+      // The index can go stale if the file was deleted outside the app. Only
+      // short-circuit when the file is genuinely still there, otherwise fall
+      // through and fetch it again.
+      if (await _service.isDownloadedAndPresent(track.id)) return true;
+      _entries.remove(track.id);
+    }
     if (isBusy) return false;
 
     _states[track.id] = DownloadState.downloading;
@@ -65,6 +132,16 @@ class DownloadProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (!await canWritePublicStorage()) {
+        // Ask in place: the user is mid-download, so the prompt makes sense
+        // here rather than on first launch.
+        final granted = await requestPublicStorageAccess();
+        if (!granted) {
+          _states[track.id] = DownloadState.failed;
+          _lastError = 'File access is needed to download songs';
+          return false;
+        }
+      }
       final bytes = await ApiService.downloadTrack(track);
       if (bytes == null || bytes.isEmpty) {
         _states[track.id] = DownloadState.failed;
@@ -102,6 +179,9 @@ class DownloadProvider extends ChangeNotifier {
   /// track shouldn't stop you getting the other 29.
   Future<int> downloadMany(List<TrackModel> tracks) async {
     var ok = 0;
+    // Re-check up front: a batch where every file vanished externally should
+    // re-download, not be skipped as "already have it".
+    await verify();
     for (final t in tracks) {
       if (isDownloaded(t.id)) {
         ok++;

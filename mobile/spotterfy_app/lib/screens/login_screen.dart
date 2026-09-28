@@ -45,12 +45,28 @@ class LoginScreen extends StatelessWidget {
                     height: 120,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(32),
-                      border: Border.all(color: const Color(0xFF10b981), width: 3),
-                      boxShadow: [BoxShadow(color: const Color(0xFF10b981).withValues(alpha: 0.35), blurRadius: 20, spreadRadius: 1)],
+                      border: Border.all(
+                        color: const Color(0xFF10b981),
+                        width: 3,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFF10b981,
+                          ).withValues(alpha: 0.35),
+                          blurRadius: 20,
+                          spreadRadius: 1,
+                        ),
+                      ],
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(28),
-                      child: Image.asset('logo/spotterfy_black_bg.png', width: 120, height: 120, fit: BoxFit.cover),
+                      child: Image.asset(
+                        'logo/spotterfy_black_bg.png',
+                        width: 120,
+                        height: 120,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),

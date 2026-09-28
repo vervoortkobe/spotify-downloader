@@ -1,3 +1,6 @@
+import 'dart:math';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -10,13 +13,373 @@ import 'package:spotterfy_app/providers/download_provider.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
 
 /// App-bar button identifying who owns a shared playlist. Shows the owner's
-/// avatar when it is known, otherwise a generic person icon, and always opens
-/// their profile.
+/// Playlist summary: artwork, name, and the stats worth knowing before hitting
+/// play - song count, total running time, source, and how many tracks are
+/// already downloaded for offline listening.
+class _PlaylistHeader extends StatelessWidget {
+  final PlaylistModel playlist;
+  final VoidCallback onPlay;
+  final VoidCallback onShuffle;
+
+  const _PlaylistHeader({
+    required this.playlist,
+    required this.onPlay,
+    required this.onShuffle,
+  });
+
+  static String _formatTotal(int ms) {
+    final total = (ms / 1000).round();
+    final h = total ~/ 3600;
+    final m = (total % 3600) ~/ 60;
+    if (h > 0) return '$h hr ${m.toString().padLeft(2, '0')} min';
+    return '$m min';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tracks = playlist.tracks;
+    // Only tracks with a known duration contribute, otherwise the total reads
+    // low on playlists whose durations haven't been fetched yet.
+    final known = tracks.where((t) => t.durationMs > 0).length;
+    final totalMs = tracks.fold<int>(0, (sum, t) => sum + t.durationMs);
+    final cover = tracks.isNotEmpty ? tracks.first.cover : '';
+    final downloaded = context.select<DownloadProvider, int>(
+      (d) => tracks.where((t) => d.isDownloaded(t.id)).length,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _artwork(cover),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      playlist.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                        height: 1.15,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      playlist.owner.isEmpty
+                          ? 'Created by you'
+                          : 'By ${playlist.owner}',
+                      style: const TextStyle(
+                        color: Color(0xFFa1a1aa),
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    _statRow(tracks.length, totalMs, known, downloaded),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: _PrimaryButton(
+                  icon: Icons.play_arrow_rounded,
+                  label: 'Play',
+                  onTap: onPlay,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: _SecondaryButton(
+                  icon: Icons.shuffle_rounded,
+                  label: 'Shuffle',
+                  onTap: onShuffle,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Sends "N songs · 1h 24 min · Spotify · 12 downloaded" as separate chips
+  /// so each fact can drop out independently on narrow screens.
+  Widget _statRow(int count, int totalMs, int known, int downloaded) {
+    final bits = <String>[
+      '$count ${count == 1 ? 'song' : 'songs'}',
+      if (totalMs > 0) _formatTotal(totalMs),
+      playlist.sourceLabel,
+    ];
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final b in bits)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10b981).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              b,
+              style: const TextStyle(
+                color: Color(0xFF10b981),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+        if (downloaded > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              '$downloaded downloaded',
+              style: const TextStyle(
+                color: Color(0xFFa1a1aa),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        if (known < count && count > 0)
+          Tooltip(
+            message: known == 0
+                ? 'No track durations known yet - total length appears after the first few play'
+                : '$known of $count durations known',
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Icon(
+                Icons.help_outline,
+                size: 11,
+                color: Color(0xFFa1a1aa),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _artwork(String cover) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        width: 104,
+        height: 104,
+        child: cover.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: cover,
+                fit: BoxFit.cover,
+                placeholder: (_, _) => _artworkFallback(),
+                errorWidget: (_, _, _) => _artworkFallback(),
+              )
+            : _artworkFallback(),
+      ),
+    );
+  }
+
+  Widget _artworkFallback() => Container(
+    color: const Color(0xFF282828),
+    child: const Icon(Icons.queue_music, color: Color(0xFF4a4a4a), size: 40),
+  );
+}
+
+/// Green filled call to action.
+class _PrimaryButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _PrimaryButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF10b981),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 46,
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: const Color(0xFF06120d), size: 24),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF06120d),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Outlined secondary action.
+class _SecondaryButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _SecondaryButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 46,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: 19),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// How the track list is ordered.
+enum _PlaylistSort {
+  custom('Custom order'),
+  title('Title'),
+  artist('Artist'),
+  duration('Length');
+
+  const _PlaylistSort(this.label);
+  final String label;
+}
+
+/// Search / sort / shuffle for one playlist, kept across visits.
+class _PlaylistViewState {
+  String query = '';
+  _PlaylistSort sort = _PlaylistSort.custom;
+  bool shuffle = false;
+}
+
+/// Square icon button used by the view controls, with a tinted active state.
+class _SquareButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool active;
+  final VoidCallback onPressed;
+
+  const _SquareButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.active = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: active
+            ? const Color(0xFF10b981).withValues(alpha: 0.18)
+            : Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: active
+                    ? const Color(0xFF10b981).withValues(alpha: 0.5)
+                    : Colors.white.withValues(alpha: 0.1),
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: 19,
+              color: active ? const Color(0xFF10b981) : Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Avatar for the playlist owner: their photo when it is known, otherwise a
+/// generic person icon, and always opens their profile.
 class _OwnerProfileButton extends StatelessWidget {
   final String photoUrl;
   final String displayName;
@@ -71,6 +434,19 @@ class PlaylistDetailScreen extends StatefulWidget {
 
 class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   late PlaylistModel _playlist;
+
+  /// Per-playlist view state, so leaving a playlist and coming back lands you
+  /// on the same filter, sort and shuffle you left it with.
+  ///
+  /// Held by MainScreen's library tab rather than this screen's State, which is
+  /// disposed on pop. Scroll offset and selection are not preserved - those are
+  /// tied to a live [State] - but the view controls are what users actually
+  /// expect to stick.
+  static final Map<String, _PlaylistViewState> _viewStates = {};
+
+  static _PlaylistViewState _stateFor(String playlistId) =>
+      _viewStates.putIfAbsent(playlistId, _PlaylistViewState.new);
+
   final ScrollController _scrollController = ScrollController();
   bool _syncing = false;
 
@@ -88,6 +464,85 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   /// Ids of the tracks the user has selected via long-press.
   final Set<String> _selectedIds = {};
+
+  // --- Search / sort / shuffle --------------------------------------------
+  //
+  // These survive leaving the page. The playlist detail screen is a State
+  // object that is disposed when popped, and users flip back to a playlist,
+  // filter it, and come back constantly - losing the filter each time is the
+  // kind of thing that makes a playlist feel like it forgot what you wanted.
+
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+
+  /// Live view settings, restored on entry and written back on exit.
+  late _PlaylistViewState _view;
+
+  String get _query => _view.query;
+  _PlaylistSort get _sort => _view.sort;
+  bool get _shuffleOn => _view.shuffle;
+
+  /// Stable order of the playlist's tracks, decided once per build of the
+  /// visible list. Sorted views keep a reference to the original position so
+  /// "play" still queues the whole playlist in playlist order.
+  List<TrackModel> get _visibleTracks {
+    final q = _query.trim().toLowerCase();
+    var out = _playlist.tracks;
+    if (q.isNotEmpty) {
+      out = out
+          .where(
+            (t) =>
+                t.title.toLowerCase().contains(q) ||
+                t.artists.toLowerCase().contains(q) ||
+                t.album.toLowerCase().contains(q),
+          )
+          .toList();
+    }
+    switch (_sort) {
+      case _PlaylistSort.custom:
+        break;
+      case _PlaylistSort.title:
+        out = [...out]
+          ..sort(
+            (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+          );
+      case _PlaylistSort.artist:
+        out = [...out]
+          ..sort(
+            (a, b) =>
+                a.artists.toLowerCase().compareTo(b.artists.toLowerCase()),
+          );
+      case _PlaylistSort.duration:
+        out = [...out]..sort((a, b) => a.durationMs.compareTo(b.durationMs));
+    }
+    return out;
+  }
+
+  /// The order playback should use: the whole playlist in its original order,
+  /// which is what a listener expects even when the list is sorted or filtered.
+  List<TrackModel> get _playbackOrder => _playlist.tracks;
+
+  void _setSort(_PlaylistSort s) {
+    HapticFeedback.selectionClick();
+    setState(() => _view.sort = s);
+  }
+
+  void _toggleShuffle() {
+    HapticFeedback.selectionClick();
+    setState(() => _view.shuffle = !_view.shuffle);
+  }
+
+  void _setQuery(String value) => setState(() => _view.query = value);
+
+  /// Resets the filter/sort to how the playlist was saved.
+  void _resetView() {
+    _searchController.clear();
+    setState(() {
+      _view.query = '';
+      _view.sort = _PlaylistSort.custom;
+      _view.shuffle = false;
+    });
+  }
 
   bool get _selecting => _selectedIds.isNotEmpty;
 
@@ -113,12 +568,30 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   void initState() {
     super.initState();
     _playlist = widget.playlist;
+    _view = _stateFor(_playlist.id);
+    // Put the restored query in the field before the first build so the text and
+    // the filter can never disagree.
+    if (_view.query.isNotEmpty) {
+      _searchController.text = _view.query;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _maybeSyncTracks();
         _loadOwnerProfile();
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant PlaylistDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playlist.id == widget.playlist.id) return;
+    // Switched to a different playlist via the same route; the saved view
+    // belongs to the old one, so adopt the new playlist's.
+    _view = _stateFor(widget.playlist.id);
+    _playlist = widget.playlist;
+    _searchController.text = _view.query;
+    setState(() {});
   }
 
   /// Fetches the owner's public profile so the app-bar button can show their
@@ -138,6 +611,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   @override
   void dispose() {
+    // The view settings live in the per-playlist map rather than in this State,
+    // so they outlive the screen; only the controllers are ours to release.
+    _searchController.dispose();
+    _searchFocus.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -226,6 +703,188 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         );
       }
     }
+  }
+
+  /// Search field, sort picker and shuffle toggle.
+  ///
+  /// Sits between the header and the list so the sort and filter state stays
+  /// visible while scrolling, which is what makes it obvious why a list is
+  /// currently short.
+  Widget _viewControls() {
+    final visible = _visibleTracks;
+    final filtering = _query.trim().isNotEmpty;
+    final viewIsDefault = !filtering && _sort == _PlaylistSort.custom;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 42,
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocus,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    cursorColor: const Color(0xFF10b981),
+                    textInputAction: TextInputAction.search,
+                    onChanged: _setQuery,
+                    decoration: InputDecoration(
+                      hintText: 'Search in playlist',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        fontSize: 14,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        size: 19,
+                        color: Color(0xFFa1a1aa),
+                      ),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(
+                                Icons.close,
+                                size: 17,
+                                color: Color(0xFFa1a1aa),
+                              ),
+                              tooltip: 'Clear search',
+                              onPressed: () {
+                                _searchController.clear();
+                                _setQuery('');
+                              },
+                            ),
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.05),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _SquareButton(
+                icon: Icons.sort_rounded,
+                tooltip: 'Sort',
+                active: !viewIsDefault,
+                onPressed: _showSortSheet,
+              ),
+              const SizedBox(width: 8),
+              _SquareButton(
+                icon: Icons.shuffle_rounded,
+                tooltip: 'Shuffle',
+                active: _shuffleOn,
+                onPressed: _toggleShuffle,
+              ),
+            ],
+          ),
+          if (filtering || _sort != _PlaylistSort.custom) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text(
+                  '${visible.length} of ${_playlist.tracks.length} '
+                  '${_playlist.tracks.length == 1 ? 'song' : 'songs'}'
+                  '${_sort == _PlaylistSort.custom ? '' : ' • ${_sort.label}'}',
+                  style: const TextStyle(
+                    color: Color(0xFFa1a1aa),
+                    fontSize: 11,
+                  ),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _resetView,
+                  icon: const Icon(
+                    Icons.restart_alt,
+                    size: 14,
+                    color: Color(0xFF10b981),
+                  ),
+                  label: const Text(
+                    'Reset',
+                    style: TextStyle(
+                      color: Color(0xFF10b981),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 28),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showSortSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: SpotterfyTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Sort by',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (final s in _PlaylistSort.values)
+              RadioListTile<_PlaylistSort>(
+                value: s,
+                // ignore: deprecated_member_use
+                groupValue: _sort,
+                // ignore: deprecated_member_use
+                onChanged: (v) {
+                  if (v == null) return;
+                  Navigator.pop(sheetCtx);
+                  _setSort(v);
+                },
+                dense: true,
+                activeColor: const Color(0xFF10b981),
+                title: Text(
+                  s.label,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -367,37 +1026,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
         body: Column(
           children: [
             if (_playlist.tracks.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      final player = context.read<PlayerProvider>();
-                      player.setQueue(_playlist.tracks, startIndex: 0);
-                      player.play(
-                        _playlist.tracks.first,
-                        queue: _playlist.tracks,
-                      );
-                    },
-                    icon: const Icon(Icons.play_arrow, color: Colors.white),
-                    label: Text(
-                      'Play • ${_playlist.tracks.length} tracks',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10b981),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                  ),
-                ),
+              _PlaylistHeader(
+                playlist: _playlist,
+                onPlay: _playAll,
+                onShuffle: _shuffleAll,
               ),
+            if (_playlist.tracks.isNotEmpty) _viewControls(),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () => _forceSyncTracks(showFeedback: true),
@@ -464,42 +1098,111 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         thumbColor: const Color(
                           0xFF10b981,
                         ).withValues(alpha: 0.5),
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          // Clears the shared mini player that MainScreen
-                          // overlays at the bottom of this tab's stack. There is
-                          // no Scaffold bottomNavigationBar inset here, so the
-                          // room has to be added to the list itself.
-                          padding: const EdgeInsets.only(bottom: 92),
-                          itemCount: _playlist.tracks.length,
-                          itemBuilder: (_, i) {
-                            final track = _playlist.tracks[i];
-                            final player = context.watch<PlayerProvider>();
-                            final downloads = context.watch<DownloadProvider>();
-                            final isPlaying =
-                                player.currentTrack?.id == track.id &&
-                                player.isPlaying;
-                            return TrackTile(
-                              track: track,
-                              isSelected: player.currentTrack?.id == track.id,
-                              isPlaying: isPlaying,
-                              // Long press opens multi-select; in selection mode
-                              // a tap toggles instead of playing.
-                              onLongPress: () => _toggleSelection(track),
-                              selectionMode: _selecting,
-                              selected: _selectedIds.contains(track.id),
-                              isDownloaded: downloads.isDownloaded(track.id),
-                              isDownloading:
-                                  downloads.states[track.id] ==
-                                  DownloadState.downloading,
-                              onDownload: () => _toggleDownload(context, track),
-                              onPlay: _selecting
-                                  ? () => _toggleSelection(track)
-                                  : () => _playTrack(context, track, i),
-                            );
-                          },
-                        ),
+                        child: _visibleTracks.isEmpty
+                            ? ListView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                children: [
+                                  SizedBox(
+                                    height: 320,
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            Icons.search_off_rounded,
+                                            color: Color(0xFFa1a1aa),
+                                            size: 44,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          const Text(
+                                            'No matching songs',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            'Nothing in this playlist matches '
+                                            '"${_query.trim()}"',
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              color: Color(0xFFa1a1aa),
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          TextButton(
+                                            onPressed: _resetView,
+                                            child: const Text(
+                                              'Clear search and sort',
+                                              style: TextStyle(
+                                                color: Color(0xFF10b981),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : ListView.builder(
+                                controller: _scrollController,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                // Clears the shared mini player that MainScreen
+                                // overlays at the bottom of this tab's stack. There is
+                                // no Scaffold bottomNavigationBar inset here, so the
+                                // room has to be added to the list itself.
+                                padding: const EdgeInsets.only(bottom: 92),
+                                itemCount: _visibleTracks.length,
+                                itemBuilder: (_, i) {
+                                  final track = _visibleTracks[i];
+                                  final player = context
+                                      .watch<PlayerProvider>();
+                                  final downloads = context
+                                      .watch<DownloadProvider>();
+                                  final isPlaying =
+                                      player.currentTrack?.id == track.id &&
+                                      player.isPlaying;
+                                  return TrackTile(
+                                    track: track,
+                                    isSelected:
+                                        player.currentTrack?.id == track.id,
+                                    isPlaying: isPlaying,
+                                    // Long press opens multi-select; in selection mode
+                                    // a tap toggles instead of playing.
+                                    onLongPress: () => _toggleSelection(track),
+                                    selectionMode: _selecting,
+                                    selected: _selectedIds.contains(track.id),
+                                    isDownloaded: downloads.isDownloaded(
+                                      track.id,
+                                    ),
+                                    isDownloading:
+                                        downloads.states[track.id] ==
+                                        DownloadState.downloading,
+                                    onDownload: () =>
+                                        _toggleDownload(context, track),
+                                    onPlay: _selecting
+                                        ? () => _toggleSelection(track)
+                                        // The row index is into the *visible* list, so
+                                        // the real position in playlist order is
+                                        // resolved from the track itself. Otherwise
+                                        // tapping row 2 of a sorted list would start
+                                        // playback from whichever song happens to sit
+                                        // second in the original order.
+                                        : () => _playTrack(
+                                            context,
+                                            track,
+                                            _playbackOrder.indexWhere(
+                                              (t) => t.id == track.id,
+                                            ),
+                                          ),
+                                  );
+                                },
+                              ),
                       ),
               ),
             ),
@@ -690,9 +1393,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   }
 
   void _playTrack(BuildContext context, TrackModel track, int index) {
+    // Queues playlist order, not the on-screen order: sorting and searching are
+    // ways of finding a song, not a claim that the playlist is now ordered that
+    // way. So "next" keeps following the playlist as saved.
+    final order = _playbackOrder;
+    if (order.isEmpty) return;
+    final safeIndex = index < 0 ? 0 : index.clamp(0, order.length - 1);
     final player = context.read<PlayerProvider>();
-    player.setQueue(_playlist.tracks, startIndex: index);
-    player.play(track, queue: _playlist.tracks);
+    player.setQueue(order, startIndex: safeIndex);
+    player.play(track, queue: order);
     // Same rise/fall animation as opening from the mini player, but on the ROOT
     // navigator: the player is full-screen, so it must cover the bottom nav
     // rather than sit above it inside this tab's stack.
@@ -700,6 +1409,30 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       context,
       rootNavigator: true,
     ).push(nowPlayingRoute(const PlayerScreen()));
+  }
+
+  void _playAll() {
+    final tracks = _playbackOrder;
+    if (tracks.isEmpty) return;
+    // With shuffle armed, Play starts somewhere random rather than at the top.
+    if (_shuffleOn) {
+      _shuffleAll();
+      return;
+    }
+    _playTrack(context, tracks.first, 0);
+  }
+
+  /// Plays the playlist from a random track, but keeps the original order.
+  ///
+  /// Shuffling the queue itself would leave the track list scrambled once the
+  /// user hit "next", which is rarely what "shuffle" is meant to mean.
+  void _shuffleAll() {
+    final tracks = _playbackOrder;
+    if (tracks.isEmpty) return;
+    // The index has to match the track, or playback would start on the first
+    // song while the queue claims it's somewhere else.
+    final start = Random().nextInt(tracks.length);
+    _playTrack(context, tracks[start], start);
   }
 
   void _sharePlaylist(BuildContext context) async {

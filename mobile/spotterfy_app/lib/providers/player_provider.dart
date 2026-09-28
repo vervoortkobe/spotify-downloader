@@ -588,6 +588,108 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Moves the queue entry at [from] to [to], keeping [_currentIndex] pointing
+  /// at the *same track*.
+  ///
+  /// The index has to follow the track rather than the slot: moving the playing
+  /// track one place up would otherwise leave playback pointing at whatever
+  /// slid into the old position.
+  void moveQueueItem(int from, int to) {
+    if (from < 0 || from >= _queue.length) return;
+    if (to < 0 || to >= _queue.length) return;
+    if (from == to) return;
+    final movingIsCurrent = from == _currentIndex;
+    final item = _queue.removeAt(from);
+    _queue.insert(to, item);
+    if (movingIsCurrent) {
+      _currentIndex = to;
+    } else if (_currentIndex > from && _currentIndex <= to) {
+      // The playing track shifted one place earlier.
+      _currentIndex -= 1;
+    } else if (_currentIndex < from && _currentIndex >= to) {
+      // The playing track shifted one place later.
+      _currentIndex += 1;
+    }
+    audioHandler?.setQueue(_queue, startIndex: _currentIndex);
+    notifyListeners();
+  }
+
+  /// Moves [from] up one place, if it can.
+  void moveQueueUp(int from) => moveQueueItem(from, from - 1);
+
+  /// Moves [from] down one place, if it can.
+  void moveQueueDown(int from) => moveQueueItem(from, from + 1);
+
+  /// Removes several queue entries at once.
+  ///
+  /// Indices are resolved against the *original* queue and removed highest
+  /// first, so the caller can pass a UI selection straight through without
+  /// re-computing indices as the list shifts underneath.
+  void removeFromQueueMany(Iterable<int> indices) {
+    final targets = indices.toSet().where((i) => i >= 0 && i < _queue.length);
+    if (targets.isEmpty) return;
+    final removedCurrent = targets.contains(_currentIndex);
+    final ordered = targets.toList()..sort((a, b) => b.compareTo(a));
+    for (final i in ordered) {
+      _queue.removeAt(i);
+    }
+    if (_queue.isEmpty) {
+      _currentTrack = null;
+      _currentIndex = -1;
+      _isPlaying = false;
+    } else if (removedCurrent) {
+      // Playback continues from whatever now sits at the old slot, clamped.
+      _currentIndex = _currentIndex.clamp(0, _queue.length - 1);
+    } else if (_currentIndex > ordered.last) {
+      _currentIndex -= ordered.length;
+    }
+    audioHandler?.setQueue(_queue, startIndex: _currentIndex);
+    notifyListeners();
+  }
+
+  /// Moves every selected entry up one place, keeping their relative order.
+  ///
+  /// Moving a multi-row selection one item at a time would shuffle it instead
+  /// of shifting the block, so only the lowest selected index actually moves.
+  void moveQueueBlockUp(List<int> indices) {
+    final sel = indices.where((i) => i >= 0 && i < _queue.length).toSet();
+    if (sel.isEmpty) return;
+    final block = sel.toList()..sort();
+    final lowest = block.first;
+    if (lowest == 0) return;
+    final wasCurrent = lowest == _currentIndex;
+    final item = _queue.removeAt(lowest);
+    _queue.insert(lowest - 1, item);
+    if (wasCurrent) {
+      _currentIndex = lowest - 1;
+    } else if (_currentIndex >= lowest) {
+      // Everything from `lowest` onwards shifted up a slot.
+      _currentIndex += 1;
+    }
+    audioHandler?.setQueue(_queue, startIndex: _currentIndex);
+    notifyListeners();
+  }
+
+  /// Moves every selected entry down one place, keeping their relative order.
+  void moveQueueBlockDown(List<int> indices) {
+    final sel = indices.where((i) => i >= 0 && i < _queue.length).toSet();
+    if (sel.isEmpty) return;
+    final block = sel.toList()..sort();
+    final highest = block.last;
+    if (highest >= _queue.length - 1) return;
+    final wasCurrent = highest == _currentIndex;
+    final item = _queue.removeAt(highest);
+    _queue.insert(highest + 1, item);
+    if (wasCurrent) {
+      _currentIndex = highest + 1;
+    } else if (_currentIndex <= highest) {
+      // Everything up to `highest` shifted down a slot.
+      _currentIndex -= 1;
+    }
+    audioHandler?.setQueue(_queue, startIndex: _currentIndex);
+    notifyListeners();
+  }
+
   void addToQueue(TrackModel track) {
     _queue.add(track);
     audioHandler?.setQueue(

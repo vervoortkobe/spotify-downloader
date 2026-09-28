@@ -32,17 +32,25 @@ class ConnectivityBanner extends StatelessWidget {
                   Icon(
                     net.bannerIsOffline
                         ? Icons.signal_wifi_off
-                        : (net.isCellular ? Icons.signal_cellular_alt : Icons.wifi),
+                        : (net.isCellular
+                              ? Icons.signal_cellular_alt
+                              : Icons.wifi),
                     size: 14,
                     color: net.bannerIsOffline
                         ? const Color(0xFFef4444)
-                        : (net.isCellular ? const Color(0xFF38bdf8) : SpotterfyTheme.primary),
+                        : (net.isCellular
+                              ? const Color(0xFF38bdf8)
+                              : SpotterfyTheme.primary),
                   ),
                   const SizedBox(width: 8),
                   Flexible(
                     child: Text(
                       net.bannerMessage,
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ),
