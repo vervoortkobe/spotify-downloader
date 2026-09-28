@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/device_library.dart';
+import 'package:spotterfy_app/services/firebase_service.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 
 /// The playlist sources exposed to the Android Auto browse tree.
@@ -84,8 +85,13 @@ class AutoLibraryBridge {
 
   Future<AutoLibrarySnapshot> _library() async {
     try {
+      // The loader reaches Firestore, which is not ready yet when Android Auto
+      // wakes the app before the splash has booted. Joining the splash's
+      // initialisation here means the car waits for Firebase rather than
+      // failing the browse tree.
+      await FirebaseService.initialize();
       final base = await _libraryLoader?.call() ?? const AutoLibrarySnapshot();
-      // Device folders come from disk rather than any provider, so they are
+      // Device folders come from disk rather than Firestore, so they are
       // resolved here. They stay useful when signed out, which is exactly the
       // state Android Auto can wake the app into.
       if (base.device.isNotEmpty) return base;

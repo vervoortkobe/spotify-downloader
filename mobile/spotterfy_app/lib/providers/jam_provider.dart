@@ -5,7 +5,10 @@ import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/jam_service.dart';
 
 class JamProvider extends ChangeNotifier {
-  final JamService _jamService = JamService();
+  /// Created on first use: [JamService] touches `FirebaseFirestore.instance` in
+  /// its field initializer, which throws before `Firebase.initializeApp()`.
+  JamService? _service;
+  JamService get _jamService => _service ??= JamService();
   JamSessionModel? _currentSession;
   List<JamSessionModel> _activeSessions = [];
   StreamSubscription? _sessionSub;

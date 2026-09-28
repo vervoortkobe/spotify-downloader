@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/models/user_model.dart';
 import 'package:spotterfy_app/services/auth_service.dart';
+import 'package:spotterfy_app/services/firebase_service.dart';
 
 // Top-level for compute() - must not be inside class
 UserModel? _parseUserIsolate(String cached) {
@@ -30,7 +31,12 @@ UserModel? _parseUserIsolate(String cached) {
 }
 
 class AuthProvider extends ChangeNotifier {
-  final AuthService _authService = AuthService();
+  /// Created on first use: [AuthService] touches `FirebaseAuth.instance` and
+  /// `FirebaseFirestore.instance` in its field initializers, both of which
+  /// throw before `Firebase.initializeApp()` has run.
+  AuthService? _service;
+  AuthService get _authService => _service ??= AuthService();
+
   UserModel? _user;
   bool _isLoading = true;
   bool _isSigningIn = false;
@@ -52,6 +58,8 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
+    // Firebase first: everything below reads AuthService, which needs it.
+    await _ensureFirebase();
     // Load cached user off UI thread - avoid blocking first frame
     await _loadCachedUser();
     // Defer first notify to next frame so Splash can build once without jank
@@ -119,6 +127,19 @@ class AuthProvider extends ChangeNotifier {
         'lastSpotifySync': _user!.lastSpotifySync?.toIso8601String(),
       }),
     );
+  }
+
+  /// Joins Firebase initialisation instead of assuming it already happened.
+  ///
+  /// This provider is created lazily by the splash, which initialises Firebase
+  /// first, so in practice it is always ready - but the guard costs nothing and
+  /// turns a race into a no-op if construction order ever changes again.
+  Future<void> _ensureFirebase() async {
+    try {
+      await FirebaseService.initialize();
+    } catch (e) {
+      debugPrint('Firebase init failed (auth will retry): $e');
+    }
   }
 
   Future<void> _loadCachedUser() async {

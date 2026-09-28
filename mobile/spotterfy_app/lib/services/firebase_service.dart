@@ -3,13 +3,26 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class FirebaseService {
-  static Future<void> initialize() async {
+  static Future<void>? _init;
+
+  /// Initialises Firebase, or joins an initialisation already in flight.
+  ///
+  /// Safe to call from more than one place. The Android Auto media service can
+  /// wake the app in a process where the splash has not booted yet, and its
+  /// browse tree needs Firestore - without this guard that call would race the
+  /// splash and lose, failing the whole tree.
+  static Future<void> initialize() => _init ??= _initOnce();
+
+  static Future<void> _initOnce() async {
     await Firebase.initializeApp();
     FirebaseFirestore.instance.settings = Settings(
       persistenceEnabled: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
   }
+
+  /// True once Firebase is usable.
+  static bool get isReady => _init != null;
 
   /// Prefix search over the `users` collection, matching display name first
   /// and email as a fallback. Firestore range queries are case-sensitive, so we

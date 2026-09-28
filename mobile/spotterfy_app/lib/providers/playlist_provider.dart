@@ -26,7 +26,15 @@ String _encodePlaylistsIsolate(List<Map<String, dynamic>> data) {
 }
 
 class PlaylistProvider extends ChangeNotifier {
-  final PlaylistService _playlistService = PlaylistService();
+  /// Created on first use, not in a field initializer.
+  ///
+  /// [PlaylistService] touches `FirebaseFirestore.instance` in its own field
+  /// initializer, which throws if Firebase has not been initialised yet. This
+  /// provider is created eagerly (Android Auto can bind to the media service
+  /// before the splash has finished booting), so constructing the service here
+  /// would race the splash's `Firebase.initializeApp()`.
+  PlaylistService? _service;
+  PlaylistService get _playlistService => _service ??= PlaylistService();
 
   PlaylistProvider() {
     // Android Auto browses the library through this provider, so hand it a
