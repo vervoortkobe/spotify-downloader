@@ -149,8 +149,10 @@ class PlaylistProvider extends ChangeNotifier {
     _isLoading = false;
     notifyListeners();
     // Android Auto caches the browse tree it was handed, so an open car screen
-    // would keep showing the pre-refresh playlists without this.
-    AutoLibraryBridge.libraryChanged();
+    // would keep showing the pre-refresh playlists without this. `libraryReady`
+    // also fires the first-notification hook, which is what lets a car that
+    // connected before sign-in finished pick the library up.
+    AutoLibraryBridge.instance.libraryReady();
   }
 
   @override

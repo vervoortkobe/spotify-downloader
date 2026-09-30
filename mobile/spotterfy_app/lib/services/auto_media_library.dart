@@ -56,6 +56,26 @@ class AutoLibraryBridge {
   void bindLibrary(Future<AutoLibrarySnapshot> Function() loader) =>
       _libraryLoader = loader;
 
+  /// Fired once the browse tree has content that can be offered to the car.
+  ///
+  /// Android Auto holds a media session per drive and, per Google's guidance,
+  /// expects an app that was playing recently to pick up where it left off. It
+  /// does not poll: without a notification it keeps showing the empty state it
+  /// got on connect.
+  static final List<VoidCallback> _readyListeners = [];
+
+  static void addReadyListener(VoidCallback l) => _readyListeners.add(l);
+
+  static void removeReadyListener(VoidCallback l) => _readyListeners.remove(l);
+
+  static void _notifyReady() {
+    for (final l in List.of(_readyListeners)) {
+      try {
+        l();
+      } catch (_) {}
+    }
+  }
+
   /// [PlayerProvider] registers playback here.
   void bindPlayback(
     Future<void> Function(List<TrackModel> tracks, int index) play,
@@ -91,6 +111,7 @@ class AutoLibraryBridge {
       // failing the browse tree.
       await FirebaseService.initialize();
       final base = await _libraryLoader?.call() ?? const AutoLibrarySnapshot();
+      if (!base.isEmpty) _notifyReady();
       // Device folders come from disk rather than Firestore, so they are
       // resolved here. They stay useful when signed out, which is exactly the
       // state Android Auto can wake the app into.
@@ -107,11 +128,19 @@ class AutoLibraryBridge {
       // library, so this is the first time the device folders are known to the
       // car. Nudge it to re-read the tree.
       _notifyLibraryChanged();
+      _notifyReady();
       return out;
     } catch (e) {
       debugPrint('[Auto] library load failed: $e');
       return const AutoLibrarySnapshot();
     }
+  }
+
+  /// Called by the app once the signed-in user's playlists are in memory, so a
+  /// car that connected before login finished can offer them.
+  void libraryReady() {
+    _notifyReady();
+    _notifyLibraryChanged();
   }
 
   /// Serves Android Auto's browse tree.
@@ -153,6 +182,11 @@ class AutoLibraryBridge {
                 : '${withTracks.length} playlist${withTracks.length == 1 ? '' : 's'}',
             artUri: await resolveArtUri(withTracks.first.tracks.first),
             playable: false,
+            extras: const {
+              // Categories read better as a row of tiles than as text rows.
+              AndroidContentStyle.browsableHintKey:
+                  AndroidContentStyle.categoryGridItemHintValue,
+            },
           ),
         );
       }
@@ -314,6 +348,12 @@ class AutoLibraryBridge {
       artist: '${p.tracks.length} tracks',
       artUri: art,
       playable: false,
+      extras: const {
+        // Tiles in the car, matching how Spotify and Samsung Music present
+        // their libraries.
+        AndroidContentStyle.browsableHintKey:
+            AndroidContentStyle.gridItemHintValue,
+      },
     );
   }
 

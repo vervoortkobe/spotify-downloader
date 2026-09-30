@@ -97,6 +97,16 @@ Future<void> ensureAudioHandler() async {
         androidNotificationOngoing: false,
         // MUST be monochrome drawable with alpha - mipmap adaptive icon fails on Android 13+/16
         androidNotificationIcon: 'drawable/ic_notification',
+        // Declares the content style to Android Auto. Without this the car
+        // falls back to a generic text list, which is why the library looked
+        // empty/odd next to Spotify's tile grid.
+        androidBrowsableRootExtras: {
+          AndroidContentStyle.supportedKey: true,
+          AndroidContentStyle.browsableHintKey:
+              AndroidContentStyle.gridItemHintValue,
+          AndroidContentStyle.playableHintKey:
+              AndroidContentStyle.listItemHintValue,
+        },
       ),
     );
     audioHandler = handler;
@@ -119,6 +129,41 @@ class SpotterfyAudioHandler extends BaseAudioHandler
   Future<void> Function(Duration)? onSeekRequested;
 
   late final _ChildrenSubscription _subscription = _ChildrenSubscription();
+
+  /// Replays the last session into the media session.
+  ///
+  /// Android Auto does not poll a media app: it connects once and keeps showing
+  /// whatever it was given. Restoring the queue here is what makes the car show
+  /// "resume" content instead of an empty app, mirroring how Spotify and
+  /// Samsung Music surface the last session on connect.
+  Future<void> restoreSession({
+    required List<TrackModel> queue,
+    required int index,
+    required Duration position,
+    required bool wasPlaying,
+  }) async {
+    if (queue.isEmpty) return;
+    final i = index.clamp(0, queue.length - 1);
+    _tracks = List.of(queue);
+    _index = i;
+    _position = position;
+    _duration = Duration(milliseconds: queue[i].durationMs);
+    // Deliberately does not resume audio: the car decides whether to start
+    // playing. This only populates the browseable queue and metadata.
+    _isPlaying = false;
+    this.queue.add(_tracks.map(_toMediaItem).toList());
+    final item = _toMediaItem(
+      queue[i],
+    ).copyWith(duration: _duration != Duration.zero ? _duration : null);
+    mediaItem.add(item);
+    AutoLibraryBridge.instance.updatePlaybackState(_tracks, queue[i]);
+    _publishCurrentArt();
+    // Ask the car to re-read the tree now that there is a session to resume.
+    AutoLibraryBridge.libraryChanged();
+    if (wasPlaying) {
+      debugPrint('[Auto] session restored paused at ${position.inSeconds}s');
+    }
+  }
 
   // Noize-style throttled broadcast (avoid spam on position ticks)
   Timer? _throttleTimer;

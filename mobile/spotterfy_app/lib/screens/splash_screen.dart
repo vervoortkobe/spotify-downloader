@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
@@ -8,6 +10,7 @@ import 'package:spotterfy_app/screens/admin_screen.dart';
 import 'package:spotterfy_app/screens/main_screen.dart';
 import 'package:spotterfy_app/services/firebase_service.dart' as fb;
 import 'package:spotterfy_app/widgets/refresh_button.dart';
+import 'package:spotterfy_app/services/audio_handler.dart';
 
 /// Launch screen, and the app's bootstrap gate.
 ///
@@ -116,6 +119,14 @@ class _SplashScreenState extends State<SplashScreen>
       });
       return;
     }
+    // Connect the media service during boot, not on first playback.
+    //
+    // Android Auto wakes the app by binding to the MediaBrowserService, which
+    // starts the Flutter engine but does NOT start playback. If the audio
+    // service were only initialised lazily from play(), the native side would
+    // still have no listener when the car asked for the browse tree, and
+    // `onLoadChildren` would answer with an empty list - an empty media app.
+    unawaited(ensureAudioHandler());
     if (!mounted) return;
     // Hold the bar short of full while auth resolves, so reaching 100% always
     // coincides with actually leaving this screen.

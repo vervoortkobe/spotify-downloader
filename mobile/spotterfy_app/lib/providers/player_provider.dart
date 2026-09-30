@@ -23,6 +23,11 @@ class PlayerProvider extends ChangeNotifier {
   bool _isPlaying = false;
   bool _completed = false;
   Duration _position = Duration.zero;
+
+  /// Whether playback was running when the app last exited. Only used to decide
+  /// whether restoring into the media session is worth a resume hint - never to
+  /// start audio by itself.
+  bool _wasPlayingBeforeRestart = false;
   Duration _duration = Duration.zero;
   Duration _buffered = Duration.zero;
 
@@ -66,6 +71,10 @@ class PlayerProvider extends ChangeNotifier {
     );
     _loadPlayerState();
     _requestNotificationPermission();
+    // Android Auto connects to the media browser service without ever opening
+    // the app, so nothing else would restore the previous session into the
+    // media session and the car would show an empty player.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreForAuto());
     // Let Android Auto start playback from rows it browses.
     AutoLibraryBridge.instance.bindPlayback((tracks, index) async {
       setQueue(tracks, startIndex: index);
@@ -721,6 +730,34 @@ class PlayerProvider extends ChangeNotifier {
     super.dispose();
   }
 
+  /// Pushes the persisted session into the media session once the audio service
+  /// exists, so Android Auto has something to show on connect.
+  ///
+  /// Waits for [ensureAudioHandler] rather than assuming it: the service may not
+  /// be up yet on a cold start, and skipping the restore leaves the car looking at
+  /// an empty app for the rest of the drive.
+  Future<void> _restoreForAuto() async {
+    try {
+      await ensureAudioHandler();
+      final handler = audioHandler;
+      if (handler == null) return;
+      if (_queue.isEmpty) {
+        // Nothing saved yet. Still refresh the browse tree so the car sees the
+        // library rather than an empty root.
+        AutoLibraryBridge.libraryChanged();
+        return;
+      }
+      await handler.restoreSession(
+        queue: _queue,
+        index: _currentIndex,
+        position: _position,
+        wasPlaying: _wasPlayingBeforeRestart,
+      );
+    } catch (e) {
+      debugPrint('[Player] auto session restore skipped: $e');
+    }
+  }
+
   Future<void> _loadPlayerState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -734,6 +771,10 @@ class PlayerProvider extends ChangeNotifier {
           _currentIndex = currentIndex;
           _currentTrack = _queue[_currentIndex];
           _position = Duration(milliseconds: positionMs);
+          // Remembered so the media session can be restored paused; auto-resume is the
+          // driver's decision, not ours.
+          _wasPlayingBeforeRestart =
+              prefs.getBool('player_was_playing') ?? false;
           notifyListeners();
         }
       }
