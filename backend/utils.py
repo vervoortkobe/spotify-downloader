@@ -98,20 +98,82 @@ _YT_CACHE_TTL = 3600 * 6
 
 _AUDIO_URL_CACHE: dict[str, tuple[str, str, dict, float]] = {}
 _AUDIO_CACHE_LOCK = threading.Lock()
+# How long a resolved URL is considered "warm": no reason to re-resolve, just
+# stream it.
 _AUDIO_CACHE_TTL = 600
+# Hard expiry for a resolved Google Video URL. These stay valid for hours, so an
+# entry past the warm TTL is still far cheaper than paying for a fresh yt-dlp
+# extraction - which is what used to make a re-play of a recent track crawl,
+# worst of all at 00:00 when the daily discover refresh saturates the box.
+# The proxied fetch still validates it, and a dead URL falls through to a fresh
+# extraction in open_audio_stream, so a too-long TTL cannot serve a broken link.
+_AUDIO_CACHE_MAX_AGE = 6 * 3600
+
+# Single-flight: one extraction per source at a time.
+#
+# Without this, a cold cache let every concurrent request for the same track run
+# its own 3-strategy x proxy/direct extraction - up to six yt-dlp runs of the
+# same video. Skipping ahead through a playlist, or the app's own next-track
+# prefetch racing the real request, both hit this. Waiters reuse the winner's
+# result instead of duplicating the work.
+#
+# A waiter signals "someone else is extracting" and blocks on a Condition until
+# the in-flight extraction finishes, so it never starts a duplicate. After waking
+# it re-reads the cache (or shares the recorded failure) instead of extracting
+# again, which is what stops the thundering herd when the shared URL is bad.
+_AUDIO_EXTRACT_LOCKS: dict[str, threading.Condition] = {}
+_AUDIO_EXTRACT_BUSY: set[str] = set()
+_AUDIO_EXTRACT_LOCKS_GUARD = threading.Lock()
+
+
+def _begin_extract(source: str) -> bool:
+    """Claim the extraction slot. True if this caller should extract."""
+    with _AUDIO_EXTRACT_LOCKS_GUARD:
+        cond = _AUDIO_EXTRACT_LOCKS.setdefault(source, threading.Condition())
+        if source in _AUDIO_EXTRACT_BUSY:
+            return False
+        _AUDIO_EXTRACT_BUSY.add(source)
+        return True
+
+
+def _wait_for_extract(source: str) -> None:
+    """Block until an in-flight extraction for [source] finishes."""
+    with _AUDIO_EXTRACT_LOCKS_GUARD:
+        cond = _AUDIO_EXTRACT_LOCKS.get(source)
+    if cond is None:
+        return
+    with cond:
+        while source in _AUDIO_EXTRACT_BUSY:
+            cond.wait()
+
+
+def _end_extract(source: str) -> None:
+    """Release the extraction slot and wake any waiters."""
+    with _AUDIO_EXTRACT_LOCKS_GUARD:
+        cond = _AUDIO_EXTRACT_LOCKS.get(source)
+        _AUDIO_EXTRACT_BUSY.discard(source)
+    if cond is not None:
+        with cond:
+            cond.notify_all()
+
+
 
 def _audio_cache_get(source: str) -> tuple[str, str, dict] | None:
     with _AUDIO_CACHE_LOCK:
         e = _AUDIO_URL_CACHE.get(source)
-        if e and (time.time() - e[3]) < _AUDIO_CACHE_TTL:
+        if e and (time.time() - e[3]) < _AUDIO_CACHE_MAX_AGE:
             return e[0], e[1], e[2]
+        if e:
+            # Older than the URL can possibly be valid; stop handing it out.
+            _AUDIO_URL_CACHE.pop(source, None)
     return None
+
 
 def _audio_cache_set(source: str, audio_url: str, content_type: str, headers: dict):
     with _AUDIO_CACHE_LOCK:
         _AUDIO_URL_CACHE[source] = (audio_url, content_type, headers, time.time())
         if len(_AUDIO_URL_CACHE) > 500:
-            cutoff = time.time() - _AUDIO_CACHE_TTL
+            cutoff = time.time() - _AUDIO_CACHE_MAX_AGE
             stale = [k for k, v in list(_AUDIO_URL_CACHE.items()) if v[3] < cutoff]
             for k in stale:
                 del _AUDIO_URL_CACHE[k]
@@ -732,6 +794,49 @@ def open_audio_stream(source, range_header=None):
         print(f"[Stream] Cache stale ({err}), re-extracting...", flush=True)
         with _AUDIO_CACHE_LOCK:
             _AUDIO_URL_CACHE.pop(source, None)
+    return _open_audio_stream_locked(source, range_header, proxy_url, proxy_dict)
+
+
+def _open_audio_stream_locked(source, range_header, proxy_url, proxy_dict):
+    # Single-flight. The first caller for this source runs the extraction; the
+    # others wait for it to finish and then reuse its outcome.
+    #
+    # A waiter must NOT re-extract when the shared entry turns out to be unusable:
+    # that is the thundering herd all over again, one hop later. Waiters re-read
+    # the cache once, and if the winner produced nothing they share the winner's
+    # failure so the caller can fall back - the next fresh request (slot already
+    # released) gets a clean attempt.
+    if not _begin_extract(source):
+        _wait_for_extract(source)
+        again = _audio_cache_get(source)
+        if again:
+            audio_url, content_type, base_headers = again
+            print(
+                f"[Stream] Single-flight HIT (resolved by another request) for {source[:80]}",
+                flush=True,
+            )
+            resp, err = _proxy_googlevideo(
+                audio_url, content_type, base_headers, range_header, proxy_dict
+            )
+            if resp:
+                return resp, None
+            print(
+                f"[Stream] Single-flight entry unusable ({err}), sharing the failure",
+                flush=True,
+            )
+            with _AUDIO_CACHE_LOCK:
+                _AUDIO_URL_CACHE.pop(source, None)
+            return None, f"resolved concurrently but the stream failed: {err}"
+        # The winner stored nothing (it failed). Share that rather than repeating
+        # the whole extraction for every waiter.
+        return None, "a concurrent request failed to resolve this source"
+    try:
+        return _extract_and_stream(source, range_header, proxy_url, proxy_dict)
+    finally:
+        _end_extract(source)
+
+
+def _extract_and_stream(source, range_header, proxy_url, proxy_dict):
     strategies = [
         _youtube_extractor_args(),
         {"youtube": {"player_client": ["android"], "formats": ["missing_pot"]}},

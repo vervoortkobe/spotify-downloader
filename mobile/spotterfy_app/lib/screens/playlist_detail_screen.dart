@@ -27,10 +27,19 @@ class _PlaylistHeader extends StatelessWidget {
   final VoidCallback onPlay;
   final VoidCallback onShuffle;
 
+  /// Whether [playlist] belongs to the signed-in user.
+  ///
+  /// Passed in rather than inferred from an empty [PlaylistModel.owner], because
+  /// "no owner" now covers two different things: a playlist that is genuinely
+  /// yours, and a curated Discover playlist that has no author at all. Only the
+  /// former may claim "Created by you".
+  final bool isMine;
+
   const _PlaylistHeader({
     required this.playlist,
     required this.onPlay,
     required this.onShuffle,
+    required this.isMine,
   });
 
   static String _formatTotal(int ms) {
@@ -83,17 +92,22 @@ class _PlaylistHeader extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      playlist.owner.isEmpty
-                          ? 'Created by you'
-                          : 'By ${playlist.owner}',
-                      style: const TextStyle(
-                        color: Color(0xFFa1a1aa),
-                        fontSize: 12,
+                    // No owner line at all for a playlist with no author - the
+                    // curated Discover shelves. "Created by you" would be a lie
+                    // there, and it was the only thing that used to stand in for
+                    // the missing name.
+                    if (playlist.owner.isNotEmpty || isMine)
+                      Text(
+                        playlist.owner.isEmpty
+                            ? 'Created by you'
+                            : 'By ${playlist.owner}',
+                        style: const TextStyle(
+                          color: Color(0xFFa1a1aa),
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
                     const SizedBox(height: 8),
                     _statRow(tracks.length, totalMs, known, downloaded),
                   ],
@@ -1033,6 +1047,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 playlist: _playlist,
                 onPlay: _playAll,
                 onShuffle: _shuffleAll,
+                isMine:
+                    _playlist.isUsersOwn ||
+                    (_playlist.creatorUid.isNotEmpty &&
+                        _playlist.creatorUid == _myUid),
               ),
             if (_playlist.tracks.isNotEmpty) _viewControls(),
             Expanded(

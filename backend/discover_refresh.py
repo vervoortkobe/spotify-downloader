@@ -119,8 +119,14 @@ def scrape_and_store_one(url: str, db) -> bool:
                 "sourceUrl": yt_url,
             }
 
-        # staggered with small delay to keep WARP happy
-        with ThreadPoolExecutor(max_workers=4) as ex:
+        # Staggered with a small delay to keep WARP happy.
+        #
+        # Worker count is capped (and overridable) because this pool competes
+        # with live playback for the same CPU, proxy and egress. Widening it made
+        # the nightly refresh finish faster but starved concurrent /api/stream
+        # requests, which is a far worse trade than a slower background job.
+        workers = max(1, int(os.environ.get("DISCOVER_REFRESH_WORKERS", "2")))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
             futures = {ex.submit(process, t): i for i, t in enumerate(raw_tracks)}
             by_idx = {}
             for f in as_completed(futures):

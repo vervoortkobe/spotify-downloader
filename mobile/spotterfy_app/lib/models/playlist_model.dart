@@ -31,6 +31,34 @@ class PlaylistModel {
     this.lastTrackSync,
   }) : createdAt = createdAt ?? DateTime.now();
 
+  /// Copy with the *creator account* removed, keeping the displayed author.
+  ///
+  /// For the curated Discover shelves (Top Genres / Top Artists). The backend
+  /// publishes those under a `system_discover` uid, which is not a real user, so
+  /// the detail screen would offer a profile button that resolves to nobody.
+  /// Clearing [creatorUid] is what hides that button - the screen renders it
+  /// purely on "does this playlist have an owner uid".
+  ///
+  /// [owner] is deliberately **kept**: it is the display name, not the account,
+  /// so these keep reading "By Spotify". Only the profile affordance goes away.
+  /// [id], [tracks] and [spotifyUrl] are preserved, so the playlist still opens,
+  /// scrapes and plays exactly as before.
+  PlaylistModel withoutCreator() => PlaylistModel(
+    id: id,
+    name: name,
+    owner: owner,
+    coverUrl: coverUrl,
+    tracks: tracks,
+    source: source,
+    spotifyUrl: spotifyUrl,
+    creatorUid: '',
+    sharedWith: sharedWith,
+    isCustom: isCustom,
+    isUsersOwn: isUsersOwn,
+    createdAt: createdAt,
+    lastTrackSync: lastTrackSync,
+  );
+
   /// Human-readable name for [source].
   ///
   /// Sources are stored as bare lowercase slugs (`spotify`, `youtube`,

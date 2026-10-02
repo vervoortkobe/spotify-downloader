@@ -194,10 +194,20 @@ def create_app():
                     refresh_all_discover()
                 except Exception as e:
                     print(f"[DiscoverScheduler] refresh failed: {e}", flush=True)
-                # sleep until next 04:00 UTC
+                # Sleep until the next refresh hour.
+                #
+                # This deliberately is NOT 00:00: the daily refresh walks ~30
+                # playlists with a thread pool of yt-dlp extractions, and
+                # midnight is exactly when the app is busiest. Running the two
+                # at the same moment is what made pressing play crawl for
+                # minutes - the play request was queued behind a saturated box
+                # and had to redo its own cold extraction. 04:00 UTC is quiet.
+                # Override with DISCOVER_REFRESH_HOUR (0-23).
                 try:
+                    hour = int(os.environ.get("DISCOVER_REFRESH_HOUR", "4"))
+                    hour = max(0, min(23, hour))
                     now = _dt.datetime.utcnow()
-                    nxt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                    nxt = now.replace(hour=hour, minute=0, second=0, microsecond=0)
                     if nxt <= now:
                         nxt += _dt.timedelta(days=1)
                     secs = (nxt - now).total_seconds()
@@ -206,7 +216,11 @@ def create_app():
                 except Exception:
                     _t.sleep(24 * 3600)
         _th.Thread(target=_discover_scheduler, daemon=True).start()
-        print("[DiscoverScheduler] enabled (daily 00:00 UTC, disable with DISCOVER_REFRESH_DISABLE=1)", flush=True)
+        print(
+            f"[DiscoverScheduler] enabled (daily {os.environ.get('DISCOVER_REFRESH_HOUR', '4')}:00 UTC, "
+            "disable with DISCOVER_REFRESH_DISABLE=1)",
+            flush=True,
+        )
 
     return app
 

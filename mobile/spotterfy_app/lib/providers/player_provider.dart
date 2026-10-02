@@ -341,29 +341,45 @@ class PlayerProvider extends ChangeNotifier {
 
   /// Warms the server-side extraction for the *next* queue track.
   ///
-  /// The backend caches the resolved audio URL, so touching it a couple of
-  /// seconds early means the next track skips the slow yt-dlp resolution and
-  /// starts almost immediately. Fire-and-forget: a failure here is harmless
-  /// because the real load still falls back normally.
+  /// The backend caches the resolved audio URL, so touching it early means the
+  /// next track skips the slow yt-dlp resolution and starts almost immediately.
+  /// Fire-and-forget: a failure here is harmless because the real load still
+  /// falls back normally.
+  ///
+  /// Two tracks ahead are warmed, not one. Resolving a track can take seconds
+  /// when the extraction is cold, and one ahead only covers the common case of
+  /// listening straight through; prefetching the one after that covers skipping
+  /// or letting a track finish early. Requests for the same URL collapse on the
+  /// backend's single-flight lock, so the overlap costs nothing.
   void _prefetchNextSource() {
     if (isRadio) return;
-    final next = _currentIndex + 1;
-    if (next < 0 || next >= _queue.length) return;
-    final upcoming = _queue[next];
-    // Local files and direct radio streams need no resolution.
-    if (_isLocalPath(upcoming.sourceUrl)) return;
-    if (isDirectRadioUrl(upcoming.sourceUrl)) return;
-    final url = ApiService.streamTrackUrl(upcoming.sourceUrl);
-    _prefetchTimer?.cancel();
-    _prefetchTimer = Timer(const Duration(seconds: 2), () {
-      try {
-        http
-            .head(Uri.parse(url))
-            .timeout(const Duration(seconds: 8))
-            .then((_) {}, onError: (_) {});
-      } catch (_) {}
-    });
+    for (final ahead in [1, 2]) {
+      final next = _currentIndex + ahead;
+      if (next < 0 || next >= _queue.length) continue;
+      final upcoming = _queue[next];
+      // Local files and direct radio streams need no resolution.
+      if (_isLocalPath(upcoming.sourceUrl)) continue;
+      if (isDirectRadioUrl(upcoming.sourceUrl)) continue;
+      final url = ApiService.streamTrackUrl(upcoming.sourceUrl);
+      if (_prefetchedUrls.contains(url)) continue;
+      _prefetchedUrls.add(url);
+      // Sent right away rather than on a delay: the whole point is to have the
+      // extraction finished before the track is needed, and the old 2s wait just
+      // threw away the start of that window.
+      Timer.run(() {
+        try {
+          http
+              .head(Uri.parse(url))
+              .timeout(const Duration(seconds: 8))
+              .then((_) {}, onError: (_) {});
+        } catch (_) {}
+      });
+    }
   }
+
+  /// Stream URLs already warmed by [_prefetchNextSource], so repeatedly
+  /// re-selecting the same track does not re-issue the request every time.
+  final Set<String> _prefetchedUrls = {};
 
   /// Absolute path of the app-downloaded file for [track], if one exists.
   ///
@@ -431,8 +447,6 @@ class PlayerProvider extends ChangeNotifier {
 
   /// The user pressed pause before the track finished loading.
   bool _pauseRequested = false;
-
-  Timer? _prefetchTimer;
 
   /// Live radio streams are played directly rather than through the backend
   /// proxy. Shared by [play] and [_prefetchNextSource] so both agree on what
@@ -749,7 +763,6 @@ class PlayerProvider extends ChangeNotifier {
   @override
   void dispose() {
     _radioDriftTimer?.cancel();
-    _prefetchTimer?.cancel();
     _savePlayerState();
     _player.dispose();
     super.dispose();

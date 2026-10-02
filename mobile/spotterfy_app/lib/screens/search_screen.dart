@@ -504,14 +504,24 @@ class _SearchScreenState extends State<SearchScreen> {
       return PlaylistModel(
         id: url.hashCode.toString(),
         name: fallbackNames[i % fallbackNames.length],
+        // Matches the real discover docs so "By Spotify" does not blink out and
+        // back in once the cache resolves.
+        owner: _discoverOwner,
         coverUrl: '',
         tracks: [],
-        creatorUid: 'placeholder_discover',
+        // No creator account behind a discover shelf - see
+        // [PlaylistModel.withoutCreator].
+        creatorUid: '',
         source: 'spotify',
         spotifyUrl: url,
       );
     });
   }
+
+  /// Author shown for the curated Discover shelves while they have no backend
+  /// data. These are all Spotify editorial playlists, so it is the same name the
+  /// fetched docs carry.
+  static const String _discoverOwner = 'Spotify';
 
   List<PlaylistModel> _mergeWithPlaceholders(
     List<String> urls,
@@ -523,13 +533,18 @@ class _SearchScreenState extends State<SearchScreen> {
     return List.generate(urls.length, (i) {
       final clean = urls[i].split('?').first;
       final hit = byUrl[clean];
-      if (hit != null) return hit;
+      // The backend publishes these under a `system_discover` uid, which is not
+      // a real user, so drop the profile button while keeping the "By Spotify"
+      // author line. Community playlists are not built here, so they keep their
+      // real creator and their profile button.
+      if (hit != null) return hit.withoutCreator();
       return PlaylistModel(
         id: clean.hashCode.toString(),
         name: fallbackNames[i % fallbackNames.length],
+        owner: _discoverOwner,
         coverUrl: '',
         tracks: [],
-        creatorUid: 'placeholder_discover',
+        creatorUid: '',
         source: 'spotify',
         spotifyUrl: clean,
       );
