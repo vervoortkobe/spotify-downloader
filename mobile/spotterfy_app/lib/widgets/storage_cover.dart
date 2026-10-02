@@ -11,6 +11,7 @@ class StorageCoverCache {
   static final Map<String, Uint8List?> _cache = {};
 
   static bool contains(String path) => _cache.containsKey(path);
+  static Uint8List? get(String path) => _cache[path];
 
   static Future<Uint8List?> load(String path) async {
     if (_cache.containsKey(path)) return _cache[path];
@@ -64,25 +65,35 @@ class _StorageCoverState extends State<StorageCover> {
 
   @override
   Widget build(BuildContext context) {
+    // If we already have the bytes cached in memory, render immediately without waiting for a microtask/Future
+    final cachedBytes = StorageCoverCache.get(widget.path);
+    if (cachedBytes != null) {
+      return _buildImage(cachedBytes);
+    }
+
     return FutureBuilder<Uint8List?>(
       future: _future,
       builder: (_, snap) {
         final bytes = snap.data;
         if (bytes != null) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(widget.radius),
-            child: Image.memory(
-              bytes,
-              width: widget.size,
-              height: widget.size,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) => _fallback(),
-            ),
-          );
+          return _buildImage(bytes);
         }
         return _fallback();
       },
+    );
+  }
+
+  Widget _buildImage(Uint8List bytes) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.radius),
+      child: Image.memory(
+        bytes,
+        width: widget.size,
+        height: widget.size,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) => _fallback(),
+      ),
     );
   }
 

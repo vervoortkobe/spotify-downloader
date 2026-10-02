@@ -110,7 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       title: 'Profile',
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -670,7 +670,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
       ),
       title: Text(
-        playlist.name,
+        playlist.displayName,
         style: const TextStyle(
           color: SpotterfyTheme.text,
           fontWeight: FontWeight.w600,

@@ -188,4 +188,83 @@ class NotificationService {
       await _plugin!.cancel(id: 0);
     }
   }
+
+  // Download notification ID (different from playback)
+  static const int _downloadNotificationId = 100;
+
+  /// Shows a download progress notification.
+  ///
+  /// [progress] should be between 0.0 and 1.0, or null for indeterminate.
+  /// [title] is the track/playlist title.
+  /// [subtitle] is an optional subtitle (e.g., "Downloading...", "Saving...")
+  /// [maxProgress] and [progressValue] can be used for specific byte counts.
+  Future<void> showDownloadProgress({
+    required String title,
+    String? subtitle,
+    double? progress, // 0.0 to 1.0, or null for indeterminate
+    int? maxProgress,
+    int? progressValue,
+    bool isComplete = false,
+    bool isError = false,
+  }) async {
+    if (!_initialized || _plugin == null) return;
+
+    final isIndeterminate = progress == null;
+    final prog = isIndeterminate ? 0 : (progress * 100).clamp(0, 100).toInt();
+    final maxProg = maxProgress ?? 100;
+    final progValue = progressValue ?? prog;
+
+    final color = isError
+        ? const Color(0xFFef4444)
+        : (isComplete ? const Color(0xFF10b981) : const Color(0xFF3b82f6));
+
+    final body =
+        subtitle ??
+        (isIndeterminate
+            ? 'Downloading...'
+            : (isComplete ? 'Download complete' : '$prog%'));
+
+    final androidDetails = AndroidNotificationDetails(
+      'download_channel',
+      'Downloads',
+      channelDescription: 'Download progress notifications',
+      importance: Importance.low,
+      priority: Priority.low,
+      ongoing: !isComplete && !isError,
+      autoCancel: isComplete || isError,
+      onlyAlertOnce: true,
+      showWhen: false,
+      playSound: isComplete && !isError,
+      enableVibration: false,
+      visibility: NotificationVisibility.public,
+      color: color,
+      colorized: true,
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+      showProgress: !isComplete && !isError,
+      maxProgress: maxProg,
+      progress: progValue,
+      indeterminate: isIndeterminate,
+      styleInformation: BigTextStyleInformation(
+        body,
+        htmlFormatBigText: true,
+        htmlFormatTitle: true,
+        contentTitle: title,
+        htmlFormatContentTitle: true,
+      ),
+    );
+
+    await _plugin!.show(
+      id: _downloadNotificationId,
+      title: title,
+      body: body,
+      notificationDetails: NotificationDetails(android: androidDetails),
+    );
+  }
+
+  /// Cancels the download notification.
+  Future<void> cancelDownloadNotification() async {
+    if (_plugin != null) {
+      await _plugin!.cancel(id: _downloadNotificationId);
+    }
+  }
 }

@@ -51,12 +51,17 @@ class _StorageScreenState extends State<StorageScreen> {
     if (Platform.isAndroid) {
       // Android 13+ uses READ_MEDIA_AUDIO, older uses storage
       if (await Permission.audio.isGranted ||
-          await Permission.storage.isGranted)
+          await Permission.storage.isGranted) {
         return true;
+      }
       var s = await Permission.audio.request();
-      if (s.isGranted) return true;
+      if (s.isGranted) {
+        return true;
+      }
       s = await Permission.storage.request();
-      if (s.isGranted) return true;
+      if (s.isGranted) {
+        return true;
+      }
       // Also try mediaLibrary for some OEMs
       s = await Permission.mediaLibrary.request();
       return s.isGranted;

@@ -69,7 +69,9 @@ class _PlaylistHeader extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      playlist.name,
+                      // "By <owner>" sits directly underneath, so the title
+                      // drops the " - Owner" suffix the scraper adds.
+                      playlist.displayName,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
@@ -835,6 +837,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   void _showSortSheet() {
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: SpotterfyTheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),

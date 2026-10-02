@@ -127,15 +127,16 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
 
     final isRadio = player.isRadio;
-    final pos = player.position;
+    // `pos` and `sliderVal` are intentionally NOT read here. The seek bar and
+    // the elapsed time are wrapped in [_SeekSection], which subscribes to the
+    // position notifier itself - reading position at the top of this build made
+    // the whole now-playing page (backdrop, carousel, controls) rebuild on every
+    // tick of a playing track.
     final dur = isRadio
         ? (player.radioMaxListened.inMilliseconds > 0
               ? player.radioMaxListened
               : const Duration(seconds: 1))
         : player.duration;
-    final sliderVal = dur.inMilliseconds > 0
-        ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
     final queue = player.queue;
     final currentIndex = player.currentIndex.clamp(
       0,
@@ -228,52 +229,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       const SizedBox(height: 28),
-                      _SeekBar(
-                        progress: sliderVal.clamp(0.0, 1.0),
-                        buffered: dur.inMilliseconds > 0
-                            ? (player.buffered.inMilliseconds /
-                                      dur.inMilliseconds)
-                                  .clamp(0.0, 1.0)
-                            : 0.0,
-                        onSeek: (v) {
-                          final raw = Duration(
-                            milliseconds: (v * dur.inMilliseconds).round(),
-                          );
-                          final newPos = isRadio
-                              ? Duration(
-                                  milliseconds: raw.inMilliseconds.clamp(
-                                    0,
-                                    player.radioMaxListened.inMilliseconds,
-                                  ),
-                                )
-                              : raw;
-                          player.seekTo(newPos);
-                        },
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _fmtDuration(pos),
-                              style: const TextStyle(
-                                color: SpotterfyTheme.muted,
-                                fontSize: 12,
-                                fontFeatures: [FontFeature.tabularFigures()],
-                              ),
-                            ),
-                            Text(
-                              _fmtDuration(dur),
-                              style: const TextStyle(
-                                color: SpotterfyTheme.muted,
-                                fontSize: 12,
-                                fontFeatures: [FontFeature.tabularFigures()],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      _SeekSection(duration: dur, isRadio: isRadio),
                       const SizedBox(height: 20),
                       // Controls: symmetric layout so play/pause is always dead
                       // centre regardless of whether the skip buttons are shown.
@@ -388,12 +344,14 @@ class _PlayerScreenState extends State<PlayerScreen>
       ),
     );
   }
+}
 
-  String _fmtDuration(Duration d) {
-    final m = d.inMinutes.remainder(60);
-    final s = d.inSeconds.remainder(60);
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
+/// Formats a duration as `m:ss`. Top level rather than a member so the seek
+/// section can use it after the position read was moved out of the screen build.
+String _fmtDuration(Duration d) {
+  final m = d.inMinutes.remainder(60);
+  final s = d.inSeconds.remainder(60);
+  return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
 }
 
 /// Slowly drifting green gradient glows plus a field of soft green particles
@@ -850,6 +808,92 @@ class _CircleControlButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Seek bar, elapsed/total labels, and nothing else.
+///
+/// Its own widget so the ~5x/second position ticks only repaint this strip
+/// instead of the entire now-playing page - the animated backdrop, the cover
+/// carousel and the control cluster were all rebuilding with it.
+class _SeekSection extends StatelessWidget {
+  final Duration duration;
+  final bool isRadio;
+
+  const _SeekSection({required this.duration, required this.isRadio});
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.read<PlayerProvider>();
+    final dur = duration;
+    return Column(
+      children: [
+        ValueListenableBuilder<Duration>(
+          valueListenable: player.positionNotifier,
+          builder: (context, pos, _) {
+            return ValueListenableBuilder<Duration>(
+              valueListenable: player.bufferedNotifier,
+              builder: (context, buffered, _) {
+                final progress = dur.inMilliseconds > 0
+                    ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
+                    : 0.0;
+                final bufferedFrac = dur.inMilliseconds > 0
+                    ? (buffered.inMilliseconds / dur.inMilliseconds).clamp(
+                        0.0,
+                        1.0,
+                      )
+                    : 0.0;
+                return _SeekBar(
+                  progress: progress,
+                  buffered: bufferedFrac,
+                  onSeek: (v) {
+                    final raw = Duration(
+                      milliseconds: (v * dur.inMilliseconds).round(),
+                    );
+                    final newPos = isRadio
+                        ? Duration(
+                            milliseconds: raw.inMilliseconds.clamp(
+                              0,
+                              player.radioMaxListened.inMilliseconds,
+                            ),
+                          )
+                        : raw;
+                    player.seekTo(newPos);
+                  },
+                );
+              },
+            );
+          },
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              ValueListenableBuilder<Duration>(
+                valueListenable: player.positionNotifier,
+                builder: (context, pos, _) => Text(
+                  _fmtDuration(pos),
+                  style: const TextStyle(
+                    color: SpotterfyTheme.muted,
+                    fontSize: 12,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              Text(
+                _fmtDuration(dur),
+                style: const TextStyle(
+                  color: SpotterfyTheme.muted,
+                  fontSize: 12,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

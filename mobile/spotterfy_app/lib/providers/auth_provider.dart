@@ -194,8 +194,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> updateDisplayName(String name) async {
     if (_user == null) return;
     final trimmed = name.trim();
-    if (trimmed.length < 3)
+    if (trimmed.length < 3) {
       throw Exception('Name must be at least 3 characters');
+    }
     try {
       await _authService.updateDisplayName(_user!.uid, trimmed);
     } catch (e) {
@@ -212,8 +213,9 @@ class AuthProvider extends ChangeNotifier {
   }) async {
     if (_user == null) return;
     final trimmed = displayName.trim();
-    if (trimmed.length < 3)
+    if (trimmed.length < 3) {
       throw Exception('Name must be at least 3 characters');
+    }
     if (spotifyUrl.isNotEmpty && !spotifyUrl.contains('open.spotify.com')) {
       throw Exception('Invalid Spotify URL');
     }

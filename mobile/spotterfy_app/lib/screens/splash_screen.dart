@@ -360,7 +360,12 @@ class _AuthGateState extends State<_AuthGate> {
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => _targetFor(auth)),
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 200),
+            pageBuilder: (_, _, _) => _targetFor(auth),
+            transitionsBuilder: (_, anim, _, child) =>
+                FadeTransition(opacity: anim, child: child),
+          ),
         );
       });
     }

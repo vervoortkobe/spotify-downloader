@@ -5,7 +5,10 @@ import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/data_usage_screen.dart';
 import 'package:spotterfy_app/screens/equalizer_screen.dart';
+import 'package:spotterfy_app/screens/profile_screen.dart';
 import 'package:spotterfy_app/screens/storage_usage_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:spotterfy_app/providers/auth_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -19,6 +22,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final name = auth.user?.displayName ?? '';
+    final spotifyUrl = auth.user?.spotifyProfileUrl ?? '';
+
     return AppGradientScaffold(
       title: 'Settings',
       body: SingleChildScrollView(
@@ -27,9 +34,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Account section
+              // Profile section. Name and Spotify URL used to sit in their own
+              // loose rows under "Account", split from the Profile entry they
+              // actually describe; they are grouped here so everything about
+              // who you are reads as one block, each row showing its current
+              // value instead of just a chevron.
               Text(
-                'Account',
+                'Profile',
                 style: TextStyle(
                   color: SpotterfyTheme.muted,
                   fontSize: 12,
@@ -37,8 +48,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              _settingsItem(Icons.person, 'Profile', () {}),
-              _settingsItem(Icons.notifications, 'Notifications', () {}),
+              _settingsItem(
+                Icons.person,
+                'Profile',
+                subtitle: name.isEmpty ? 'Not set' : name,
+                onTap: () =>
+                    Navigator.push(context, swipeRoute(const ProfileScreen())),
+              ),
+              _settingsItem(
+                Icons.edit,
+                'Name',
+                subtitle: name.isEmpty ? 'Not set' : name,
+                onTap: _showNameDialog,
+              ),
+              _settingsItem(
+                Icons.link,
+                'Spotify URL',
+                subtitle: spotifyUrl.isEmpty ? 'Not linked' : spotifyUrl,
+                onTap: _showSpotifyUrlDialog,
+              ),
+              _settingsItem(Icons.notifications, 'Notifications', onTap: () {}),
               const SizedBox(height: 24),
 
               // Appearance section
@@ -51,7 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              _settingsItem(Icons.brightness_6, 'Theme', () {}),
+              _settingsItem(Icons.brightness_6, 'Theme', onTap: () {}),
               const SizedBox(height: 24),
 
               // Playback section
@@ -64,10 +93,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              _settingsItem(Icons.audiotrack, 'Audio Quality', () {}),
-              _settingsItem(Icons.graphic_eq, 'Equalizer', () {
-                Navigator.push(context, swipeRoute(const EqualizerScreen()));
-              }),
+              _settingsItem(Icons.audiotrack, 'Audio Quality', onTap: () {}),
+              _settingsItem(
+                Icons.graphic_eq,
+                'Equalizer',
+                onTap: () {
+                  Navigator.push(context, swipeRoute(const EqualizerScreen()));
+                },
+              ),
               const SizedBox(height: 24),
 
               // Network section
@@ -80,9 +113,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              _settingsItem(Icons.data_usage, 'Data Usage', () {
-                Navigator.push(context, swipeRoute(const DataUsageScreen()));
-              }),
+              _settingsItem(
+                Icons.data_usage,
+                'Data Usage',
+                onTap: () {
+                  Navigator.push(context, swipeRoute(const DataUsageScreen()));
+                },
+              ),
               const SizedBox(height: 24),
 
               // Storage section
@@ -95,9 +132,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              _settingsItem(Icons.storage, 'Storage usage', () {
-                Navigator.push(context, swipeRoute(const StorageUsageScreen()));
-              }),
+              _settingsItem(
+                Icons.storage,
+                'Storage usage',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    swipeRoute(const StorageUsageScreen()),
+                  );
+                },
+              ),
               const SizedBox(height: 24),
 
               // About section
@@ -110,9 +154,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              _settingsItem(Icons.info_outline, 'About Spotterfy', () {}),
-              _settingsItem(Icons.privacy_tip, 'Privacy Policy', () {}),
-              _settingsItem(Icons.feedback, 'Send Feedback', () {}),
+              _settingsItem(
+                Icons.info_outline,
+                'About Spotterfy',
+                onTap: () {},
+              ),
+              _settingsItem(Icons.privacy_tip, 'Privacy Policy', onTap: () {}),
+              _settingsItem(Icons.feedback, 'Send Feedback', onTap: () {}),
               const SizedBox(height: 24),
 
               // Version + update check, pinned to the bottom of the page.
@@ -205,6 +253,132 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ).showSnackBar(const SnackBar(content: Text('Spotterfy is up to date')));
   }
 
+  /// Shows a dialog to edit the display name.
+  Future<void> _showNameDialog() async {
+    final auth = context.read<AuthProvider>();
+    final currentName = auth.user?.displayName ?? '';
+    final controller = TextEditingController(text: currentName);
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: SpotterfyTheme.surface,
+        title: const Text('Edit display name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Display name',
+            hintStyle: TextStyle(color: SpotterfyTheme.muted),
+            filled: true,
+            fillColor: const Color(0xFF0a1410),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: const Color(0xFF1a3a2a)),
+            ),
+          ),
+          maxLines: 1,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: SpotterfyTheme.muted),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              if (name.isNotEmpty && name != currentName) {
+                auth.updateDisplayName(name);
+                if (!context.mounted) return;
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Display name updated')),
+                );
+              } else {
+                if (!context.mounted) return;
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No changes made')),
+                );
+              }
+            },
+            child: const Text(
+              'Save',
+              style: TextStyle(color: SpotterfyTheme.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// Shows a dialog to edit the Spotify profile URL.
+  Future<void> _showSpotifyUrlDialog() async {
+    final auth = context.read<AuthProvider>();
+    final currentUrl = auth.user?.spotifyProfileUrl ?? '';
+    final controller = TextEditingController(text: currentUrl);
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: SpotterfyTheme.surface,
+        title: const Text('Edit Spotify URL'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Spotify profile URL',
+            hintStyle: TextStyle(color: SpotterfyTheme.muted),
+            filled: true,
+            fillColor: const Color(0xFF0a1410),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: const Color(0xFF1a3a2a)),
+            ),
+          ),
+          maxLines: 1,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: SpotterfyTheme.muted),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final url = controller.text.trim();
+              if (url.isNotEmpty && url != currentUrl) {
+                auth.updateSpotifyProfileUrl(url);
+                if (!context.mounted) return;
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Spotify URL updated')),
+                );
+              } else {
+                if (!context.mounted) return;
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No changes made')),
+                );
+              }
+            },
+            child: const Text(
+              'Save',
+              style: TextStyle(color: SpotterfyTheme.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   /// Dotted-version comparison, so 1.0.10 correctly beats 1.0.9.
   static bool _isNewer(String remote, String local) {
     List<int> parse(String v) => v
@@ -223,7 +397,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return false;
   }
 
-  Widget _settingsItem(IconData icon, String title, VoidCallback onTap) {
+  Widget _settingsItem(
+    IconData icon,
+    String title, {
+    required VoidCallback onTap,
+    String? subtitle,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -237,11 +416,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Icon(icon, color: SpotterfyTheme.muted, size: 20),
             const SizedBox(width: 12),
-            Text(
-              title,
-              style: TextStyle(color: SpotterfyTheme.text, fontSize: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(color: SpotterfyTheme.text, fontSize: 16),
+                  ),
+                  // Current value, so the row doubles as read-only state. The
+                  // title stays on one line and the value truncates beneath it
+                  // rather than squeezing both against the chevron.
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: SpotterfyTheme.muted,
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const Spacer(),
             Icon(Icons.chevron_right, color: SpotterfyTheme.muted, size: 20),
           ],
         ),

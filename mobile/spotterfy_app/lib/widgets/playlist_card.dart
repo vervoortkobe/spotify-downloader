@@ -83,7 +83,10 @@ class PlaylistCard extends StatelessWidget {
                       ],
                       Expanded(
                         child: Text(
-                          playlist.name,
+                          // Strips the " - Author" suffix the scraper bakes into
+                          // the stored name; the byline underneath already
+                          // shows the owner, so it was showing up twice.
+                          playlist.displayName,
                           style: TextStyle(
                             color: active
                                 ? SpotterfyTheme.primary

@@ -39,6 +39,8 @@ class _SearchScreenState extends State<SearchScreen> {
     "https://open.spotify.com/playlist/37i9dQZF1EIdZFdTlGR1gX?si=4a89868b2aff4f13",
     "https://open.spotify.com/playlist/37i9dQZF1EIdDyy28MYSyS?si=d1f12c5fb5c84e69",
     "https://open.spotify.com/playlist/37i9dQZF1EQfqRaYoWBGEg?si=bda257ead902463e",
+    "https://open.spotify.com/playlist/37i9dQZF1EIdSOY5WzY0Ah",
+    "https://open.spotify.com/playlist/37i9dQZF1EIghNBbh3wJEC",
   ];
   static const _artistUrls = [
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO37wTNS?si=d30ba68980f8411d",
@@ -102,6 +104,13 @@ class _SearchScreenState extends State<SearchScreen> {
       "name": "Nostalgie",
       "streaming_url":
           "https://29073.live.streamtheworld.com/NOSTALGIEWHATAFEELINGAAC.aac?dist=radioplayer&rp_source=1&__cb=45378569020822&___cb=425693790515817",
+    },
+    {
+      "logo":
+          "https://play-lh.googleusercontent.com/MAbkJdmPo-MnwdC_f_aXlW95BhgKumRBvjxX8jJxY_Lb0kbLv6uP4BxX7208rcbxwiAb56DxPP0hofRXf1ggBQ=w240-h480-rw",
+      "name": "Klara",
+      "streaming_url":
+          "https://vrt.streamabc.net/vrt-klara-mp3-128-1558567?sABC=6noro1o4%230%2313pnn95on49471p04q5209rqo9rp297p%23&aw_0_1st.playerid=&amsparams=playerid:;skey:1790882228",
     },
   ];
 
@@ -192,6 +201,10 @@ class _SearchScreenState extends State<SearchScreen> {
 
     final target = await showModalBottomSheet<String?>(
       context: context,
+      // Above the mini player. Sheets opened on a tab's own navigator render
+      // under it, because the mini player is drawn by MainScreen outside every
+      // tab navigator.
+      useRootNavigator: true,
       backgroundColor: SpotterfyTheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -814,8 +827,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _radioSection(BuildContext context, String query) {
     if (!_isOnline) return const SizedBox.shrink();
-    const cardW = 110.0;
-    const listH = 110.0;
     var stations = _radioStations;
     if (query.isNotEmpty) {
       stations = stations
@@ -825,7 +836,6 @@ class _SearchScreenState extends State<SearchScreen> {
       // sections) instead of leaving a lone "No matches" header behind.
       if (stations.isEmpty) return const SizedBox.shrink();
     }
-    final display = stations.take(6).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -861,27 +871,21 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
         ),
-        SizedBox(
-          height: listH,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: display.length,
-            itemBuilder: (_, i) {
-              final s = display[i];
-              return _DiscoverCard(
-                width: cardW,
-                coverUrl: s['logo']!,
-                title: s['name']!,
-                // Same 10px gap the other sections use - without it the station
-                // covers sit flush against each other.
-                margin: EdgeInsets.only(
-                  right: i == display.length - 1 ? 0 : 10,
-                ),
-                onTap: () => _playRadioStation(s),
-              );
-            },
-          ),
+        // Every station is in the carousel, not just the first handful - the
+        // chevron sub-page stays as a full-height list for scanning, but it is
+        // no longer the only way to reach the less common stations.
+        _cardRow(
+          count: stations.length,
+          item: (i) {
+            final s = stations[i];
+            return _DiscoverCard(
+              width: 110,
+              coverUrl: s['logo']!,
+              title: s['name']!,
+              margin: EdgeInsets.only(right: i == stations.length - 1 ? 0 : 10),
+              onTap: () => _playRadioStation(s),
+            );
+          },
         ),
       ],
     );
@@ -1032,6 +1036,7 @@ class _SearchScreenState extends State<SearchScreen> {
     if (uid.isEmpty) return;
     await showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: SpotterfyTheme.surface,
       builder: (sheetCtx) => SafeArea(
         child: Padding(
@@ -1205,6 +1210,32 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  /// Horizontal carousel of a discover section's cards.
+  ///
+  /// The front page deliberately stays a single swipeable row - the grid/vertical
+  /// layout is the sub-page's job. What changed is the *count*: this used to
+  /// clip the row to five cards (six for radio), so the rest of the catalogue
+  /// was only reachable through the header's chevron. Every item is in the
+  /// carousel now, so the front page is browsable on its own and the chevron is
+  /// a shortcut to the same set laid out vertically rather than the only door to
+  /// it.
+  Widget _cardRow({
+    required int count,
+    required Widget Function(int) item,
+    double cardW = 110.0,
+  }) {
+    if (count == 0) return const SizedBox.shrink();
+    return SizedBox(
+      height: cardW,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: count,
+        itemBuilder: (_, i) => item(i),
+      ),
+    );
+  }
+
   Widget _section(
     BuildContext context,
     String title,
@@ -1215,7 +1246,6 @@ class _SearchScreenState extends State<SearchScreen> {
   }) {
     // Square cards; title overlays the cover bottom on a blur
     const cardW = 110.0;
-    const listH = 110.0;
     if (isLoading && data.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1243,20 +1273,13 @@ class _SearchScreenState extends State<SearchScreen> {
               ],
             ),
           ),
-          SizedBox(
-            height: listH,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: 5,
-              itemBuilder: (_, i) => Container(
-                width: cardW,
-                height: cardW,
-                margin: EdgeInsets.only(right: i == 4 ? 0 : 10),
-                decoration: BoxDecoration(
-                  color: SpotterfyTheme.card,
-                  borderRadius: BorderRadius.circular(12),
-                ),
+          _cardRow(
+            count: 5,
+            item: (_) => Container(
+              width: cardW,
+              decoration: BoxDecoration(
+                color: SpotterfyTheme.card,
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
@@ -1269,8 +1292,7 @@ class _SearchScreenState extends State<SearchScreen> {
           .where((p) => p.name.toLowerCase().contains(query))
           .toList();
     }
-    final display = filtered.take(5).toList();
-    if (display.isEmpty && query.isNotEmpty) {
+    if (filtered.isEmpty && query.isNotEmpty) {
       return const SizedBox.shrink();
     }
     return Column(
@@ -1322,26 +1344,21 @@ class _SearchScreenState extends State<SearchScreen> {
                   ],
                 ),
         ),
-        SizedBox(
-          height: listH,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: display.length,
-            itemBuilder: (_, i) {
-              final p = display[i];
-              return _DiscoverCard(
-                width: cardW,
-                coverUrl: p.coverUrl,
-                spotifyUrl: p.spotifyUrl,
-                title: p.name,
-                margin: EdgeInsets.only(
-                  right: i == display.length - 1 ? 0 : 10,
-                ),
-                onTap: () => _openDiscoverPlaylist(context, p),
-              );
-            },
-          ),
+        _cardRow(
+          count: filtered.length,
+          item: (i) {
+            final p = filtered[i];
+            return _DiscoverCard(
+              width: cardW,
+              coverUrl: p.coverUrl,
+              spotifyUrl: p.spotifyUrl,
+              title: p.name,
+              // Same 10px gap the other sections use - without it the covers
+              // sit flush against each other.
+              margin: EdgeInsets.only(right: i == filtered.length - 1 ? 0 : 10),
+              onTap: () => _openDiscoverPlaylist(context, p),
+            );
+          },
         ),
       ],
     );
@@ -1658,68 +1675,72 @@ class _RadioStationsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: SpotterfyTheme.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'Radio Stations',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+    return SwipeBackWrapper(
+      child: Scaffold(
+        backgroundColor: SpotterfyTheme.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: const Text(
+            'Radio Stations',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          ),
         ),
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: stations.length,
-        itemBuilder: (_, i) {
-          final s = stations[i];
-          return GestureDetector(
-            onTap: () => onTap(s),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: SpotterfyTheme.card,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: s['logo']!,
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                      placeholder: (context, _) =>
-                          Container(color: SpotterfyTheme.surface),
-                      errorWidget: (context, _, _) =>
-                          const Icon(Icons.radio, color: SpotterfyTheme.muted),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      s['name']!,
-                      style: TextStyle(
-                        color: SpotterfyTheme.text,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+        body: ListView.builder(
+          padding: const EdgeInsets.only(bottom: 110),
+          itemCount: stations.length,
+          itemBuilder: (_, i) {
+            final s = stations[i];
+            return GestureDetector(
+              onTap: () => onTap(s),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: SpotterfyTheme.card,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: s['logo']!,
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                        placeholder: (context, _) =>
+                            Container(color: SpotterfyTheme.surface),
+                        errorWidget: (context, _, _) => const Icon(
+                          Icons.radio,
+                          color: SpotterfyTheme.muted,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const Icon(
-                    Icons.play_arrow,
-                    color: SpotterfyTheme.primary,
-                    size: 24,
-                  ),
-                ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        s['name']!,
+                        style: TextStyle(
+                          color: SpotterfyTheme.text,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(
+                      Icons.play_arrow,
+                      color: SpotterfyTheme.primary,
+                      size: 24,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -1771,55 +1792,59 @@ class _SectionPageState extends State<_SectionPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: SpotterfyTheme.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text(
-          widget.title,
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+    return SwipeBackWrapper(
+      child: Scaffold(
+        backgroundColor: SpotterfyTheme.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: Text(
+            widget.title,
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          ),
         ),
-      ),
-      body: GridView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 1.0,
-        ),
-        itemCount:
-            _displayed.length +
-            (_displayed.length < widget.playlists.length ? 1 : 0),
-        itemBuilder: (_, i) {
-          if (i >= _displayed.length) {
-            return const Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Color(0xFF10b981),
-              ),
+        body: GridView.builder(
+          controller: _scrollController,
+          // Clears the shared mini player, which is drawn by MainScreen and
+          // sits on top of this tab's own layers.
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.0,
+          ),
+          itemCount:
+              _displayed.length +
+              (_displayed.length < widget.playlists.length ? 1 : 0),
+          itemBuilder: (_, i) {
+            if (i >= _displayed.length) {
+              return const Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF10b981),
+                ),
+              );
+            }
+            final p = _displayed[i];
+            return _DiscoverCard(
+              width: 110,
+              coverUrl: p.coverUrl,
+              spotifyUrl: p.spotifyUrl,
+              title: p.name,
+              onTap: () async {
+                if (widget.onTap != null) {
+                  await widget.onTap!(p);
+                } else {
+                  Navigator.push(
+                    context,
+                    swipeRoute(PlaylistDetailScreen(playlist: p)),
+                  );
+                }
+              },
             );
-          }
-          final p = _displayed[i];
-          return _DiscoverCard(
-            width: 110,
-            coverUrl: p.coverUrl,
-            spotifyUrl: p.spotifyUrl,
-            title: p.name,
-            onTap: () async {
-              if (widget.onTap != null) {
-                await widget.onTap!(p);
-              } else {
-                Navigator.push(
-                  context,
-                  swipeRoute(PlaylistDetailScreen(playlist: p)),
-                );
-              }
-            },
-          );
-        },
+          },
+        ),
       ),
     );
   }

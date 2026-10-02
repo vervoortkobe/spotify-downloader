@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
@@ -104,6 +105,26 @@ class AutoLibraryBridge {
   }
 
   Future<AutoLibrarySnapshot> _library() async {
+    // Android Auto calls getChildren once per node the user opens, so the root
+    // listing and the playlist tapped inside it can be resolved seconds apart.
+    // Reuse the snapshot we already handed the car for [_snapshotTtl] so the two
+    // always agree - otherwise a library sync landing in that window can replace
+    // playlists whose tracks are not cached on this device, and a section that
+    // just listed playlists expands to nothing ("no content available").
+    final cachedAt = _lastGoodAt;
+    final cached = _lastGood;
+    if (cached != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _snapshotTtl) {
+      return cached;
+    }
+
+    // Cold start: the car can browse before the splash has signed the user in
+    // and loaded their playlists. Answering straight away hands it an empty
+    // tree, and it keeps showing that empty tree because it does not poll.
+    // Bounded so a signed-out browse still returns promptly.
+    if (_libraryLoader != null) await _awaitReady();
+
     try {
       // The loader reaches Firestore, which is not ready yet when Android Auto
       // wakes the app before the splash has booted. Joining the splash's
@@ -112,35 +133,107 @@ class AutoLibraryBridge {
       await FirebaseService.initialize();
       final base = await _libraryLoader?.call() ?? const AutoLibrarySnapshot();
       if (!base.isEmpty) _notifyReady();
+
       // Device folders come from disk rather than Firestore, so they are
       // resolved here. They stay useful when signed out, which is exactly the
       // state Android Auto can wake the app into.
-      if (base.device.isNotEmpty) return base;
-      final device = await DeviceLibrary.load();
-      if (device.isEmpty) return base;
-      final out = AutoLibrarySnapshot(
-        own: base.own,
-        shared: base.shared,
-        community: base.community,
-        device: device,
-      );
-      // A cold Android Auto start can hit this before any screen has read the
-      // library, so this is the first time the device folders are known to the
-      // car. Nudge it to re-read the tree.
-      _notifyLibraryChanged();
-      _notifyReady();
+      var out = base;
+      if (base.device.isEmpty) {
+        try {
+          final device = await DeviceLibrary.load();
+          if (device.isNotEmpty) {
+            out = AutoLibrarySnapshot(
+              own: base.own,
+              shared: base.shared,
+              community: base.community,
+              device: device,
+            );
+            // A cold Android Auto start can hit this before any screen has read
+            // the library, so this is the first time the device folders are
+            // known to the car. Nudge it to re-read the tree.
+            _notifyLibraryChanged();
+            _notifyReady();
+          }
+        } catch (e) {
+          // A storage problem (no permission, a vanished card) must not take
+          // the Firestore playlists down with it - that is what turned the
+          // whole car library into "no content available".
+          debugPrint('[Auto] device folders unavailable: $e');
+        }
+      }
+
+      _lastGood = out;
+      _lastGoodAt = DateTime.now();
       return out;
     } catch (e) {
       debugPrint('[Auto] library load failed: $e');
-      return const AutoLibrarySnapshot();
+      // Serve the tree the car already has rather than replacing it with
+      // nothing, so a transient failure never empties an open browse.
+      return _lastGood ?? const AutoLibrarySnapshot();
     }
+  }
+
+  /// Last snapshot handed to the car, reused for [_snapshotTtl] so a section
+  /// listing and the node opened from it cannot disagree.
+  AutoLibrarySnapshot? _lastGood;
+  DateTime? _lastGoodAt;
+  static const Duration _snapshotTtl = Duration(seconds: 20);
+
+  /// Completed by [libraryReady], i.e. once the signed-in user's playlists have
+  /// finished their first load.
+  final Completer<void> _ready = Completer<void>();
+
+  /// How long a cold Android Auto start waits for that first load before
+  /// answering with whatever is in memory. Bounded so a browse that happens
+  /// while signed out still returns instead of hanging.
+  static const Duration _readyGrace = Duration(seconds: 4);
+
+  void markReady() {
+    if (!_ready.isCompleted) _ready.complete();
+  }
+
+  Future<void> _awaitReady() async {
+    if (_ready.isCompleted) return;
+    try {
+      await _ready.future.timeout(_readyGrace);
+    } on TimeoutException {
+      debugPrint('[Auto] browse answered before the library was ready');
+    }
+  }
+
+  /// Drops the cached snapshot so the next browse re-resolves. Only for genuine
+  /// mutations (a delete, the provider going away) - a plain load completing
+  /// must not, or the car would re-resolve mid-drill-down and hit the very
+  /// mismatch [_snapshotTtl] exists to prevent.
+  void _invalidateSnapshot() {
+    _lastGoodAt = null;
   }
 
   /// Called by the app once the signed-in user's playlists are in memory, so a
   /// car that connected before login finished can offer them.
   void libraryReady() {
+    // Releases any browse that is waiting for the first load, and pushes a
+    // change so the car re-reads the tree.
+    markReady();
     _notifyReady();
     _notifyLibraryChanged();
+  }
+
+  /// Normalises the media id the car sends before it is matched.
+  ///
+  /// `audio_service` reports the browse root as `browsableRootId` ('root'), but
+  /// Android Auto has also been seen asking for '/' and for 'root' followed by
+  /// a child id. A raw string compare misses those, [getChildren] falls through
+  /// every branch and returns an empty list, and the car renders that as "no
+  /// content available" - so the shape is stripped here instead.
+  static String _normalizeId(String raw) {
+    var id = raw;
+    while (id.startsWith('/')) {
+      id = id.substring(1);
+    }
+    if (id.isEmpty) return rootId;
+    if (id.startsWith('$rootId/')) return id.substring(rootId.length + 1);
+    return id;
   }
 
   /// Serves Android Auto's browse tree.
@@ -149,7 +242,8 @@ class AutoLibraryBridge {
   /// -> tracks. Categories follow the Android Auto browse convention so the
   /// car UI renders them as separate shelves instead of one long list.
   Future<List<MediaItem>> getChildren(String parentMediaId) async {
-    if (parentMediaId == rootId || parentMediaId.isEmpty) {
+    final id = _normalizeId(parentMediaId);
+    if (id == rootId) {
       final lib = await _library();
       final items = <MediaItem>[
         MediaItem(
@@ -168,14 +262,14 @@ class AutoLibraryBridge {
         ('device', 'On this device', lib.device),
         ('community', 'Community', lib.community),
       ]) {
-        final (id, title, source) = entry;
+        final (key, title, source) = entry;
         final withTracks = source.where((p) => p.tracks.isNotEmpty).toList();
         if (withTracks.isEmpty) continue;
         items.add(
           MediaItem(
-            id: '$categoryPrefix$id',
+            id: '$categoryPrefix$key',
             title: title,
-            album: id == 'device'
+            album: key == 'device'
                 // Folders are songs, not curated playlists, so a song count is
                 // the useful number here.
                 ? '${withTracks.fold<int>(0, (n, p) => n + p.tracks.length)} songs'
@@ -193,12 +287,12 @@ class AutoLibraryBridge {
       return items;
     }
 
-    if (parentMediaId == queueId) {
+    if (id == queueId) {
       return trackItems(_queueSnapshot);
     }
 
-    if (parentMediaId.startsWith(categoryPrefix)) {
-      final which = parentMediaId.substring(categoryPrefix.length);
+    if (id.startsWith(categoryPrefix)) {
+      final which = id.substring(categoryPrefix.length);
       final lib = await _library();
       final source = switch (which) {
         'own' => lib.own,
@@ -215,11 +309,11 @@ class AutoLibraryBridge {
       return items;
     }
 
-    if (parentMediaId.startsWith(playlistPrefix)) {
-      final id = parentMediaId.substring(playlistPrefix.length);
+    if (id.startsWith(playlistPrefix)) {
+      final pid = id.substring(playlistPrefix.length);
       final lib = await _library();
       for (final p in lib.all) {
-        if (p.id == id) return trackItems(p.tracks);
+        if (p.id == pid) return trackItems(p.tracks);
       }
     }
     return const [];
@@ -317,7 +411,10 @@ class AutoLibraryBridge {
   /// The car caches whatever tree it was handed, so without this a playlist
   /// imported while the car screen was open would not appear until the car
   /// reconnected.
-  static void libraryChanged() => _notifyLibraryChanged();
+  static void libraryChanged() {
+    instance._invalidateSnapshot();
+    _notifyLibraryChanged();
+  }
 
   static void addLibraryListener(VoidCallback l) => _listeners.add(l);
 
@@ -343,7 +440,7 @@ class AutoLibraryBridge {
     }
     return MediaItem(
       id: '$playlistPrefix${p.id}',
-      title: p.name,
+      title: p.displayName,
       album: p.owner.isNotEmpty ? p.owner : 'Playlist',
       artist: '${p.tracks.length} tracks',
       artUri: art,

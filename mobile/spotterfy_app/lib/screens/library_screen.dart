@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
@@ -62,6 +63,47 @@ class _LibraryScreenState extends State<LibraryScreen>
   String _query = '';
   final List<String> _folderStack = [];
 
+  /// One sort per tab, each applied only to its own list.
+  ///
+  /// Kept separate rather than shared: "Recently added" is meaningless for
+  /// folders on disk, and switching tabs should not silently reorder the other
+  /// one.
+  _LibrarySort _importedSort = _LibrarySort.recent;
+  _LibrarySort _storageSort = _LibrarySort.name;
+
+  /// Imported-tab orderings. "Recently added" leads because that is how the
+  /// list arrives; the rest are explicit re-orders.
+  static const List<_LibrarySort> _importedSorts = [
+    _LibrarySort.recent,
+    _LibrarySort.oldest,
+    _LibrarySort.name,
+    _LibrarySort.artist,
+    _LibrarySort.songs,
+    _LibrarySort.length,
+  ];
+
+  /// Storage-tab orderings.
+  ///
+  /// Deliberately narrower than the Imported tab's: folders have no creation
+  /// date and no owner, and a total length across a folder tree is not a number
+  /// anyone can act on.
+  static const List<_LibrarySort> _storageSorts = [
+    _LibrarySort.name,
+    _LibrarySort.songs,
+    _LibrarySort.mostSongs,
+  ];
+
+  void _setSort(_LibrarySort s) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_tabController.index == 0) {
+        _importedSort = s;
+      } else {
+        _storageSort = s;
+      }
+    });
+  }
+
   /// Bottom padding that clears the mini player, which is overlaid on the body
   /// at the bottom. (The 80px nav bar is already inset by the Scaffold's
   /// `bottomNavigationBar`, so it needs no extra room here.)
@@ -122,6 +164,10 @@ class _LibraryScreenState extends State<LibraryScreen>
 
   void _onTabChanged() {
     if (!mounted) return;
+    if (_tabController.indexIsChanging ||
+        !_tabController.animation!.isCompleted) {
+      return;
+    }
     setState(() {});
     // Opening the Storage tab refreshes in the background so new/deleted
     // folders are picked up, but the already-loaded list never blanks out.
@@ -209,14 +255,51 @@ class _LibraryScreenState extends State<LibraryScreen>
             unselectedLabelColor: SpotterfyTheme.muted,
             indicatorColor: SpotterfyTheme.primary,
             dividerColor: Colors.transparent,
-            tabs: const [
-              Tab(text: 'Imported'),
-              Tab(text: 'Storage'),
+            // Each tab carries its own sort button. Tapping inside a Tab is
+            // handled by the button, not by the tab's own gesture, so the two
+            // never fight over the same pixels.
+            labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+            tabs: [
+              Tab(
+                height: 52,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Flexible(
+                      child: Text('Imported', overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 6),
+                    _LibrarySortButton(
+                      current: _importedSort,
+                      options: _importedSorts,
+                      onPicked: _setSort,
+                    ),
+                  ],
+                ),
+              ),
+              Tab(
+                height: 52,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Flexible(
+                      child: Text('Storage', overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 6),
+                    _LibrarySortButton(
+                      current: _storageSort,
+                      options: _storageSorts,
+                      onPicked: _setSort,
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           Expanded(
             child: TabBarView(
               controller: _tabController,
+              physics: const ClampingScrollPhysics(),
               children: [
                 _playlistsTab(context.watch<PlaylistProvider>()),
                 _storageTab(),
@@ -228,6 +311,38 @@ class _LibraryScreenState extends State<LibraryScreen>
     );
   }
 
+  /// Applies the Imported tab's sort.
+  ///
+  /// Takes a copy so the provider's own list order is never mutated - it is the
+  /// order tracks were added in, which `recent` relies on and which a
+  /// sort must not disturb.
+  List<PlaylistModel> _sortImported(List<PlaylistModel> list) {
+    final out = List<PlaylistModel>.of(list);
+    int byName(PlaylistModel a, PlaylistModel b) =>
+        a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+    int totalMs(PlaylistModel p) =>
+        p.tracks.fold<int>(0, (n, t) => n + t.durationMs);
+    switch (_importedSort) {
+      case _LibrarySort.recent:
+        out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      case _LibrarySort.oldest:
+        out.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      case _LibrarySort.name:
+        out.sort(byName);
+      case _LibrarySort.artist:
+        out.sort(
+          (a, b) => a.owner.toLowerCase().compareTo(b.owner.toLowerCase()),
+        );
+      case _LibrarySort.songs:
+        out.sort((a, b) => a.tracks.length.compareTo(b.tracks.length));
+      case _LibrarySort.mostSongs:
+        out.sort((a, b) => b.tracks.length.compareTo(a.tracks.length));
+      case _LibrarySort.length:
+        out.sort((a, b) => totalMs(a).compareTo(totalMs(b)));
+    }
+    return out;
+  }
+
   Widget _playlistsTab(PlaylistProvider prov) {
     // "My library" is both what you created and what was shared with you, so
     // both lists are shown here. Ownership is what decides what deleting does.
@@ -236,11 +351,13 @@ class _LibraryScreenState extends State<LibraryScreen>
       list = list
           .where(
             (p) =>
+                p.displayName.toLowerCase().contains(_query) ||
                 p.name.toLowerCase().contains(_query) ||
                 p.tracks.any((t) => t.title.toLowerCase().contains(_query)),
           )
           .toList();
     }
+    list = _sortImported(list);
     // Show loading spinner over cache while first sync runs
     if (prov.isLoading && list.isEmpty) {
       return const Center(
@@ -313,15 +430,14 @@ class _LibraryScreenState extends State<LibraryScreen>
         itemCount: list.length,
         itemBuilder: (context, i) {
           final p = list[i];
-          final player = context.watch<PlayerProvider>();
-          final cur = player.currentTrack;
-          // "Is this card the thing that's playing?" - matches on the id the
-          // player assigns, which is the playlist URL for imported tracks.
-          final isSource = cur != null && p.tracks.any((t) => t.id == cur.id);
+          final curTrack = context.watch<PlayerProvider>().currentTrack;
+          final isPlayingNow = context.watch<PlayerProvider>().isPlaying;
+          final isSource =
+              curTrack != null && p.tracks.any((t) => t.id == curTrack.id);
           return PlaylistCard(
             playlist: p,
             isActive: isSource,
-            isPlaying: isSource && player.isPlaying,
+            isPlaying: isSource && isPlayingNow,
             onTap: () => Navigator.push(
               context,
               swipeRoute(PlaylistDetailScreen(playlist: p)),
@@ -619,6 +735,21 @@ class _LibraryScreenState extends State<LibraryScreen>
           return e.songs.any((f) => f.path.toLowerCase().contains(q));
         }).toList();
       }
+      // Storage tab's own ordering, independent of the Imported tab's.
+      if (_storageSort == _LibrarySort.name) {
+        filteredEntries = List.of(
+          filteredEntries,
+        )..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      } else if (_storageSort == _LibrarySort.songs ||
+          _storageSort == _LibrarySort.mostSongs) {
+        final asc = _storageSort == _LibrarySort.songs;
+        filteredEntries = List.of(filteredEntries)
+          ..sort(
+            (a, b) => asc
+                ? a.songs.length.compareTo(b.songs.length)
+                : b.songs.length.compareTo(a.songs.length),
+          );
+      }
       // Inline folder detail with subfolder drill-down (keeps MiniPlayer visible, not a new route)
       if (_folderStack.isNotEmpty) {
         final folderPath = _folderStack.last;
@@ -833,6 +964,7 @@ class _LibraryScreenState extends State<LibraryScreen>
           );
         }
       }
+
       if (filteredEntries.isEmpty) {
         return NoResultsView(
           query: _query,
@@ -1163,117 +1295,258 @@ class _LibraryScreenState extends State<LibraryScreen>
     final controller = TextEditingController();
     showModalBottomSheet(
       context: context,
+      // Above the mini player, for the same reason as the sort sheet: the mini
+      // player is drawn by MainScreen, outside this tab's navigator, so a sheet
+      // opened on the tab navigator lands underneath it and the confirm button
+      // is covered.
+      useRootNavigator: true,
       backgroundColor: const Color(0xFF0f1d17),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          left: 24,
-          right: 24,
-          top: 24,
+      builder: (ctx) => SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            left: 24,
+            right: 24,
+            top: 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3f3f46),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Import playlist',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'Paste Spotify / YouTube / SoundCloud URL',
+                  hintStyle: TextStyle(
+                    color: const Color(0xFFa1a1aa),
+                    fontSize: 13,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFF0a1410),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: const Color(0xFF1a3a2a)),
+                  ),
+                  prefixIcon: Icon(
+                    Icons.link,
+                    color: SpotterfyTheme.primary,
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final url = controller.text.trim();
+                    if (url.isEmpty) return;
+                    Navigator.pop(ctx);
+                    final auth = context.read<AuthProvider>();
+                    final prov = context.read<PlaylistProvider>();
+                    final existing = prov.getPlaylistByUrl(url);
+                    if (existing != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Already in library: ${existing.name}'),
+                        ),
+                      );
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Importing...')),
+                    );
+                    final playlist = await prov.importFromUrl(url);
+                    if (playlist != null && auth.user != null) {
+                      await prov.savePlaylist(auth.user!.uid, playlist);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Imported "${playlist.name}"')),
+                      );
+                    } else if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(prov.error ?? 'Import failed')),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: SpotterfyTheme.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Import',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
+      ),
+    );
+  }
+}
+
+/// Orderings offered by the library's sort buttons.
+enum _LibrarySort {
+  recent('Recently added'),
+  oldest('Oldest first'),
+  name('Name (A-Z)'),
+  artist('Artist'),
+  songs('Fewest songs'),
+  mostSongs('Most songs'),
+  length('Length');
+
+  const _LibrarySort(this.label);
+  final String label;
+}
+
+/// Square sort control, tinted while a non-default order is active.
+class _LibrarySortButton extends StatelessWidget {
+  final _LibrarySort current;
+  final List<_LibrarySort> options;
+
+  /// Called with the option the user picked.
+  final ValueChanged<_LibrarySort> onPicked;
+
+  const _LibrarySortButton({
+    required this.current,
+    required this.options,
+    required this.onPicked,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Sort by',
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _showSheet(context),
+          child: Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            ),
+            child: const Icon(
+              Icons.sort_rounded,
+              size: 19,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSheet(BuildContext context) {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet<void>(
+      context: context,
+      // useRootNavigator pushes the sheet above the *root* navigator, which is
+      // what puts it over the mini player: the mini player is a sibling of the
+      // tab navigators inside MainScreen's Stack, so a sheet opened on a tab's
+      // own navigator renders underneath it and its lowest options are simply
+      // not tappable.
+      useRootNavigator: true,
+      backgroundColor: SpotterfyTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3f3f46),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Import playlist',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Paste Spotify / YouTube / SoundCloud URL',
-                hintStyle: TextStyle(
-                  color: const Color(0xFFa1a1aa),
-                  fontSize: 13,
-                ),
-                filled: true,
-                fillColor: const Color(0xFF0a1410),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: const Color(0xFF1a3a2a)),
-                ),
-                prefixIcon: Icon(
-                  Icons.link,
-                  color: SpotterfyTheme.primary,
-                  size: 20,
+              const SizedBox(height: 10),
+              const Text(
+                'Sort by',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: () async {
-                  final url = controller.text.trim();
-                  if (url.isEmpty) return;
-                  Navigator.pop(ctx);
-                  final auth = context.read<AuthProvider>();
-                  final prov = context.read<PlaylistProvider>();
-                  final existing = prov.getPlaylistByUrl(url);
-                  if (existing != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Already in library: ${existing.name}'),
+              const SizedBox(height: 6),
+              for (final s in options)
+                ListTile(
+                  dense: true,
+                  // `s` is the loop variable, so this correctly reports which
+                  // option was tapped.
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    onPicked(s);
+                  },
+                  title: Row(
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        child: s == current
+                            ? const Icon(
+                                Icons.check,
+                                size: 18,
+                                color: Color(0xFF10b981),
+                              )
+                            : null,
                       ),
-                    );
-                    return;
-                  }
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('Importing...')));
-                  final playlist = await prov.importFromUrl(url);
-                  if (playlist != null && auth.user != null) {
-                    await prov.savePlaylist(auth.user!.uid, playlist);
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Imported "${playlist.name}"')),
-                    );
-                  } else if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(prov.error ?? 'Import failed')),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: SpotterfyTheme.primary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                      Text(
+                        s.label,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: const Text(
-                  'Import',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
+            ],
+          ),
         ),
       ),
     );

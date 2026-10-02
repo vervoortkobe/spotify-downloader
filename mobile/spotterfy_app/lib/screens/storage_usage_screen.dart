@@ -102,8 +102,9 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
               other: other,
             ),
           );
-          if (history.length > 30)
+          if (history.length > 30) {
             history = history.sublist(history.length - 30);
+          }
           await prefs.setString(
             'storage_history_v1',
             jsonEncode(

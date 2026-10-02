@@ -47,6 +47,15 @@ class TabNavigator extends StatelessWidget {
   /// addressable from the nav bar.
   static final Map<int, GlobalKey<NavigatorState>> _keys = {};
 
+  /// The live state of [tabIndex]'s own stack, or null before that tab's layer
+  /// has been built once.
+  static NavigatorState? navigatorFor(int tabIndex) =>
+      _keys[tabIndex]?.currentState;
+
+  /// Whether [tabIndex] currently has a sub-page pushed on top of its root.
+  static bool canPopTab(int tabIndex) =>
+      _keys[tabIndex]?.currentState?.canPop() ?? false;
+
   /// Publishes each tab's navigator to the nav bar. Called from MainScreen
   /// after the tab layer is built.
   static void registerAll() {

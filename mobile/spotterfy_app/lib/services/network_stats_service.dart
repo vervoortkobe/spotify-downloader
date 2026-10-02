@@ -95,8 +95,9 @@ class NetworkStatsService extends ChangeNotifier {
   static String formatBytes(int b) {
     if (b < 1024) return '$b B';
     if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(1)} KB';
-    if (b < 1024 * 1024 * 1024)
+    if (b < 1024 * 1024 * 1024) {
       return '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
+    }
     return '${(b / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
   }
 
@@ -162,8 +163,9 @@ class NetworkStatsService extends ChangeNotifier {
       } else if (results.contains(ConnectivityResult.none)) {
         _online = false;
         // Persistent banner when going offline (also on boot if starting offline).
-        if (wasOnline || isFirst)
+        if (wasOnline || isFirst) {
           _showBanner('Disconnected from the internet!', offline: true);
+        }
         notifyListeners();
         return;
       } else {
@@ -248,8 +250,9 @@ class NetworkStatsService extends ChangeNotifier {
   /// Pass null on sign-out to stop cloud sync (local counting continues).
   Future<void> setUserId(String? uid) async {
     if (uid == _uid) {
-      if (uid != null && _history.isEmpty && !_historyLoading)
+      if (uid != null && _history.isEmpty && !_historyLoading) {
         await loadHistory();
+      }
       return;
     }
     await _pushCloud(force: true);

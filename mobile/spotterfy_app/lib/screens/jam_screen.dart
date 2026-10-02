@@ -541,6 +541,9 @@ class _JamScreenState extends State<JamScreen> {
 
     final picked = await showModalBottomSheet<SocialUser>(
       context: context,
+      // Above the mini player: the sheet is opened on a tab navigator, which
+      // the mini player is drawn over.
+      useRootNavigator: true,
       backgroundColor: SpotterfyTheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

@@ -14,6 +14,7 @@ import 'package:spotterfy_app/theme/app_theme.dart';
 void showQueueSheet(BuildContext context, PlayerProvider player) {
   showModalBottomSheet(
     context: context,
+    useRootNavigator: true,
     // The sheet draws its own surface, so the route stays transparent and the
     // rounded corners + border are ours to control.
     backgroundColor: Colors.transparent,

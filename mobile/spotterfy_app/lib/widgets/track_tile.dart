@@ -170,218 +170,221 @@ class TrackTile extends StatelessWidget {
                 ]
               : null,
         ),
-        child: ListTile(
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          onTap: onPlay,
-          onLongPress: onLongPress,
-          // In selection mode the artwork is replaced by a checkbox so the
-          // selected state is obvious without reading the highlight colour.
-          leading: selectionMode
-              ? Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Icon(
-                    selected
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    color: selected
-                        ? const Color(0xFF10b981)
-                        : const Color(0xFF4a4a4a),
-                    size: 26,
+        child: Material(
+          type: MaterialType.transparency,
+          child: ListTile(
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            onTap: onPlay,
+            onLongPress: onLongPress,
+            // In selection mode the artwork is replaced by a checkbox so the
+            // selected state is obvious without reading the highlight colour.
+            leading: selectionMode
+                ? Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Icon(
+                      selected
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      color: selected
+                          ? const Color(0xFF10b981)
+                          : const Color(0xFF4a4a4a),
+                      size: 26,
+                    ),
+                  )
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: track.cover.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: track.cover,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            // Decode at 2x the 48px box instead of the source's
+                            // full resolution (often 640px). Without this every
+                            // row in a long list decodes ~180x more pixels than it
+                            // displays, which is a large chunk of scroll jank and
+                            // image-cache memory.
+                            memCacheWidth: 96,
+                            maxWidthDiskCache: 240,
+                            placeholder: (_, _) => Container(
+                              color: Color(0xFF1a1a2e),
+                              child: Icon(
+                                Icons.music_note,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            errorWidget: (_, _, _) => Container(
+                              color: Color(0xFF1a1a2e),
+                              child: Icon(
+                                Icons.music_note,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          )
+                        : (coverPath != null
+                              ? StorageCover(
+                                  path: coverPath!,
+                                  size: 48,
+                                  iconSize: 24,
+                                  radius: 6,
+                                )
+                              : Container(
+                                  width: 48,
+                                  height: 48,
+                                  color: Color(0xFF1a1a2e),
+                                  child: Icon(
+                                    Icons.music_note,
+                                    color: Colors.grey[600],
+                                  ),
+                                )),
                   ),
-                )
-              : ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: track.cover.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: track.cover,
-                          width: 48,
-                          height: 48,
-                          fit: BoxFit.cover,
-                          // Decode at 2x the 48px box instead of the source's
-                          // full resolution (often 640px). Without this every
-                          // row in a long list decodes ~180x more pixels than it
-                          // displays, which is a large chunk of scroll jank and
-                          // image-cache memory.
-                          memCacheWidth: 96,
-                          maxWidthDiskCache: 240,
-                          placeholder: (_, _) => Container(
-                            color: Color(0xFF1a1a2e),
-                            child: Icon(
-                              Icons.music_note,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          errorWidget: (_, _, _) => Container(
-                            color: Color(0xFF1a1a2e),
-                            child: Icon(
-                              Icons.music_note,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        )
-                      : (coverPath != null
-                            ? StorageCover(
-                                path: coverPath!,
-                                size: 48,
-                                iconSize: 24,
-                                radius: 6,
-                              )
-                            : Container(
-                                width: 48,
-                                height: 48,
-                                color: Color(0xFF1a1a2e),
-                                child: Icon(
-                                  Icons.music_note,
-                                  color: Colors.grey[600],
-                                ),
-                              )),
-                ),
-          title: Text(
-            track.title,
-            style: TextStyle(
-              color: active ? Color(0xFF6ee7b7) : Colors.white,
-              fontSize: 14,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Row(
-            children: [
-              Flexible(
-                child: Text(
-                  track.artists,
-                  style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+            title: Text(
+              track.title,
+              style: TextStyle(
+                color: active ? Color(0xFF6ee7b7) : Colors.white,
+                fontSize: 14,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
               ),
-              // Round check marking the track as available offline.
-              if (isDownloaded) ...[
-                const SizedBox(width: 6),
-                const Tooltip(
-                  message: 'Downloaded',
-                  child: Icon(
-                    Icons.check_circle,
-                    color: Color(0xFF10b981),
-                    size: 14,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (progress > 0 && progress < 100)
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    value: progress / 100,
-                    strokeWidth: 2,
-                    color: Color(0xFF10b981),
-                  ),
-                ),
-              if (progress >= 100)
-                Icon(Icons.check_circle, color: Color(0xFF10b981), size: 20),
-              if (track.durationMs > 0)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Row(
+              children: [
+                Flexible(
                   child: Text(
-                    _fmtDuration(Duration(milliseconds: track.durationMs)),
-                    style: TextStyle(
-                      color: Color(0xFFa1a1aa),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
+                    track.artists,
+                    style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // Round check marking the track as available offline.
+                if (isDownloaded) ...[
+                  const SizedBox(width: 6),
+                  const Tooltip(
+                    message: 'Downloaded',
+                    child: Icon(
+                      Icons.check_circle,
+                      color: Color(0xFF10b981),
+                      size: 14,
                     ),
                   ),
-                ),
-              if (onDownload != null && progress == 0 && !isDownloading)
-                IconButton(
-                  icon: Icon(
-                    isDownloaded ? Icons.download_done : Icons.download,
-                    color: isDownloaded
-                        ? const Color(0xFF10b981)
-                        : Color(0xFFa1a1aa),
-                    size: 20,
-                  ),
-                  tooltip: isDownloaded
-                      ? 'Downloaded — tap to remove'
-                      : 'Download',
-                  onPressed: onDownload,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(),
-                ),
-              if (isDownloading)
-                const Padding(
-                  padding: EdgeInsets.only(right: 8),
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
+                ],
+              ],
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (progress > 0 && progress < 100)
+                  SizedBox(
+                    width: 24,
+                    height: 24,
                     child: CircularProgressIndicator(
+                      value: progress / 100,
                       strokeWidth: 2,
                       color: Color(0xFF10b981),
                     ),
                   ),
-                ),
-              if (onSave != null)
+                if (progress >= 100)
+                  Icon(Icons.check_circle, color: Color(0xFF10b981), size: 20),
+                if (track.durationMs > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(
+                      _fmtDuration(Duration(milliseconds: track.durationMs)),
+                      style: TextStyle(
+                        color: Color(0xFFa1a1aa),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                if (onDownload != null && progress == 0 && !isDownloading)
+                  IconButton(
+                    icon: Icon(
+                      isDownloaded ? Icons.download_done : Icons.download,
+                      color: isDownloaded
+                          ? const Color(0xFF10b981)
+                          : Color(0xFFa1a1aa),
+                      size: 20,
+                    ),
+                    tooltip: isDownloaded
+                        ? 'Downloaded — tap to remove'
+                        : 'Download',
+                    onPressed: onDownload,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
+                  ),
+                if (isDownloading)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF10b981),
+                      ),
+                    ),
+                  ),
+                if (onSave != null)
+                  IconButton(
+                    icon: Icon(
+                      isSaved
+                          ? Icons.bookmark_rounded
+                          : Icons.bookmark_border_rounded,
+                      color: isSaved
+                          ? const Color(0xFF10b981)
+                          : const Color(0xFFa1a1aa),
+                      size: 20,
+                    ),
+                    tooltip: isSaved ? 'Saved to library' : 'Save to library',
+                    onPressed: onSave,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
+                  ),
+                // Queue button
                 IconButton(
                   icon: Icon(
-                    isSaved
-                        ? Icons.bookmark_rounded
-                        : Icons.bookmark_border_rounded,
-                    color: isSaved
-                        ? const Color(0xFF10b981)
-                        : const Color(0xFFa1a1aa),
+                    Icons.queue_music,
+                    color: isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa),
                     size: 20,
                   ),
-                  tooltip: isSaved ? 'Saved to library' : 'Save to library',
-                  onPressed: onSave,
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    final player = context.read<PlayerProvider>();
+                    final newQueue = [...player.queue, track];
+                    player.setQueue(newQueue, startIndex: player.currentIndex);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Added "${track.title}" to queue'),
+                        duration: Duration(milliseconds: 900),
+                        backgroundColor: Color(0xFF0f1d17),
+                      ),
+                    );
+                  },
                   padding: EdgeInsets.zero,
                   constraints: BoxConstraints(),
                 ),
-              // Queue button
-              IconButton(
-                icon: Icon(
-                  Icons.queue_music,
-                  color: isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa),
-                  size: 20,
-                ),
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  final player = context.read<PlayerProvider>();
-                  final newQueue = [...player.queue, track];
-                  player.setQueue(newQueue, startIndex: player.currentIndex);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Added "${track.title}" to queue'),
-                      duration: Duration(milliseconds: 900),
-                      backgroundColor: Color(0xFF0f1d17),
+                if (onPlay != null)
+                  IconButton(
+                    icon: Icon(
+                      active
+                          ? Icons.pause_circle_filled
+                          : Icons.play_circle_filled,
+                      color: active
+                          ? Color(0xFF10b981)
+                          : isSelected
+                          ? Color(0xFF10b981)
+                          : Color(0xFFa1a1aa),
+                      size: 28,
                     ),
-                  );
-                },
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints(),
-              ),
-              if (onPlay != null)
-                IconButton(
-                  icon: Icon(
-                    active
-                        ? Icons.pause_circle_filled
-                        : Icons.play_circle_filled,
-                    color: active
-                        ? Color(0xFF10b981)
-                        : isSelected
-                        ? Color(0xFF10b981)
-                        : Color(0xFFa1a1aa),
-                    size: 28,
+                    onPressed: onPlay,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
                   ),
-                  onPressed: onPlay,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

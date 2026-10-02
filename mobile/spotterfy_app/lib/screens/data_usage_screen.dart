@@ -460,10 +460,12 @@ class _UsageGraphPainter extends CustomPainter {
         topLeft: const Radius.circular(4),
         topRight: const Radius.circular(4),
       );
-      if (m.wifi > 0)
+      if (m.wifi > 0) {
         canvas.drawRRect(bar(cx - barW - 2, wifiH, wifiPaint), wifiPaint);
-      if (m.cellular > 0)
+      }
+      if (m.cellular > 0) {
         canvas.drawRRect(bar(cx + 2, cellH, cellPaint), cellPaint);
+      }
       if (m.total == 0) {
         canvas.drawCircle(
           Offset(cx, chartH - 2),

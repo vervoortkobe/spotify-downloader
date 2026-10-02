@@ -147,17 +147,42 @@ class PlaylistModel {
 
   /// Name as persisted in Firebase: raw display title minus a trailing
   /// " - Owner" / " by Owner" suffix so imports are saved clean.
-  String get storageName {
+  String get storageName => displayName;
+
+  /// Title to show in the UI, without the scraper's author suffix.
+  ///
+  /// YouTube and Spotify both return "Song - Artist" / "Playlist - Owner" as the
+  /// playlist *name*, so an import ends up storing the author twice: once in the
+  /// title and once in [owner]. Stripping it here keeps the name readable and
+  /// leaves [owner] as the single source for the byline.
+  ///
+  /// Only strips a trailing suffix that actually matches [owner] (or, failing
+  /// that, a trailing " - Something"). A title that merely happens to contain a
+  /// dash mid-string is left alone.
+  String get displayName {
     var n = name.trim();
+    if (n.isEmpty) return n;
+
+    // Exact match against the known owner, in either separator style.
     if (owner.isNotEmpty) {
-      final dash = ' - $owner';
-      if (n.endsWith(dash)) {
-        return n.substring(0, n.length - dash.length).trim();
+      for (final sep in [' - ', ' by ']) {
+        final suffix = '$sep$owner';
+        if (n.toLowerCase().endsWith(suffix.toLowerCase())) {
+          final stripped = n.substring(0, n.length - suffix.length).trim();
+          // Don't leave an empty title if the whole name *was* the suffix.
+          if (stripped.isNotEmpty) return stripped;
+        }
       }
-      final by = ' by $owner';
-      if (n.toLowerCase().endsWith(by.toLowerCase())) {
-        return n.substring(0, n.length - by.length).trim();
-      }
+    }
+
+    // Owner unknown (community playlist imported before ownership was
+    // recorded): drop a trailing " - Whatever" as the author hint.
+    final generic = RegExp(r'\s+[-–—]\s+[^-+–—]+$');
+    final m = generic.firstMatch(n);
+    if (m != null) {
+      final stripped = n.substring(0, m.start).trim();
+      // A title that is only a dash fragment is not a real title.
+      if (stripped.length >= 2) return stripped;
     }
     return n;
   }

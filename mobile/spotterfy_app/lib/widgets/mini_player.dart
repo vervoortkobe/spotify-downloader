@@ -14,11 +14,13 @@ class MiniPlayer extends StatelessWidget {
 
   final bool showQueueButton;
 
-  String _fmtDuration(int ms) {
-    final minutes = ms ~/ 60000;
-    final seconds = (ms % 60000) ~/ 1000;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
+  /// Cover edge, and the row height it forces.
+  ///
+  /// 56 rather than 48: the artwork was the one element of the footer that
+  /// never got a chance to be recognised at a glance, and it costs 8px of
+  /// footer height to make the currently-playing track identifiable at a glance
+  /// from the lock screen.
+  static const double _coverSize = 56;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +28,9 @@ class MiniPlayer extends StatelessWidget {
     final track = player.currentTrack;
     if (track == null) return const SizedBox.shrink();
 
-    final pos = player.position;
+    // Progress and elapsed time live in [_MiniProgressRow], which listens to the
+    // position notifier on its own. Reading them here rebuilt the whole mini
+    // player - cover, title, two buttons - several times a second.
     // Prefer the player's live duration, but fall back to the length stored on
     // the track. Live radio reports no duration, and a track can be rendered
     // before just_audio has reported one - without this the mini player showed
@@ -34,13 +38,6 @@ class MiniPlayer extends StatelessWidget {
     final durMs = player.duration.inMilliseconds > 0
         ? player.duration.inMilliseconds
         : track.durationMs;
-    final dur = Duration(milliseconds: durMs);
-    final progress = dur.inMilliseconds > 0
-        ? pos.inMilliseconds / dur.inMilliseconds
-        : 0.0;
-    final bufferedFrac = dur.inMilliseconds > 0
-        ? player.buffered.inMilliseconds / dur.inMilliseconds
-        : 0.0;
     // Queue position lives on the now-playing screen; the mini player keeps
     // only title / artist / progress / controls so it stays readable.
 
@@ -118,10 +115,10 @@ class MiniPlayer extends StatelessWidget {
                     Hero(
                       tag: 'mini-cover-${track.id}',
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                         child: Container(
-                          width: 48,
-                          height: 48,
+                          width: _coverSize,
+                          height: _coverSize,
                           color: SpotterfyTheme.surface,
                           child: _MiniCover(track: track),
                         ),
@@ -156,26 +153,7 @@ class MiniPlayer extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 7),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _MiniProgressBar(
-                                  progress: progress,
-                                  buffered: bufferedFrac,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${_fmtDuration(pos.inMilliseconds)} / ${_fmtDuration(dur.inMilliseconds)}',
-                                style: const TextStyle(
-                                  color: SpotterfyTheme.muted,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w500,
-                                  fontFeatures: [FontFeature.tabularFigures()],
-                                ),
-                              ),
-                            ],
-                          ),
+                          _MiniProgressRow(durationMs: durMs),
                         ],
                       ),
                     ),
@@ -216,6 +194,68 @@ class MiniPlayer extends StatelessWidget {
   void _openPlayer() {
     HapticFeedback.selectionClick();
     navigatorKey.currentState?.push(nowPlayingRoute(const PlayerScreen()));
+  }
+}
+
+/// Progress bar plus elapsed/total time.
+///
+/// Split out of [MiniPlayer] and driven by `PlayerProvider`'s position and
+/// buffered [ValueNotifier]s rather than by `context.watch`. The position
+/// notifier ticks ~5x/second; subscribing the whole mini player to it meant the
+/// cover image, two text lines and two buttons were rebuilt on every tick, on
+/// every screen in the app. Only this row now repaints that often.
+class _MiniProgressRow extends StatelessWidget {
+  final int durationMs;
+
+  const _MiniProgressRow({required this.durationMs});
+
+  static String _fmtDuration(int ms) {
+    final minutes = ms ~/ 60000;
+    final seconds = (ms % 60000) ~/ 1000;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.read<PlayerProvider>();
+    final durMs = durationMs;
+    return Row(
+      children: [
+        Expanded(
+          child: ValueListenableBuilder<Duration>(
+            valueListenable: player.positionNotifier,
+            builder: (context, pos, _) {
+              return ValueListenableBuilder<Duration>(
+                valueListenable: player.bufferedNotifier,
+                builder: (context, buffered, _) {
+                  final progress = durMs > 0 ? pos.inMilliseconds / durMs : 0.0;
+                  final bufferedFrac = durMs > 0
+                      ? buffered.inMilliseconds / durMs
+                      : 0.0;
+                  return _MiniProgressBar(
+                    progress: progress.clamp(0.0, 1.0),
+                    buffered: bufferedFrac.clamp(0.0, 1.0),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 8),
+        ValueListenableBuilder<Duration>(
+          valueListenable: player.positionNotifier,
+          builder: (context, pos, _) => Text(
+            '${_fmtDuration(pos.inMilliseconds)} / ${_fmtDuration(durMs)}',
+            style: const TextStyle(
+              color: SpotterfyTheme.muted,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -462,9 +502,9 @@ class _MiniCover extends StatelessWidget {
     if (isStorage && src.isNotEmpty) {
       return StorageCover(
         path: src.replaceFirst('file://', ''),
-        size: 52,
-        iconSize: 24,
-        radius: 12,
+        size: 54,
+        iconSize: 26,
+        radius: 14,
       );
     }
     return const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24);

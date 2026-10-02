@@ -105,12 +105,12 @@ class SlidePageRoute extends PageRouteBuilder {
   final Widget child;
   SlidePageRoute({required this.child})
     : super(
-        transitionDuration: const Duration(milliseconds: 350),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
+        transitionDuration: const Duration(milliseconds: 240),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
         pageBuilder: (_, _, _) => child,
         transitionsBuilder: (_, anim, _, c) {
           final tween = Tween(
-            begin: const Offset(0.12, 0),
+            begin: const Offset(0.08, 0),
             end: Offset.zero,
           ).chain(CurveTween(curve: Curves.easeOutCubic));
           final fade = Tween(
@@ -143,16 +143,29 @@ class VerticalSheetRoute extends PageRouteBuilder {
   VerticalSheetRoute({required this.child})
     : super(
         opaque: true,
-        transitionDuration: const Duration(milliseconds: 250),
-        reverseTransitionDuration: const Duration(milliseconds: 200),
+        transitionDuration: const Duration(milliseconds: 280),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
         pageBuilder: (_, _, _) => child,
         transitionsBuilder: (_, anim, _, child) {
-          // Same curve the modal bottom sheet uses by default.
-          final position = Tween<Offset>(
-            begin: const Offset(0, 1),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.decelerate));
-          return SlideTransition(position: position, child: child);
+          final position =
+              Tween<Offset>(
+                begin: const Offset(0, 1),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(
+                  parent: anim,
+                  curve: Curves.easeOutCubic,
+                  reverseCurve: Curves.easeInCubic,
+                ),
+              );
+          final fade = Tween<double>(
+            begin: 0.85,
+            end: 1.0,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut));
+          return SlideTransition(
+            position: position,
+            child: FadeTransition(opacity: fade, child: child),
+          );
         },
       );
 }

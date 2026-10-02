@@ -32,7 +32,7 @@ class _MainScreenState extends State<MainScreen>
 
   late final AnimationController _tabCtrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 300),
+    duration: const Duration(milliseconds: 200),
     // Start settled, otherwise the first frame would draw the initial tab
     // part-way through the enter transition (40% opacity, offset).
     value: 1.0,
@@ -109,43 +109,81 @@ class _MainScreenState extends State<MainScreen>
       }
     }
 
-    return Scaffold(
-      backgroundColor: SpotterfyTheme.background,
-      // No swipe-to-switch here: content swipes belong to inner widgets
-      // (track tiles, mini player, library tabs). Tab switching lives on the navbar.
-      body: Stack(
-        children: [
-          AnimatedBuilder(
-            animation: _tabAnim,
-            builder: (context, _) {
-              // Every tab is kept mounted in a plain Stack. Deliberately NOT an
-              // IndexedStack/KeyedSubtree keyed on the current index: re-keying
-              // it on every switch would dispose all four tab subtrees, taking
-              // each tab's navigation stack (and any open sub-page's state) with
-              // it. Tabs outside the transition are Offstage, which keeps their
-              // state alive while skipping paint and ticks.
-              return Stack(
-                fit: StackFit.expand,
-                children: [for (var i = 0; i < _tabs.length; i++) _tabLayer(i)],
-              );
-            },
-          ),
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _MainMiniPlayerWrapper(),
-          ),
-        ],
-      ),
-      bottomNavigationBar: AppBottomNav(
-        currentIndex: _currentIndex,
-        onSelect: _goToTab,
-        // Tapping the destination you are already on returns that tab to its
-        // root instead of doing nothing, so a sub-page is never a dead end.
-        onReselect: _reselectTab,
+    return PopScope(
+      // Never let the system close the app from here. The root navigator's
+      // history only knows about MainScreen itself, so without this the back
+      // button could not reach a sub-page pushed onto a tab's *own* stack and
+      // simply did nothing. canPop:false forces every press through
+      // [_handleSystemBack] below, which unwinds the active tab properly.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleSystemBack();
+      },
+      child: Scaffold(
+        backgroundColor: SpotterfyTheme.background,
+        // No swipe-to-switch here: content swipes belong to inner widgets
+        // (track tiles, mini player, library tabs). Tab switching lives on the navbar.
+        body: Stack(
+          children: [
+            AnimatedBuilder(
+              animation: _tabAnim,
+              builder: (context, _) {
+                // Every tab is kept mounted in a plain Stack. Deliberately NOT an
+                // IndexedStack/KeyedSubtree keyed on the current index: re-keying
+                // it on every switch would dispose all four tab subtrees, taking
+                // each tab's navigation stack (and any open sub-page's state) with
+                // it. Tabs outside the transition are Offstage, which keeps their
+                // state alive while skipping paint and ticks.
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    for (var i = 0; i < _tabs.length; i++) _tabLayer(i),
+                  ],
+                );
+              },
+            ),
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _MainMiniPlayerWrapper(),
+            ),
+          ],
+        ),
+        bottomNavigationBar: AppBottomNav(
+          currentIndex: _currentIndex,
+          onSelect: _goToTab,
+          // Tapping the destination you are already on returns that tab to its
+          // root instead of doing nothing, so a sub-page is never a dead end.
+          onReselect: _reselectTab,
+        ),
       ),
     );
+  }
+
+  /// Index of the Home / Discover tab.
+  static const int _homeTab = 0;
+
+  /// Android back button, resolved against the tab stacks rather than the root
+  /// navigator.
+  ///
+  /// 1. A sub-page is open on the active tab -> pop that tab's stack. This is
+  ///    what takes the discover chevron sub-pages ("Top Genres", "Radio
+  ///    Stations", ...) back to the front discover page.
+  /// 2. Otherwise, if another tab is showing -> return to Home, mirroring the
+  ///    nav bar.
+  /// 3. At the Home root -> do nothing. Closing the app from inside a tab would
+  ///    make a sub-page feel like a dead end, and losing a download or a
+  ///    half-finished import to a stray back press is worse than a no-op.
+  void _handleSystemBack() {
+    if (TabNavigator.canPopTab(_currentIndex)) {
+      TabNavigator.navigatorFor(_currentIndex)?.pop();
+      return;
+    }
+    if (_currentIndex != _homeTab) {
+      _goToTab(_homeTab);
+    }
   }
 
   /// Draws one tab, animating it in when it is the target of the current switch

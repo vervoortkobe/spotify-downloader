@@ -35,6 +35,24 @@ class PlayerProvider extends ChangeNotifier {
   List<TrackModel> get queue => _queue;
   int get currentIndex => _currentIndex;
   bool get isPlaying => _isPlaying;
+
+  /// Playhead, ticking several times a second while playing.
+  ///
+  /// Deliberately a separate Listenable rather than part of [notifyListeners].
+  /// Position was by far the loudest source of rebuilds in the app: every
+  /// `watch<PlayerProvider>()` in a long list re-ran its itemBuilder on every
+  /// tick, so a playing track rebuilt whole screens ~5x/second for the sake of
+  /// two progress bars. Only the bars listen to this now.
+  final ValueNotifier<Duration> positionNotifier = ValueNotifier(Duration.zero);
+
+  /// Buffered position, same deal as [positionNotifier].
+  final ValueNotifier<Duration> bufferedNotifier = ValueNotifier(Duration.zero);
+
+  /// Track length. Changes about once per song rather than per tick, so it stays
+  /// on the main notifier - but is separate so the progress bars can rebuild on
+  /// a length change without a position tick.
+  final ValueNotifier<Duration> durationNotifier = ValueNotifier(Duration.zero);
+
   Duration get position => _position;
   Duration get duration => _duration;
   Duration get buffered => _buffered;
@@ -90,12 +108,14 @@ class PlayerProvider extends ChangeNotifier {
         if (pos > _radioMaxListened) _radioMaxListened = pos;
       }
       audioHandler?.updatePosition(pos, _duration, _isPlaying);
-      notifyListeners();
+      // Notifies only the progress bars. See [positionNotifier].
+      positionNotifier.value = pos;
     });
     _player.durationStream.listen((dur) {
       // Live radio has no duration (null) - keep the previous value.
       if (dur == null) return;
       _duration = dur;
+      durationNotifier.value = dur;
       // The real length is often the only place we ever learn it (scrapes and
       // local files can carry no duration), so write it back onto the track.
       // Everything downstream - mini player, queue rows, playlist lists - reads
@@ -189,7 +209,7 @@ class PlayerProvider extends ChangeNotifier {
           _position = Duration(milliseconds: _position.inMilliseconds - 1000);
           if (_position.isNegative) _position = Duration.zero;
           audioHandler?.updatePosition(_position, _duration, false);
-          notifyListeners();
+          positionNotifier.value = _position;
         } else {
           _radioDriftTimer?.cancel();
         }
@@ -218,6 +238,9 @@ class PlayerProvider extends ChangeNotifier {
     _position = Duration.zero;
     _duration = Duration.zero;
     _buffered = Duration.zero;
+    positionNotifier.value = Duration.zero;
+    durationNotifier.value = Duration.zero;
+    bufferedNotifier.value = Duration.zero;
     if (isRadio) _radioMaxListened = Duration.zero;
     // A track is loading from here until playback actually begins. During this
     // window both `_isPlaying` and `_player.playing` are false, so a pause tap
@@ -323,7 +346,7 @@ class PlayerProvider extends ChangeNotifier {
   /// starts almost immediately. Fire-and-forget: a failure here is harmless
   /// because the real load still falls back normally.
   void _prefetchNextSource() {
-    if (!isRadio) return;
+    if (isRadio) return;
     final next = _currentIndex + 1;
     if (next < 0 || next >= _queue.length) return;
     final upcoming = _queue[next];
@@ -522,7 +545,7 @@ class PlayerProvider extends ChangeNotifier {
       await _player.seek(clamped);
       _position = clamped;
       audioHandler?.updatePosition(clamped, _duration, _isPlaying);
-      notifyListeners();
+      positionNotifier.value = clamped;
       return;
     }
     await _player.seek(position);
@@ -556,6 +579,8 @@ class PlayerProvider extends ChangeNotifier {
     _isPlaying = false;
     _position = Duration.zero;
     _duration = Duration.zero;
+    positionNotifier.value = Duration.zero;
+    durationNotifier.value = Duration.zero;
     audioHandler?.updatePosition(_position, _duration, false);
     notifyListeners();
   }
