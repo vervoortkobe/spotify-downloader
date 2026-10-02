@@ -8,7 +8,7 @@ class AppPalette {
   final Color primary;
   final Color primaryDark;
 
-  /// True-black surfaces for OLED panels.
+  /// True-black surfaces for OLED panels. Ignored in light mode.
   final bool amoled;
 
   const AppPalette({
@@ -20,28 +20,75 @@ class AppPalette {
 }
 
 class SpotterfyTheme {
-  // Spotify color palette.
+  // Palette-aware colours.
   //
   // These were `static const`, which made a runtime theme impossible: a const is
-  // frozen at compile time, so an accent change after launch could never reach
-  // the hundreds of call sites that read them. They are mutable statics now, and
+  // frozen at compile time, so a change after launch could never reach the
+  // hundreds of call sites that read them. They are mutable statics now, and
   // ThemeController repaints the tree whenever one changes. Read sites are
   // unchanged - they were already just reading these names.
-  static Color primary = const Color(0xFF1DB954); // Spotify green
+  static Color primary = const Color(0xFF1DB954);
   static Color primaryDark = const Color(0xFF1ED760);
-  static Color background = const Color(0xFF191414); // Spotify dark background
-  static Color surface = const Color(0xFF1E1E1E); // Card background
-  static Color card = const Color(0xFF282828); // Elevated surface
-  static Color text = const Color(0xFFFFFFFF); // Pure white
-  static Color muted = const Color(0xFFB3B3B3); // Spotify muted text
+  static Color background = const Color(0xFF191414);
+  static Color surface = const Color(0xFF1E1E1E);
+  static Color card = const Color(0xFF282828);
+  static Color text = const Color(0xFFFFFFFF);
+  static Color muted = const Color(0xFFB3B3B3);
   static Color mutedDark = const Color(0xFF6A6A6A);
+
+  /// True while the light palette is applied.
+  /// Text/icon colour that sits on top of an accent fill.
+  ///
+  /// Deliberately *not* [text]: an accent needs whichever foreground actually
+  /// contrasts with it, and that flips with the palette. The bright dark-mode
+  /// accents want near-black text (matching the `onPrimary` the app shipped
+  /// with), while the deeper light-mode accents want white. Picking by
+  /// luminance keeps both correct instead of hardcoding one and hoping.
+  static Color get onAccent => primary.computeLuminance() > 0.179
+      ? const Color(0xFF0B0F14)
+      : const Color(0xFFFFFFFF);
+
+  /// Secondary fill inside a surface: card wells, sheet backgrounds, input
+  /// boxes. Was a hardcoded near-black that vanished in light mode.
+  static Color get fill => const Color(0xFF0A1410);
+
+  /// Hairline borders and dividers. Was a hardcoded dark green-grey.
+  static Color get borderColor => const Color(0xFF1A3A2A);
+
+  /// A translucent overlay for separators and inactive fills.
+  ///
+  /// Takes the white-alpha overlays in the dark theme and mirrors them to
+  /// black-alpha in light, which is what keeps a hairline visible on a light
+  /// surface instead of disappearing into it.
+  static Color overlay(double opacity) =>
+      Colors.white.withValues(alpha: opacity);
 
   /// 10% accent wash, derived so it follows the accent instead of going stale.
   static Color get primaryBg =>
       Color.alphaBlend(primary.withValues(alpha: 0.10), background);
 
+  /// Canvas colour behind a page.
+  ///
+  /// Derived from the accent rather than the fixed green-black it used to be, so
+  /// the whole surface picks up the chosen palette instead of only the buttons.
+  static Color get pageBackground => Color.alphaBlend(
+    primary.withValues(alpha: 0.05),
+    const Color(0xFF060C08),
+  );
+
+  /// Three-stop page gradient, also derived from the accent.
+  ///
+  /// Used by the main tab background and the login/onboarding waves, which used
+  /// to hardcode a green-tinted ramp that ignored the palette entirely.
+  static List<Color> get pageGradient => [
+    Color.alphaBlend(primary.withValues(alpha: 0.11), const Color(0xFF071109)),
+    Color.alphaBlend(primary.withValues(alpha: 0.045), const Color(0xFF060D08)),
+    const Color(0xFF040806),
+  ];
+
   /// Accents offered by the theme page. Each is checked for legibility against
-  /// the dark surfaces - a prettier accent that hurts readability is not one.
+  /// the surfaces it is used on - a prettier accent that hurts readability is
+  /// not one.
   static const List<AppPalette> palettes = [
     AppPalette(
       name: 'Spotify green',
@@ -78,8 +125,9 @@ class SpotterfyTheme {
   /// True when the app is currently on OLED black.
   static bool get isAmoled => background == const Color(0xFF000000);
 
-  /// Points every colour at [palette]. Called by ThemeController before it asks
-  /// the tree to rebuild, so anything reading a colour during build sees it.
+  /// Points every colour at [palette] / [light]. Called by ThemeController before
+  /// it asks the tree to rebuild, so anything reading a colour during build sees
+  /// it.
   static void apply(AppPalette palette) {
     primary = palette.primary;
     primaryDark = palette.primaryDark;
@@ -92,8 +140,12 @@ class SpotterfyTheme {
       surface = const Color(0xFF1E1E1E);
       card = const Color(0xFF282828);
     }
+    text = const Color(0xFFFFFFFF);
+    muted = const Color(0xFFB3B3B3);
+    mutedDark = const Color(0xFF6A6A6A);
   }
 
+  /// The Material theme for the app.
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,

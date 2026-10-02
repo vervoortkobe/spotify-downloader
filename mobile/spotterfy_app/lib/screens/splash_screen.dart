@@ -11,6 +11,8 @@ import 'package:spotterfy_app/screens/main_screen.dart';
 import 'package:spotterfy_app/services/firebase_service.dart' as fb;
 import 'package:spotterfy_app/widgets/refresh_button.dart';
 import 'package:spotterfy_app/services/audio_handler.dart';
+import 'package:spotterfy_app/services/notification_service.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 /// Launch screen, and the app's bootstrap gate.
 ///
@@ -45,7 +47,9 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _glowPulse;
 
   static const Color _bg = Color(0xFF0A0A0A);
-  static const Color _green = Color(0xFF1DB954);
+
+  /// Accent, resolved at build time so it follows the chosen theme.
+  static Color get _green => SpotterfyTheme.primary;
 
   @override
   void initState() {
@@ -127,6 +131,10 @@ class _SplashScreenState extends State<SplashScreen>
     // still have no listener when the car asked for the browse tree, and
     // `onLoadChildren` would answer with an empty list - an empty media app.
     unawaited(ensureAudioHandler());
+    // Fire-and-forget on purpose: download progress notifications silently
+    // no-op until this has run, but nothing else depends on it, so a slow
+    // permission prompt must not hold up the rest of boot.
+    unawaited(NotificationService().initialize());
     if (!mounted) return;
     // Hold the bar short of full while auth resolves, so reaching 100% always
     // coincides with actually leaving this screen.
@@ -231,10 +239,10 @@ class _SplashScreenState extends State<SplashScreen>
                       offset: Offset(0, _textSlide.value),
                       child: Column(
                         children: [
-                          const Text(
+                          Text(
                             'Spotterfy',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: SpotterfyTheme.text,
                               fontSize: 30,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 4,
@@ -242,13 +250,30 @@ class _SplashScreenState extends State<SplashScreen>
                             ),
                           ),
                           const SizedBox(height: 6),
+                          // Split into two widgets rather than one string with
+                          // an embedded \n: the second line is a separate thought
+                          // and gets its own tighter tracking, so the pair reads
+                          // as a tagline and an aside rather than one long
+                          // tracked-out sentence.
                           Text(
-                            'Music, downloaded',
+                            'Enjoy listening to your music\nwith no ads.',
+                            textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.45),
-                              fontSize: 12,
-                              letterSpacing: 2.2,
+                              color: SpotterfyTheme.overlay(0.45),
+                              fontSize: 13,
+                              height: 1.35,
                               fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'For free, how it\'s supposed to be!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: SpotterfyTheme.overlay(0.34),
+                              fontSize: 12,
+                              letterSpacing: 0.3,
+                              fontWeight: FontWeight.w400,
                             ),
                           ),
                         ],
@@ -260,10 +285,10 @@ class _SplashScreenState extends State<SplashScreen>
                 FadeTransition(opacity: _textFade, child: _progressBar()),
                 if (_phase == _Phase.failed) ...[
                   const SizedBox(height: 18),
-                  const Text(
+                  Text(
                     'Could not start',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: SpotterfyTheme.text,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
@@ -277,7 +302,7 @@ class _SplashScreenState extends State<SplashScreen>
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.45),
+                        color: SpotterfyTheme.overlay(0.45),
                         fontSize: 11,
                       ),
                     ),
@@ -292,7 +317,7 @@ class _SplashScreenState extends State<SplashScreen>
                     busy: _phase == _Phase.starting,
                     color: _phase == _Phase.failed
                         ? _green
-                        : Colors.white.withValues(alpha: 0.4),
+                        : SpotterfyTheme.overlay(0.4),
                     onPressed: _boot,
                   ),
                 ),
@@ -322,8 +347,8 @@ class _SplashScreenState extends State<SplashScreen>
           child: LinearProgressIndicator(
             value: value,
             minHeight: 3,
-            backgroundColor: Colors.white.withValues(alpha: 0.10),
-            valueColor: const AlwaysStoppedAnimation(_green),
+            backgroundColor: SpotterfyTheme.overlay(0.10),
+            valueColor: AlwaysStoppedAnimation(_green),
           ),
         ),
       ),

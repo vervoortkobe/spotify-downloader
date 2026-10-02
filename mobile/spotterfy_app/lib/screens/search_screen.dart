@@ -342,7 +342,7 @@ class _SearchScreenState extends State<SearchScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message ?? 'Already in your library'),
-        backgroundColor: const Color(0xFF0f1d17),
+        backgroundColor: SpotterfyTheme.surface,
       ),
     );
   }
@@ -721,15 +721,15 @@ class _SearchScreenState extends State<SearchScreen> {
       // detail screen uses (Icons.sync + spinner while working).
       action: IconButton(
         icon: _refetching
-            ? const SizedBox(
+            ? SizedBox(
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF10b981),
+                  color: SpotterfyTheme.primary,
                 ),
               )
-            : const Icon(Icons.sync, color: Color(0xFFa1a1aa)),
+            : Icon(Icons.sync, color: SpotterfyTheme.mutedDark),
         tooltip: 'Check for updates',
         onPressed: (_refetching || _loadingCache) ? null : _refetchDiscover,
       ),
@@ -847,7 +847,7 @@ class _SearchScreenState extends State<SearchScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: SpotterfyTheme.overlay(0.08),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -959,12 +959,12 @@ class _SearchScreenState extends State<SearchScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.fromLTRB(16, 14, 16, 8),
           child: Text(
             'Community Playlists',
             style: TextStyle(
-              color: Colors.white,
+              color: SpotterfyTheme.text,
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
@@ -1001,12 +1001,12 @@ class _SearchScreenState extends State<SearchScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.fromLTRB(16, 14, 16, 8),
           child: Text(
             'Profiles',
             style: TextStyle(
-              color: Colors.white,
+              color: SpotterfyTheme.text,
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
@@ -1133,8 +1133,8 @@ class _SearchScreenState extends State<SearchScreen> {
                       children: [
                         Text(
                           user['displayName'] ?? 'Unknown user',
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: SpotterfyTheme.text,
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1234,8 +1234,8 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
                           title: Text(
                             pl.name,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1649,8 +1649,8 @@ class _DiscoverCard extends StatelessWidget {
                           ),
                           child: Text(
                             title,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                             ),
@@ -1737,9 +1737,12 @@ class _RadioStationsPage extends StatelessWidget {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: const Text(
+          title: Text(
             'Radio Stations',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+            style: TextStyle(
+              color: SpotterfyTheme.text,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
         body: ListView.builder(
@@ -1854,7 +1857,10 @@ class _SectionPageState extends State<_SectionPage> {
           elevation: 0,
           title: Text(
             widget.title,
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+            style: TextStyle(
+              color: SpotterfyTheme.text,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
         body: GridView.builder(
@@ -1873,10 +1879,10 @@ class _SectionPageState extends State<_SectionPage> {
               (_displayed.length < widget.playlists.length ? 1 : 0),
           itemBuilder: (_, i) {
             if (i >= _displayed.length) {
-              return const Center(
+              return Center(
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF10b981),
+                  color: SpotterfyTheme.primary,
                 ),
               );
             }

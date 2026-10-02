@@ -73,7 +73,7 @@ class _QueueSheetState extends State<QueueSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: const Color(0xFF0f1d17),
+          backgroundColor: SpotterfyTheme.surface,
         ),
       );
     }
@@ -101,7 +101,7 @@ class _QueueSheetState extends State<QueueSheet> {
       decoration: BoxDecoration(
         color: SpotterfyTheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: SpotterfyTheme.overlay(0.07)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.5),
@@ -123,7 +123,7 @@ class _QueueSheetState extends State<QueueSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
+              color: SpotterfyTheme.overlay(0.18),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -271,26 +271,30 @@ class _QueueSheetState extends State<QueueSheet> {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.close, color: Colors.white),
+            icon: Icon(Icons.close, color: SpotterfyTheme.text),
             tooltip: 'Clear selection',
             onPressed: _clearSelection,
           ),
           Text(
             '${_selected.length} selected',
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: SpotterfyTheme.text,
               fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
           ),
           const Spacer(),
           IconButton(
-            icon: const Icon(Icons.done_all, color: Colors.white, size: 20),
+            icon: Icon(Icons.done_all, color: SpotterfyTheme.text, size: 20),
             tooltip: 'Select all',
             onPressed: () => _selectAll(player.queue.length),
           ),
           IconButton(
-            icon: const Icon(Icons.arrow_upward, color: Colors.white, size: 20),
+            icon: Icon(
+              Icons.arrow_upward,
+              color: SpotterfyTheme.text,
+              size: 20,
+            ),
             tooltip: 'Move up',
             onPressed: () {
               player.moveQueueBlockUp(indices);
@@ -303,9 +307,9 @@ class _QueueSheetState extends State<QueueSheet> {
             },
           ),
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.arrow_downward,
-              color: Colors.white,
+              color: SpotterfyTheme.text,
               size: 20,
             ),
             tooltip: 'Move down',
@@ -320,9 +324,9 @@ class _QueueSheetState extends State<QueueSheet> {
             },
           ),
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.delete_outline,
-              color: Colors.white,
+              color: SpotterfyTheme.text,
               size: 20,
             ),
             tooltip: 'Remove selected',
@@ -370,19 +374,19 @@ class _SwipeToRemove extends StatelessWidget {
           color: Colors.redAccent.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'Remove',
               style: TextStyle(
-                color: Colors.white,
+                color: SpotterfyTheme.text,
                 fontWeight: FontWeight.w700,
                 fontSize: 12,
               ),
             ),
             SizedBox(width: 6),
-            Icon(Icons.delete_outline, color: Colors.white, size: 18),
+            Icon(Icons.delete_outline, color: SpotterfyTheme.text, size: 18),
           ],
         ),
       ),
@@ -429,7 +433,7 @@ class _QueueRow extends StatelessWidget {
       color: selected
           ? SpotterfyTheme.primary.withValues(alpha: 0.16)
           : isCurrent
-          ? Colors.white.withValues(alpha: 0.04)
+          ? SpotterfyTheme.overlay(0.04)
           : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(

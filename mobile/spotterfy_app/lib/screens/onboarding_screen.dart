@@ -141,7 +141,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         .split(' ')
         .firstWhere((e) => e.isNotEmpty, orElse: () => 'there');
     return Scaffold(
-      backgroundColor: const Color(0xFF07110b),
+      backgroundColor: SpotterfyTheme.pageBackground,
       body: Stack(
         children: [
           CustomPaint(size: Size.infinite, painter: _OnboardingWavesPainter()),
@@ -157,29 +157,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: const Color(0xFF10b981),
+                          color: SpotterfyTheme.primary,
                           width: 3,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(
-                              0xFF10b981,
-                            ).withValues(alpha: 0.3),
+                            color: SpotterfyTheme.primary.withValues(
+                              alpha: 0.3,
+                            ),
                             blurRadius: 16,
                           ),
                         ],
                       ),
                       child: CircleAvatar(
                         radius: 36,
-                        backgroundColor: const Color(0xFF0f1d17),
+                        backgroundColor: SpotterfyTheme.surface,
                         backgroundImage: photo.isNotEmpty
                             ? NetworkImage(photo)
                             : null,
                         child: photo.isEmpty
-                            ? const Icon(
+                            ? Icon(
                                 Icons.person,
                                 size: 36,
-                                color: Color(0xFFa1a1aa),
+                                color: SpotterfyTheme.mutedDark,
                               )
                             : null,
                       ),
@@ -187,8 +187,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     const SizedBox(height: 8),
                     Text(
                       user?.displayName ?? 'User',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
@@ -196,17 +196,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     const SizedBox(height: 12),
                     Text(
                       'Hi, $firstName',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 2),
-                    const Text(
+                    Text(
                       'Welcome to Spotterfy',
                       style: TextStyle(
-                        color: Color(0xFF10b981),
+                        color: SpotterfyTheme.primary,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -233,8 +233,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       height: 8,
                       decoration: BoxDecoration(
                         color: active
-                            ? const Color(0xFF10b981)
-                            : const Color(0xFF1a3a2a),
+                            ? SpotterfyTheme.primary
+                            : SpotterfyTheme.borderColor,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     );
@@ -251,16 +251,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           child: OutlinedButton(
                             onPressed: _loading ? null : _prev,
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFF1a3a2a)),
+                              side: BorderSide(
+                                color: SpotterfyTheme.borderColor,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
-                            child: const Text(
+                            child: Text(
                               'Previous',
                               style: TextStyle(
-                                color: Color(0xFFa1a1aa),
+                                color: SpotterfyTheme.mutedDark,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -283,19 +285,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           onPressed: _loading ? null : _next,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: SpotterfyTheme.primary,
-                            foregroundColor: Colors.white,
+                            foregroundColor: SpotterfyTheme.onAccent,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
                           child: _loading
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Colors.white,
+                                    color: SpotterfyTheme.text,
                                   ),
                                 )
                               : Text(
@@ -336,19 +338,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Choose a display name',
             style: TextStyle(
-              color: Colors.white,
+              color: SpotterfyTheme.text,
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'This will be visible to others. You can change it later in settings.',
             style: TextStyle(
-              color: Color(0xFFa1a1aa),
+              color: SpotterfyTheme.mutedDark,
               fontSize: 13,
               height: 1.4,
             ),
@@ -357,7 +359,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           Text(
             'Display name',
             style: TextStyle(
-              color: const Color(0xFFa1a1aa),
+              color: SpotterfyTheme.mutedDark,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -365,7 +367,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(height: 6),
           TextField(
             controller: _nameController,
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: SpotterfyTheme.text),
             textCapitalization: TextCapitalization.words,
             autofocus: true,
             onSubmitted: (_) => _next(),
@@ -374,28 +376,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               errorText: _nameError,
               hintStyle: const TextStyle(color: Color(0xFF6A6A6A)),
               filled: true,
-              fillColor: const Color(0xFF0a1410),
-              prefixIcon: const Icon(
+              fillColor: SpotterfyTheme.fill,
+              prefixIcon: Icon(
                 Icons.person_outline,
-                color: Color(0xFF10b981),
+                color: SpotterfyTheme.primary,
                 size: 20,
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF1a3a2a)),
+                borderSide: BorderSide(color: SpotterfyTheme.borderColor),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
                   color: _nameError != null
                       ? const Color(0xFFef4444)
-                      : const Color(0xFF1a3a2a),
+                      : SpotterfyTheme.borderColor,
                 ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
-                  color: Color(0xFF10b981),
+                borderSide: BorderSide(
+                  color: SpotterfyTheme.primary,
                   width: 1.5,
                 ),
               ),
@@ -409,13 +411,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF0a1410),
+              color: SpotterfyTheme.fill,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF1a3a2a)),
+              border: Border.all(color: SpotterfyTheme.borderColor),
             ),
             child: Row(
-              children: const [
-                Icon(Icons.info_outline, color: Color(0xFF10b981), size: 18),
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: SpotterfyTheme.primary,
+                  size: 18,
+                ),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -437,19 +443,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Connect Spotify (optional)',
             style: TextStyle(
-              color: Colors.white,
+              color: SpotterfyTheme.text,
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Paste your Spotify profile URL to let friends find your playlists faster. You can skip this.',
             style: TextStyle(
-              color: Color(0xFFa1a1aa),
+              color: SpotterfyTheme.mutedDark,
               fontSize: 13,
               height: 1.4,
             ),
@@ -458,7 +464,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           Text(
             'Spotify profile URL',
             style: TextStyle(
-              color: const Color(0xFFa1a1aa),
+              color: SpotterfyTheme.mutedDark,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -466,7 +472,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(height: 6),
           TextField(
             controller: _urlController,
-            style: const TextStyle(color: Colors.white, fontSize: 13),
+            style: TextStyle(color: SpotterfyTheme.text, fontSize: 13),
             keyboardType: TextInputType.url,
             onSubmitted: (_) => _complete(),
             decoration: InputDecoration(
@@ -477,28 +483,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 fontSize: 12,
               ),
               filled: true,
-              fillColor: const Color(0xFF0a1410),
-              prefixIcon: const Icon(
+              fillColor: SpotterfyTheme.fill,
+              prefixIcon: Icon(
                 Icons.link,
-                color: Color(0xFF10b981),
+                color: SpotterfyTheme.primary,
                 size: 20,
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF1a3a2a)),
+                borderSide: BorderSide(color: SpotterfyTheme.borderColor),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
                   color: _urlError != null
                       ? const Color(0xFFef4444)
-                      : const Color(0xFF1a3a2a),
+                      : SpotterfyTheme.borderColor,
                 ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
-                  color: Color(0xFF10b981),
+                borderSide: BorderSide(
+                  color: SpotterfyTheme.primary,
                   width: 1.5,
                 ),
               ),
@@ -514,25 +520,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF0a1410),
+              color: SpotterfyTheme.fill,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF1a3a2a)),
+              border: Border.all(color: SpotterfyTheme.borderColor),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Row(
                   children: [
                     Icon(
                       Icons.lightbulb_outline,
-                      color: Color(0xFF10b981),
+                      color: SpotterfyTheme.primary,
                       size: 18,
                     ),
                     SizedBox(width: 8),
                     Text(
                       'How to find it',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: SpotterfyTheme.text,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -554,15 +560,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: OutlinedButton(
               onPressed: _loading ? null : _skip,
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF1a3a2a)),
+                side: BorderSide(color: SpotterfyTheme.borderColor),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text(
+              child: Text(
                 'Skip for now',
                 style: TextStyle(
-                  color: Color(0xFFa1a1aa),
+                  color: SpotterfyTheme.mutedDark,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -590,8 +596,8 @@ class _OnboardingWavesPainter extends CustomPainter {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          const Color(0xFF10b981).withValues(alpha: 0.12),
-          const Color(0xFF10b981).withValues(alpha: 0.0),
+          SpotterfyTheme.primary.withValues(alpha: 0.12),
+          SpotterfyTheme.primary.withValues(alpha: 0.0),
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.fill;

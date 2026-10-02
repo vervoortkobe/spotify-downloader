@@ -23,6 +23,8 @@ class ThemeController extends ChangeNotifier {
   /// AMOLED black on top of the accent.
   bool _oled = false;
 
+  /// Light surfaces instead of dark.
+
   String get accent => _accent;
   bool get oled => _oled;
 

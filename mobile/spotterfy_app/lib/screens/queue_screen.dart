@@ -60,7 +60,7 @@ class QueueScreen extends StatelessWidget {
         title: Text(
           'Queue',
           style: TextStyle(
-            color: Colors.white,
+            color: SpotterfyTheme.text,
             fontSize: 20,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.5,
@@ -128,7 +128,7 @@ class QueueScreen extends StatelessWidget {
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 20),
                   color: const Color(0xFFef4444),
-                  child: const Icon(Icons.delete, color: Colors.white),
+                  child: Icon(Icons.delete, color: SpotterfyTheme.text),
                 ),
                 onDismissed: (_) {
                   player.removeFromQueue(i);
@@ -189,9 +189,9 @@ class QueueScreen extends StatelessWidget {
                             color: SpotterfyTheme.primary,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.equalizer,
-                            color: Colors.white,
+                            color: SpotterfyTheme.text,
                             size: 12,
                           ),
                         ),

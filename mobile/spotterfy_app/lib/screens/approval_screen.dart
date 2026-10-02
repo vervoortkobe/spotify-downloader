@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 class ApprovalScreen extends StatelessWidget {
   const ApprovalScreen({super.key});
@@ -6,7 +7,7 @@ class ApprovalScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF07110b),
+      backgroundColor: SpotterfyTheme.pageBackground,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -15,14 +16,14 @@ class ApprovalScreen extends StatelessWidget {
             children: [
               Icon(
                 Icons.hourglass_empty,
-                color: const Color(0xFF10b981),
+                color: SpotterfyTheme.primary,
                 size: 72,
               ),
               const SizedBox(height: 24),
               Text(
                 'Approval Pending',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: SpotterfyTheme.text,
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
@@ -30,11 +31,11 @@ class ApprovalScreen extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 'Your account is waiting for admin approval.\nYou\'ll be notified once approved.',
-                style: TextStyle(color: const Color(0xFFa1a1aa), fontSize: 15),
+                style: TextStyle(color: SpotterfyTheme.mutedDark, fontSize: 15),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              CircularProgressIndicator(color: const Color(0xFF10b981)),
+              CircularProgressIndicator(color: SpotterfyTheme.primary),
             ],
           ),
         ),

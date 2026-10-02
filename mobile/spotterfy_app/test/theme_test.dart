@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:spotterfy_app/providers/theme_controller.dart';
@@ -109,6 +111,88 @@ void main() {
         SpotterfyTheme.darkTheme.scaffoldBackgroundColor,
         SpotterfyTheme.background,
       );
+    });
+  });
+
+  group('global accent coverage', () {
+    // Guards the migration that made the accent global. Before it, 83 accent
+    // literals were hardcoded across lib/ and the page gradients were a fixed
+    // green-black, so switching palette only repainted the widgets that already
+    // read SpotterfyTheme. Any new literal reintroduces that drift.
+    test('no file outside app_theme.dart hardcodes an accent colour', () {
+      const banned = ['0xFF10b981', '0xFF1DB954', '0xFF1ED760', '0xFF34D399'];
+      final offenders = <String>[];
+      for (final f in Directory('lib').listSync(recursive: true)) {
+        if (f is! File || !f.path.endsWith('.dart')) continue;
+        if (f.path.replaceAll('\\', '/') == 'lib/theme/app_theme.dart') {
+          continue; // the palette definitions themselves
+        }
+        final src = f.readAsStringSync();
+        for (final b in banned) {
+          if (src.toLowerCase().contains(b.toLowerCase())) {
+            offenders.add('${f.path} -> $b');
+          }
+        }
+      }
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'use SpotterfyTheme.primary / primaryDark instead:\n'
+            '${offenders.join('\n')}',
+      );
+    });
+
+    test('no file hardcodes the old fixed page background or gradient', () {
+      const banned = ['0xFF07110b', '0xFF0d1f14', '0xFF050a07'];
+      final offenders = <String>[];
+      for (final f in Directory('lib').listSync(recursive: true)) {
+        if (f is! File || !f.path.endsWith('.dart')) continue;
+        final src = f.readAsStringSync().toLowerCase();
+        for (final b in banned) {
+          if (src.contains(b.toLowerCase())) offenders.add('${f.path} -> $b');
+        }
+      }
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'use SpotterfyTheme.pageBackground / pageGradient:\n'
+            '${offenders.join('\n')}',
+      );
+    });
+
+    test('the page gradient follows the accent', () {
+      final before = SpotterfyTheme.pageGradient;
+      SpotterfyTheme.apply(
+        const AppPalette(
+          name: 'violet',
+          primary: Color(0xFFA78BFA),
+          primaryDark: Color(0xFFC4B5FD),
+        ),
+      );
+      final after = SpotterfyTheme.pageGradient;
+      expect(
+        after.map((c) => c.toARGB32()).toList(),
+        isNot(before.map((c) => c.toARGB32()).toList()),
+        reason: 'a gradient that ignores the accent is a fixed background',
+      );
+      // Restore so later tests see the documented default.
+      SpotterfyTheme.apply(SpotterfyTheme.palettes.first);
+    });
+
+    test('pageBackground also follows the accent', () {
+      SpotterfyTheme.apply(SpotterfyTheme.palettes.first);
+      final normal = SpotterfyTheme.pageBackground;
+      SpotterfyTheme.apply(
+        const AppPalette(
+          name: 'sky',
+          primary: Color(0xFF38BDF8),
+          primaryDark: Color(0xFF7DD3FC),
+        ),
+      );
+      expect(SpotterfyTheme.pageBackground, isNot(normal));
+      SpotterfyTheme.apply(SpotterfyTheme.palettes.first);
     });
   });
 

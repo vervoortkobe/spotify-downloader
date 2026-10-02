@@ -5,6 +5,7 @@ import 'package:spotterfy_app/providers/admin_provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 /// Admin tools: user stats, search across every account, and moderation.
 ///
@@ -40,29 +41,32 @@ class _AdminScreenState extends State<AdminScreen> {
     final myUid = context.select<AuthProvider, String?>((a) => a.user?.uid);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF07110b),
+      backgroundColor: SpotterfyTheme.pageBackground,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Admin',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          style: TextStyle(
+            color: SpotterfyTheme.text,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         actions: [
           IconButton(
             tooltip: 'Reload',
-            icon: const Icon(Icons.refresh, color: Colors.white),
+            icon: Icon(Icons.refresh, color: SpotterfyTheme.text),
             onPressed: admin.isLoading ? null : () => admin.refresh(),
           ),
         ],
       ),
       body: admin.isLoading && admin.users.isEmpty
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF10b981)),
+          ? Center(
+              child: CircularProgressIndicator(color: SpotterfyTheme.primary),
             )
           : RefreshIndicator(
-              color: const Color(0xFF10b981),
-              backgroundColor: const Color(0xFF0f1d17),
+              color: SpotterfyTheme.primary,
+              backgroundColor: SpotterfyTheme.surface,
               onRefresh: () => admin.refresh(),
               child: CustomScrollView(
                 slivers: [
@@ -84,7 +88,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget _statsGrid(AdminStats s) {
     final tiles = <(String, String, IconData, Color)>[
-      ('Total', '${s.total}', Icons.people, const Color(0xFF10b981)),
+      ('Total', '${s.total}', Icons.people, SpotterfyTheme.primary),
       (
         'Active now',
         '${s.activeNow}',
@@ -105,7 +109,7 @@ class _AdminScreenState extends State<AdminScreen> {
         Icons.hourglass_empty,
         const Color(0xFFfbbf24),
       ),
-      ('Spotify', '${s.spotifyLinked}', Icons.link, const Color(0xFF1DB954)),
+      ('Spotify', '${s.spotifyLinked}', Icons.link, SpotterfyTheme.primary),
       ('In a jam', '${s.inJam}', Icons.groups, const Color(0xFFf472b6)),
     ];
 
@@ -123,7 +127,7 @@ class _AdminScreenState extends State<AdminScreen> {
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF0f1d17),
+                color: SpotterfyTheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: t.$4.withValues(alpha: 0.25)),
               ),
@@ -135,8 +139,8 @@ class _AdminScreenState extends State<AdminScreen> {
                   FittedBox(
                     child: Text(
                       t.$2,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                       ),
@@ -146,8 +150,8 @@ class _AdminScreenState extends State<AdminScreen> {
                   FittedBox(
                     child: Text(
                       t.$1,
-                      style: const TextStyle(
-                        color: Color(0xFFa1a1aa),
+                      style: TextStyle(
+                        color: SpotterfyTheme.mutedDark,
                         fontSize: 10,
                       ),
                     ),
@@ -171,25 +175,25 @@ class _AdminScreenState extends State<AdminScreen> {
             child: TextField(
               controller: _searchCtrl,
               onChanged: admin.search,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
               decoration: InputDecoration(
                 isDense: true,
                 hintText: 'Search name, email, uid or Spotify URL',
-                hintStyle: const TextStyle(
-                  color: Color(0xFFa1a1aa),
+                hintStyle: TextStyle(
+                  color: SpotterfyTheme.mutedDark,
                   fontSize: 13,
                 ),
-                prefixIcon: const Icon(
+                prefixIcon: Icon(
                   Icons.search,
-                  color: Color(0xFFa1a1aa),
+                  color: SpotterfyTheme.mutedDark,
                   size: 18,
                 ),
                 suffixIcon: admin.query.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.clear,
-                          color: Color(0xFFa1a1aa),
+                          color: SpotterfyTheme.mutedDark,
                           size: 16,
                         ),
                         onPressed: () {
@@ -198,7 +202,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         },
                       ),
                 filled: true,
-                fillColor: const Color(0xFF0f1d17),
+                fillColor: SpotterfyTheme.surface,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 12,
@@ -221,15 +225,15 @@ class _AdminScreenState extends State<AdminScreen> {
     return Tooltip(
       message: 'Sort',
       child: Material(
-        color: const Color(0xFF0f1d17),
+        color: SpotterfyTheme.surface,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () => _showSortSheet(admin),
-          child: const SizedBox(
+          child: SizedBox(
             width: 44,
             height: 44,
-            child: Icon(Icons.sort, color: Colors.white, size: 20),
+            child: Icon(Icons.sort, color: SpotterfyTheme.text, size: 20),
           ),
         ),
       ),
@@ -242,7 +246,7 @@ class _AdminScreenState extends State<AdminScreen> {
     showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
-      backgroundColor: const Color(0xFF0f1d17),
+      backgroundColor: SpotterfyTheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -255,15 +259,15 @@ class _AdminScreenState extends State<AdminScreen> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: SpotterfyTheme.overlay(0.2),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'Sort users by',
               style: TextStyle(
-                color: Colors.white,
+                color: SpotterfyTheme.text,
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
               ),
@@ -281,16 +285,19 @@ class _AdminScreenState extends State<AdminScreen> {
                     SizedBox(
                       width: 24,
                       child: admin.sort == s
-                          ? const Icon(
+                          ? Icon(
                               Icons.check,
                               size: 18,
-                              color: Color(0xFF10b981),
+                              color: SpotterfyTheme.primary,
                             )
                           : null,
                     ),
                     Text(
                       s.label,
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
@@ -334,19 +341,19 @@ class _AdminScreenState extends State<AdminScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: selected
-              ? const Color(0xFF10b981).withValues(alpha: 0.18)
-              : const Color(0xFF0f1d17),
+              ? SpotterfyTheme.primary.withValues(alpha: 0.18)
+              : SpotterfyTheme.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected
-                ? const Color(0xFF10b981)
-                : Colors.white.withValues(alpha: 0.08),
+                ? SpotterfyTheme.primary
+                : SpotterfyTheme.overlay(0.08),
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? const Color(0xFF10b981) : Colors.white,
+            color: selected ? SpotterfyTheme.primary : SpotterfyTheme.text,
             fontSize: 12,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           ),
@@ -373,7 +380,7 @@ class _AdminScreenState extends State<AdminScreen> {
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
+              style: TextStyle(color: SpotterfyTheme.text, fontSize: 12),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -390,8 +397,8 @@ class _AdminScreenState extends State<AdminScreen> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Text(
         n == total ? '$total users' : '$n of $total users',
-        style: const TextStyle(
-          color: Color(0xFFa1a1aa),
+        style: TextStyle(
+          color: SpotterfyTheme.mutedDark,
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
@@ -408,9 +415,9 @@ class _AdminScreenState extends State<AdminScreen> {
             padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
             child: Column(
               children: [
-                const Icon(
+                Icon(
                   Icons.person_search,
-                  color: Color(0xFFa1a1aa),
+                  color: SpotterfyTheme.mutedDark,
                   size: 40,
                 ),
                 const SizedBox(height: 12),
@@ -419,8 +426,8 @@ class _AdminScreenState extends State<AdminScreen> {
                       ? 'No users match this filter'
                       : 'No users match "${admin.query}"',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFFa1a1aa),
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
                     fontSize: 13,
                   ),
                 ),
@@ -449,7 +456,7 @@ class _AdminScreenState extends State<AdminScreen> {
         : u.displayName.trim()[0];
 
     return Material(
-      color: const Color(0xFF0f1d17),
+      color: SpotterfyTheme.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -460,15 +467,15 @@ class _AdminScreenState extends State<AdminScreen> {
             children: [
               CircleAvatar(
                 radius: 20,
-                backgroundColor: const Color(0xFF1a3a2a),
+                backgroundColor: SpotterfyTheme.borderColor,
                 backgroundImage: u.photoUrl.isNotEmpty
                     ? NetworkImage(u.photoUrl)
                     : null,
                 child: u.photoUrl.isEmpty
                     ? Text(
                         initial.toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: SpotterfyTheme.text,
                           fontWeight: FontWeight.w700,
                         ),
                       )
@@ -485,8 +492,8 @@ class _AdminScreenState extends State<AdminScreen> {
                           child: Text(
                             u.displayName.isEmpty ? 'No name' : u.displayName,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                             ),
@@ -509,7 +516,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         ],
                         if (u.isActiveNow) ...[
                           const SizedBox(width: 6),
-                          const _Tag('Active', Color(0xFF10b981)),
+                          _Tag('Active', SpotterfyTheme.primary),
                         ],
                       ],
                     ),
@@ -517,8 +524,8 @@ class _AdminScreenState extends State<AdminScreen> {
                     Text(
                       u.email.isEmpty ? u.uid : u.email,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFa1a1aa),
+                      style: TextStyle(
+                        color: SpotterfyTheme.mutedDark,
                         fontSize: 11,
                       ),
                     ),
@@ -533,18 +540,18 @@ class _AdminScreenState extends State<AdminScreen> {
                 ),
               ),
               if (busy)
-                const SizedBox(
+                SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Color(0xFF10b981),
+                    color: SpotterfyTheme.primary,
                   ),
                 )
               else
-                const Icon(
+                Icon(
                   Icons.chevron_right,
-                  color: Color(0xFFa1a1aa),
+                  color: SpotterfyTheme.mutedDark,
                   size: 20,
                 ),
             ],
@@ -575,7 +582,7 @@ class _AdminScreenState extends State<AdminScreen> {
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF0f1d17),
+      backgroundColor: SpotterfyTheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -596,7 +603,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         width: 36,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
+                          color: SpotterfyTheme.overlay(0.2),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -712,7 +719,7 @@ class _AdminScreenState extends State<AdminScreen> {
           children: [
             CircleAvatar(
               radius: 22,
-              backgroundColor: const Color(0xFF1a3a2a),
+              backgroundColor: SpotterfyTheme.borderColor,
               backgroundImage: u.photoUrl.isNotEmpty
                   ? NetworkImage(u.photoUrl)
                   : null,
@@ -724,16 +731,16 @@ class _AdminScreenState extends State<AdminScreen> {
                 children: [
                   Text(
                     u.displayName.isEmpty ? 'No name' : u.displayName,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: SpotterfyTheme.text,
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   Text(
                     u.email.isEmpty ? 'No email' : u.email,
-                    style: const TextStyle(
-                      color: Color(0xFFa1a1aa),
+                    style: TextStyle(
+                      color: SpotterfyTheme.mutedDark,
                       fontSize: 12,
                     ),
                   ),
@@ -774,13 +781,13 @@ class _AdminScreenState extends State<AdminScreen> {
             width: 92,
             child: Text(
               label,
-              style: const TextStyle(color: Color(0xFFa1a1aa), fontSize: 11),
+              style: TextStyle(color: SpotterfyTheme.mutedDark, fontSize: 11),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(color: Colors.white, fontSize: 11),
+              style: TextStyle(color: SpotterfyTheme.text, fontSize: 11),
             ),
           ),
         ],
@@ -812,14 +819,14 @@ class _AdminScreenState extends State<AdminScreen> {
       title: Text(
         label,
         style: TextStyle(
-          color: danger ? const Color(0xFFef4444) : Colors.white,
+          color: danger ? const Color(0xFFef4444) : SpotterfyTheme.text,
           fontSize: 15,
           fontWeight: FontWeight.w600,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(color: Color(0xFFa1a1aa), fontSize: 11),
+        style: TextStyle(color: SpotterfyTheme.mutedDark, fontSize: 11),
       ),
     );
   }
@@ -857,15 +864,15 @@ class _AdminScreenState extends State<AdminScreen> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF0f1d17),
-        title: Text(title, style: const TextStyle(color: Colors.white)),
-        content: Text(body, style: const TextStyle(color: Color(0xFFa1a1aa))),
+        backgroundColor: SpotterfyTheme.surface,
+        title: Text(title, style: TextStyle(color: SpotterfyTheme.text)),
+        content: Text(body, style: TextStyle(color: SpotterfyTheme.mutedDark)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Color(0xFFa1a1aa)),
+              style: TextStyle(color: SpotterfyTheme.mutedDark),
             ),
           ),
           TextButton(
@@ -940,28 +947,28 @@ class _RenameDialogState extends State<_RenameDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF0f1d17),
+      backgroundColor: SpotterfyTheme.surface,
       title: const Text('Rename account'),
       content: TextField(
         controller: _controller,
         autofocus: true,
-        style: const TextStyle(color: Colors.white),
-        decoration: const InputDecoration(
+        style: TextStyle(color: SpotterfyTheme.text),
+        decoration: InputDecoration(
           hintText: 'Display name',
-          hintStyle: TextStyle(color: Color(0xFFa1a1aa)),
+          hintStyle: TextStyle(color: SpotterfyTheme.mutedDark),
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text(
+          child: Text(
             'Cancel',
-            style: TextStyle(color: Color(0xFFa1a1aa)),
+            style: TextStyle(color: SpotterfyTheme.mutedDark),
           ),
         ),
         TextButton(
           onPressed: () => Navigator.pop(context, _controller.text.trim()),
-          child: const Text('Save', style: TextStyle(color: Color(0xFF10b981))),
+          child: Text('Save', style: TextStyle(color: SpotterfyTheme.primary)),
         ),
       ],
     );
@@ -987,16 +994,16 @@ class _SuspendDialogState extends State<_SuspendDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF0f1d17),
+      backgroundColor: SpotterfyTheme.surface,
       title: const Text('Suspend account'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'They will be blocked from the app the next time it opens. '
             'The reason below is shown to them.',
-            style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
+            style: TextStyle(color: SpotterfyTheme.mutedDark, fontSize: 12),
           ),
           const SizedBox(height: 14),
           TextField(
@@ -1004,12 +1011,12 @@ class _SuspendDialogState extends State<_SuspendDialog> {
             autofocus: true,
             maxLines: 3,
             minLines: 2,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
+            style: TextStyle(color: SpotterfyTheme.text),
+            decoration: InputDecoration(
               hintText: 'Reason (shown to the user)',
-              hintStyle: TextStyle(color: Color(0xFFa1a1aa)),
+              hintStyle: TextStyle(color: SpotterfyTheme.mutedDark),
               filled: true,
-              fillColor: Color(0xFF07110b),
+              fillColor: SpotterfyTheme.pageBackground,
               border: OutlineInputBorder(),
             ),
           ),
@@ -1018,9 +1025,9 @@ class _SuspendDialogState extends State<_SuspendDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text(
+          child: Text(
             'Cancel',
-            style: TextStyle(color: Color(0xFFa1a1aa)),
+            style: TextStyle(color: SpotterfyTheme.mutedDark),
           ),
         ),
         TextButton(

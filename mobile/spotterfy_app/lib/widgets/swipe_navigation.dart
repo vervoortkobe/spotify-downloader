@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 class SwipeBackWrapper extends StatefulWidget {
   final Widget child;
@@ -76,18 +77,18 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10b981),
+                      color: SpotterfyTheme.primary,
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF10b981).withValues(alpha: 0.4),
+                          color: SpotterfyTheme.primary.withValues(alpha: 0.4),
                           blurRadius: 12,
                         ),
                       ],
                     ),
                     child: Icon(
                       Icons.arrow_back,
-                      color: Colors.white,
+                      color: SpotterfyTheme.text,
                       size: 20,
                       grade: 200,
                     ),

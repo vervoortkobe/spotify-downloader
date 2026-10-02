@@ -158,23 +158,23 @@ class MiniPlayer extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // Roomier tap targets: 42px buttons with real spacing so
-                    // they are easy to hit without crowding each other. The
-                    // play/pause is the only filled + glowing control, so it
-                    // reads as the primary one.
+                    // Roomier tap targets with real spacing so they are easy to
+                    // hit without crowding each other. Play/pause is the only
+                    // filled control, so it still reads as the primary one.
                     _MiniPlayPauseButton(player: player),
                     if (showQueueButton && player.queue.length > 1) ...[
                       const SizedBox(width: 6),
-                      // Same translucent white circle as the queue button on the
-                      // now-playing page, so the two read as one control.
+                      // Same translucent chip as the queue button on the
+                      // now-playing page (_CircleControlButton), so the two read
+                      // as one control rather than two different ones.
                       _MiniIconButton(
                         icon: Icons.queue_music_rounded,
                         tooltip: 'Queue',
-                        size: 42,
-                        iconSize: 21,
-                        background: Colors.white.withValues(alpha: 0.10),
-                        borderColor: Colors.white.withValues(alpha: 0.14),
-                        foreground: Colors.white,
+                        size: 40,
+                        iconSize: 19,
+                        background: SpotterfyTheme.overlay(0.12),
+                        borderColor: SpotterfyTheme.overlay(0.2),
+                        foreground: SpotterfyTheme.text,
                         onPressed: () {
                           HapticFeedback.lightImpact();
                           showQueueSheet(context, player);
@@ -278,10 +278,7 @@ class _MiniProgressBar extends StatelessWidget {
             FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: buffered.clamp(0.0, 1.0),
-              child: Container(
-                color: Colors.white.withValues(alpha: 0.28),
-                height: 3,
-              ),
+              child: Container(color: SpotterfyTheme.overlay(0.28), height: 3),
             ),
             FractionallySizedBox(
               alignment: Alignment.centerLeft,
@@ -314,10 +311,12 @@ class _MiniPlayPauseButton extends StatelessWidget {
       builder: (context, isPlaying, _) => _MiniIconButton(
         icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
         tooltip: isPlaying ? 'Pause' : 'Play',
-        size: 42,
-        iconSize: 24,
+        // 40/22 to match PlaylistPlayButton's default size exactly. The halo is
+        // gone too: it made the transport read as a glowing blob next to the
+        // flat chips everywhere else.
+        size: 40,
+        iconSize: 22,
         background: SpotterfyTheme.primary,
-        glow: SpotterfyTheme.primary,
         foreground: Colors.black,
         onPressed: () {
           HapticFeedback.lightImpact();
@@ -340,10 +339,6 @@ class _MiniIconButton extends StatefulWidget {
   /// Hairline rim, matching the circular controls on the now-playing page.
   final Color? borderColor;
 
-  /// Soft coloured halo. Only the primary (play/pause) control uses it, so the
-  /// eye lands there first.
-  final Color? glow;
-
   const _MiniIconButton({
     required this.icon,
     required this.tooltip,
@@ -353,7 +348,6 @@ class _MiniIconButton extends StatefulWidget {
     required this.background,
     required this.foreground,
     this.borderColor,
-    this.glow,
   });
 
   @override
@@ -365,7 +359,6 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
 
   @override
   Widget build(BuildContext context) {
-    final glow = widget.glow;
     return Tooltip(
       message: widget.tooltip,
       child: Semantics(
@@ -388,23 +381,13 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
               width: widget.size,
               height: widget.size,
               decoration: BoxDecoration(
-                color: _held && glow != null
-                    ? Color.lerp(widget.background, Colors.white, 0.18)
+                color: _held
+                    ? Color.lerp(widget.background, SpotterfyTheme.text, 0.18)
                     : widget.background,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: _held && glow != null
-                      ? Colors.transparent
-                      : (widget.borderColor ?? Colors.transparent),
+                  color: widget.borderColor ?? Colors.transparent,
                 ),
-                boxShadow: [
-                  if (glow != null)
-                    BoxShadow(
-                      color: glow.withValues(alpha: _held ? 0.55 : 0.35),
-                      blurRadius: _held ? 18 : 12,
-                      spreadRadius: _held ? 1 : 0,
-                    ),
-                ],
               ),
               // Cached so the press animation doesn't repaint the glyph, and so
               // the play <-> pause swap animates instead of popping.

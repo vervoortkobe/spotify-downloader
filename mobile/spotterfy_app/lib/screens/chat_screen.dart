@@ -82,8 +82,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 widget.peer.displayName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: SpotterfyTheme.text,
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
                 ),
@@ -142,7 +142,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         child: Text(
                           m.text,
                           style: TextStyle(
-                            color: mine ? Colors.black : Colors.white,
+                            color: mine ? Colors.black : SpotterfyTheme.text,
                             fontSize: 14,
                           ),
                         ),
@@ -167,16 +167,16 @@ class _ChatScreenState extends State<ChatScreen> {
         12,
         8 + MediaQuery.paddingOf(context).bottom,
       ),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0a1410),
-        border: Border(top: BorderSide(color: Color(0xFF1a3a2a))),
+      decoration: BoxDecoration(
+        color: SpotterfyTheme.fill,
+        border: Border(top: BorderSide(color: SpotterfyTheme.borderColor)),
       ),
       child: Row(
         children: [
           Expanded(
             child: TextField(
               controller: _controller,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
               minLines: 1,

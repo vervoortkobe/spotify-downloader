@@ -23,7 +23,7 @@ class ConnectivityBanner extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.black,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                border: Border.all(color: SpotterfyTheme.overlay(0.12)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -46,8 +46,8 @@ class ConnectivityBanner extends StatelessWidget {
                   Flexible(
                     child: Text(
                       net.bannerMessage,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),

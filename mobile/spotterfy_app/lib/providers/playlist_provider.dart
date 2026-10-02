@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,6 +6,7 @@ import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/auto_media_library.dart';
+import 'package:spotterfy_app/services/notification_service.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
 
 // Isolate helpers - must be top-level for compute()
@@ -207,6 +209,39 @@ class PlaylistProvider extends ChangeNotifier {
     }
   }
 
+  /// Latest scrape snapshot for the in-flight [importFromUrl], or null when no
+  /// import is running. Exposed so the library page can show the same numbers
+  /// the notification does.
+  ScrapeProgress? _importProgress;
+  ScrapeProgress? get importProgress => _importProgress;
+
+  /// Mirrors each backend poll onto the progress notification.
+  ///
+  /// Polls arrive every 500ms and only the visible percentage is worth a
+  /// notification rebuild, so repaint on change rather than on every tick.
+  void _onImportProgress(ScrapeProgress p) {
+    final previous = _importProgress;
+    _importProgress = p;
+    if (previous?.completed == p.completed && previous?.total == p.total) {
+      return;
+    }
+    if (p.isError) return;
+    final fraction = p.fraction;
+    unawaited(
+      NotificationService().showDownloadProgress(
+        id: NotificationService.importNotificationId,
+        title: 'Importing playlist',
+        // total is 0 until the backend has enumerated the tracks; saying
+        // "song 0 of 0" there would be worse than admitting it doesn't know yet.
+        subtitle: fraction == null
+            ? 'Fetching track list...'
+            : 'Song ${p.completed} of ${p.total} · '
+                  '${(fraction * 100).round()}%',
+        progress: fraction,
+      ),
+    );
+  }
+
   Future<PlaylistModel?> importFromUrl(
     String url, {
     String service = 'auto',
@@ -215,14 +250,39 @@ class PlaylistProvider extends ChangeNotifier {
     debugPrint('importFromUrl: starting scrape for $url');
     _isLoading = true;
     _error = null;
+    _importProgress = null;
     notifyListeners();
+    // The backend resolves the import on a worker thread and exposes
+    // completed/total on /api/scrape-progress, so the notification can show a
+    // real "song 7 of 24 · 29%" bar instead of an indeterminate spinner.
+    unawaited(
+      NotificationService().showDownloadProgress(
+        id: NotificationService.importNotificationId,
+        title: 'Importing playlist',
+        subtitle: 'Fetching track list...',
+        progress: null,
+      ),
+    );
     try {
-      final playlist = await ApiService.scrapePlaylist(url, service: service);
+      final playlist = await ApiService.scrapePlaylist(
+        url,
+        service: service,
+        onProgress: _onImportProgress,
+      );
       if (playlist == null) {
         _error = 'Failed to fetch playlist';
         debugPrint('importFromUrl: scrape returned null');
         _isLoading = false;
+        _importProgress = null;
         notifyListeners();
+        unawaited(
+          NotificationService().showDownloadProgress(
+            id: NotificationService.importNotificationId,
+            title: 'Import failed',
+            subtitle: 'Could not read that playlist',
+            isError: true,
+          ),
+        );
         return null;
       }
       debugPrint(
@@ -230,13 +290,33 @@ class PlaylistProvider extends ChangeNotifier {
       );
       _currentPlaylist = playlist;
       _isLoading = false;
+      _importProgress = null;
       notifyListeners();
+      unawaited(
+        NotificationService().showDownloadProgress(
+          id: NotificationService.importNotificationId,
+          title: playlist.name,
+          subtitle:
+              'Imported ${playlist.tracks.length} '
+              '${playlist.tracks.length == 1 ? 'song' : 'songs'}',
+          isComplete: true,
+        ),
+      );
       return playlist;
     } catch (e) {
       _error = 'Error: $e';
       debugPrint('importFromUrl: exception: $e');
       _isLoading = false;
+      _importProgress = null;
       notifyListeners();
+      unawaited(
+        NotificationService().showDownloadProgress(
+          id: NotificationService.importNotificationId,
+          title: 'Import failed',
+          subtitle: '$e',
+          isError: true,
+        ),
+      );
       return null;
     }
   }

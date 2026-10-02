@@ -153,7 +153,7 @@ class _StorageScreenState extends State<StorageScreen> {
         title: Text(
           'Storage',
           style: TextStyle(
-            color: Colors.white,
+            color: SpotterfyTheme.text,
             fontSize: 20,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.5,

@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
-import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/download_provider.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/services/download_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
-import 'package:spotterfy_app/widgets/swipe_navigation.dart';
-import 'package:spotterfy_app/screens/profile_screen.dart';
 
 /// Songs downloaded from inside Spotterfy, stored in the app's own folder so
 /// they never appear in the Library > Storage tab.
@@ -136,7 +133,6 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<DownloadProvider>();
-    final auth = context.watch<AuthProvider>();
     final entries = _entries;
     final selecting = _selecting || _selected.isNotEmpty;
 
@@ -146,48 +142,25 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         elevation: 0,
         automaticallyImplyLeading: false,
         leadingWidth: 52,
-        leading: GestureDetector(
-          onTap: selecting
+        // An actual back button. This used to be the profile avatar, which read
+        // as a decorative header control rather than "leave this page" - and it
+        // *pushed* a second ProfileScreen instead of popping, so leaving here
+        // stacked up profile pages you then had to back out of twice.
+        leading: IconButton(
+          onPressed: selecting
               ? _clear
-              : () =>
-                    Navigator.push(context, swipeRoute(const ProfileScreen())),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 10),
-            child: Center(
-              child: selecting
-                  ? const Icon(Icons.close, color: Colors.white, size: 22)
-                  : Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: SpotterfyTheme.card,
-                          width: 1.6,
-                        ),
-                      ),
-                      child: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: SpotterfyTheme.surface,
-                        backgroundImage:
-                            (auth.user?.photoUrl.isNotEmpty ?? false)
-                            ? NetworkImage(auth.user!.photoUrl)
-                            : null,
-                        child: (auth.user?.photoUrl.isEmpty ?? true)
-                            ? Icon(
-                                Icons.person,
-                                color: SpotterfyTheme.muted,
-                                size: 18,
-                              )
-                            : null,
-                      ),
-                    ),
-            ),
+              : () => Navigator.of(context).maybePop(),
+          icon: Icon(
+            selecting ? Icons.close : Icons.arrow_back,
+            color: SpotterfyTheme.text,
+            size: 22,
           ),
         ),
         titleSpacing: 8,
         title: Text(
           selecting ? '${_selected.length} selected' : 'Downloads',
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: SpotterfyTheme.text,
             fontSize: 20,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.5,
@@ -197,7 +170,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             ? [
                 if (_selected.isNotEmpty)
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.white),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: SpotterfyTheme.text,
+                    ),
                     tooltip: 'Delete selected downloads',
                     onPressed: _deleteSelected,
                   ),
@@ -206,7 +182,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             : [
                 if (entries.isNotEmpty)
                   IconButton(
-                    icon: const Icon(Icons.play_arrow, color: Colors.white),
+                    icon: Icon(Icons.play_arrow, color: SpotterfyTheme.text),
                     tooltip: 'Play all downloads',
                     onPressed: _playAll,
                   ),

@@ -3,7 +3,6 @@ import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
-import 'package:spotterfy_app/screens/admin_screen.dart';
 import 'package:spotterfy_app/screens/data_usage_screen.dart';
 import 'package:spotterfy_app/screens/equalizer_screen.dart';
 import 'package:spotterfy_app/screens/profile_settings_screen.dart';
@@ -52,20 +51,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   swipeRoute(const ProfileSettingsScreen()),
                 ),
               ),
-
-              // Admin-only. Admins land in the normal app rather than a separate
-              // panel, so this is how the tools are reached.
-              if (auth.isAdmin) ...[
-                const SizedBox(height: 24),
-                _sectionLabel('Administration'),
-                _settingsItem(
-                  Icons.shield,
-                  'Admin panel',
-                  subtitle: 'Stats, search and moderation',
-                  onTap: () =>
-                      Navigator.push(context, swipeRoute(const AdminScreen())),
-                ),
-              ],
 
               const SizedBox(height: 24),
               _sectionLabel('Appearance'),

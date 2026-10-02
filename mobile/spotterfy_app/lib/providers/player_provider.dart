@@ -271,7 +271,7 @@ class PlayerProvider extends ChangeNotifier {
       final path = track.sourceUrl.replaceFirst('file://', '');
       try {
         await _player.setFilePath(path).timeout(const Duration(seconds: 30));
-        await _player.play().timeout(const Duration(seconds: 30));
+        await _playUntilAudible();
         await _onTrackStarted();
       } catch (e) {
         debugPrint('[Player] local file failed: $e');
@@ -290,7 +290,7 @@ class PlayerProvider extends ChangeNotifier {
         await _player
             .setFilePath(downloaded)
             .timeout(const Duration(seconds: 30));
-        await _player.play().timeout(const Duration(seconds: 30));
+        await _playUntilAudible();
         await _onTrackStarted();
         _starting = false;
         _savePlayerState();
@@ -321,7 +321,7 @@ class PlayerProvider extends ChangeNotifier {
       await _player
           .setAudioSource(AudioSource.uri(Uri.parse(url)))
           .timeout(const Duration(seconds: 30));
-      await _player.play().timeout(const Duration(seconds: 30));
+      await _playUntilAudible();
       await _onTrackStarted();
     } catch (e) {
       debugPrint('[Player] primary failed: $e');
@@ -329,7 +329,7 @@ class PlayerProvider extends ChangeNotifier {
         await _player
             .setAudioSource(AudioSource.uri(Uri.parse(fallback)))
             .timeout(const Duration(seconds: 35));
-        await _player.play().timeout(const Duration(seconds: 35));
+        await _playUntilAudible();
         await _onTrackStarted();
       } catch (e2) {
         debugPrint('[Player] fallback failed: $e2');
@@ -434,7 +434,38 @@ class PlayerProvider extends ChangeNotifier {
       await _player.seek(Duration.zero);
       _completed = false;
     }
-    await _player.play();
+    await _playUntilAudible();
+  }
+
+  /// Starts playback and returns once audio is actually running.
+  ///
+  /// Must never `await _player.play()` directly. That future only completes when
+  /// playback is *paused or stopped*, so awaiting it blocks here for the entire
+  /// track. That was the root of "play takes ages" and "pause does nothing":
+  /// [resume] held the caller open for the whole song, so the post-play state
+  /// corrections never ran, and the toggle lock stayed held - every later pause
+  /// tap just queued and was never applied.
+  ///
+  /// Waits on the playing state instead, with a ceiling so a stalled source
+  /// still surfaces a TimeoutException for the caller's existing fallback.
+  Future<void> _playUntilAudible() async {
+    if (_player.playing) return;
+    // Nothing loaded at all: fail immediately rather than sitting out the whole
+    // ceiling on a source that will never arrive.
+    if (_player.processingState == ProcessingState.idle) {
+      throw StateError('play requested with no media loaded');
+    }
+    final audible = _player.playingStream
+        .firstWhere((isPlaying) => isPlaying)
+        .timeout(const Duration(seconds: 12));
+    // Errors here would otherwise become an unhandled async error; the timeout
+    // above is what reports a source that never starts.
+    unawaited(
+      _player.play().catchError((Object e) {
+        debugPrint('[Player] play() failed: $e');
+      }),
+    );
+    await audible;
   }
 
   /// Guards against overlapping play/pause requests: `_startPlayback()` can

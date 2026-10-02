@@ -202,8 +202,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                           children: [
                             Text(
                               track.title,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: SpotterfyTheme.text,
                                 fontSize: 22,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -0.3,
@@ -317,9 +317,9 @@ class _PlayerScreenState extends State<PlayerScreen>
             left: 6,
             child: IconButton(
               // Plain arrow, no extra wrapper/padding chrome.
-              icon: const Icon(
+              icon: Icon(
                 Icons.keyboard_arrow_down_rounded,
-                color: Colors.white,
+                color: SpotterfyTheme.text,
                 size: 30,
               ),
               tooltip: 'Minimise',
@@ -794,9 +794,9 @@ class _CircleControlButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: Colors.white.withValues(alpha: 0.12),
+        color: SpotterfyTheme.overlay(0.12),
         shape: CircleBorder(
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+          side: BorderSide(color: SpotterfyTheme.overlay(0.2)),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -804,7 +804,7 @@ class _CircleControlButton extends StatelessWidget {
           child: SizedBox(
             width: _diameter,
             height: _diameter,
-            child: Icon(icon, color: Colors.white, size: _glyph),
+            child: Icon(icon, color: SpotterfyTheme.text, size: _glyph),
           ),
         ),
       ),
@@ -964,7 +964,7 @@ class _SeekBar extends StatelessWidget {
                             alignment: Alignment.centerLeft,
                             widthFactor: b,
                             child: Container(
-                              color: Colors.white.withValues(alpha: 0.35),
+                              color: SpotterfyTheme.overlay(0.35),
                             ),
                           ),
                           FractionallySizedBox(

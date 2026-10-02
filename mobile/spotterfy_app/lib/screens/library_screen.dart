@@ -251,7 +251,7 @@ class _LibraryScreenState extends State<LibraryScreen>
         children: [
           TabBar(
             controller: _tabController,
-            labelColor: Colors.white,
+            labelColor: SpotterfyTheme.text,
             unselectedLabelColor: SpotterfyTheme.muted,
             indicatorColor: SpotterfyTheme.primary,
             dividerColor: Colors.transparent,
@@ -773,15 +773,15 @@ class _LibraryScreenState extends State<LibraryScreen>
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      icon: Icon(Icons.arrow_back, color: SpotterfyTheme.text),
                       onPressed: () =>
                           setState(() => _folderStack.removeLast()),
                     ),
                     Expanded(
                       child: Text(
                         folderName,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: SpotterfyTheme.text,
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
                         ),
@@ -816,16 +816,16 @@ class _LibraryScreenState extends State<LibraryScreen>
                           SnackBar(content: Text('Playing $folderName')),
                         );
                       },
-                      icon: const Icon(Icons.play_arrow, color: Colors.white),
+                      icon: Icon(Icons.play_arrow, color: SpotterfyTheme.text),
                       label: Text(
                         'Play • ${detailFiles.length} tracks',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: SpotterfyTheme.text,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10b981),
+                        backgroundColor: SpotterfyTheme.primary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -896,8 +896,8 @@ class _LibraryScreenState extends State<LibraryScreen>
                               ),
                               title: Text(
                                 subName,
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                style: TextStyle(
+                                  color: SpotterfyTheme.text,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -912,9 +912,9 @@ class _LibraryScreenState extends State<LibraryScreen>
                                 ),
                                 maxLines: 1,
                               ),
-                              trailing: const Icon(
+                              trailing: Icon(
                                 Icons.chevron_right,
-                                color: Colors.white,
+                                color: SpotterfyTheme.text,
                                 size: 20,
                               ),
                               onTap: () =>
@@ -1015,7 +1015,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                   border: Border.all(
                     color: isActiveFolder
                         ? SpotterfyTheme.primary.withValues(alpha: 0.55)
-                        : Colors.white.withValues(alpha: 0.06),
+                        : SpotterfyTheme.overlay(0.06),
                     width: isActiveFolder ? 1.2 : 1,
                   ),
                 ),
@@ -1029,7 +1029,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                         border: Border.all(
                           color: isActiveFolder
                               ? SpotterfyTheme.primary.withValues(alpha: 0.6)
-                              : Colors.white.withValues(alpha: 0.08),
+                              : SpotterfyTheme.overlay(0.08),
                         ),
                       ),
                       child: ClipRRect(
@@ -1281,7 +1281,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       // opened on the tab navigator lands underneath it and the confirm button
       // is covered.
       useRootNavigator: true,
-      backgroundColor: const Color(0xFF0f1d17),
+      backgroundColor: SpotterfyTheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1312,7 +1312,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               Text(
                 'Import playlist',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: SpotterfyTheme.text,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -1320,18 +1320,18 @@ class _LibraryScreenState extends State<LibraryScreen>
               const SizedBox(height: 12),
               TextField(
                 controller: controller,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
                 decoration: InputDecoration(
                   hintText: 'Paste Spotify / YouTube / SoundCloud URL',
                   hintStyle: TextStyle(
-                    color: const Color(0xFFa1a1aa),
+                    color: SpotterfyTheme.mutedDark,
                     fontSize: 13,
                   ),
                   filled: true,
-                  fillColor: const Color(0xFF0a1410),
+                  fillColor: SpotterfyTheme.fill,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: const Color(0xFF1a3a2a)),
+                    borderSide: BorderSide(color: SpotterfyTheme.borderColor),
                   ),
                   prefixIcon: Icon(
                     Icons.link,
@@ -1378,14 +1378,15 @@ class _LibraryScreenState extends State<LibraryScreen>
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: SpotterfyTheme.primary,
+                    foregroundColor: SpotterfyTheme.onAccent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Import',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: SpotterfyTheme.onAccent,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1493,13 +1494,13 @@ class _SortPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = highlighted
         ? SpotterfyTheme.primary
-        : const Color(0xFFa1a1aa);
+        : SpotterfyTheme.mutedDark;
     return Tooltip(
       message: 'Sort',
       child: Material(
         color: highlighted
             ? SpotterfyTheme.primary.withValues(alpha: 0.14)
-            : Colors.white.withValues(alpha: 0.06),
+            : SpotterfyTheme.overlay(0.06),
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
@@ -1553,15 +1554,15 @@ class _SortPill extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: SpotterfyTheme.overlay(0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Sort by',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: SpotterfyTheme.text,
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                 ),
@@ -1581,17 +1582,17 @@ class _SortPill extends StatelessWidget {
                       SizedBox(
                         width: 24,
                         child: s == current
-                            ? const Icon(
+                            ? Icon(
                                 Icons.check,
                                 size: 18,
-                                color: Color(0xFF10b981),
+                                color: SpotterfyTheme.primary,
                               )
                             : null,
                       ),
                       Text(
                         s.label,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: SpotterfyTheme.text,
                           fontSize: 14,
                         ),
                       ),

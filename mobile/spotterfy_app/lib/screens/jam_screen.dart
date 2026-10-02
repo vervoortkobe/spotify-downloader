@@ -174,7 +174,7 @@ class _JamScreenState extends State<JamScreen> {
                   _query.isNotEmpty
                       ? 'No jams for "$_query"'
                       : 'No active jam sessions',
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 16),
                 ),
               ),
             )
@@ -197,8 +197,8 @@ class _JamScreenState extends State<JamScreen> {
         children: [
           Text(
             title,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: SpotterfyTheme.text,
               fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
@@ -243,11 +243,11 @@ class _JamScreenState extends State<JamScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: n.read ? const Color(0xFF0f1d17) : const Color(0xFF12241c),
+        color: n.read ? SpotterfyTheme.surface : const Color(0xFF12241c),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: n.read
-              ? const Color(0xFF1a3a2a)
+              ? SpotterfyTheme.borderColor
               : SpotterfyTheme.primary.withValues(alpha: 0.4),
         ),
       ),
@@ -261,8 +261,8 @@ class _JamScreenState extends State<JamScreen> {
               children: [
                 Text(
                   n.fromName,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: SpotterfyTheme.text,
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),
@@ -270,8 +270,8 @@ class _JamScreenState extends State<JamScreen> {
                 SizedBox(height: 2),
                 Text(
                   n.body,
-                  style: const TextStyle(
-                    color: Color(0xFFa1a1aa),
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
                     fontSize: 12,
                   ),
                   maxLines: 2,
@@ -294,9 +294,9 @@ class _JamScreenState extends State<JamScreen> {
                   onPressed: () => _acceptRequest(context, n.fromUid),
                 ),
                 IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.close,
-                    color: Color(0xFFa1a1aa),
+                    color: SpotterfyTheme.mutedDark,
                     size: 20,
                   ),
                   tooltip: 'Decline',
@@ -306,9 +306,9 @@ class _JamScreenState extends State<JamScreen> {
             )
           else
             IconButton(
-              icon: const Icon(
+              icon: Icon(
                 Icons.chevron_right,
-                color: Color(0xFFa1a1aa),
+                color: SpotterfyTheme.mutedDark,
                 size: 20,
               ),
               onPressed: () => _openProfile(context, n.fromUid),
@@ -350,9 +350,9 @@ class _JamScreenState extends State<JamScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0f1d17),
+        color: SpotterfyTheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1a3a2a)),
+        border: Border.all(color: SpotterfyTheme.borderColor),
       ),
       child: Row(
         children: [
@@ -364,8 +364,8 @@ class _JamScreenState extends State<JamScreen> {
               children: [
                 Text(
                   c.peerName,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: SpotterfyTheme.text,
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),
@@ -375,8 +375,8 @@ class _JamScreenState extends State<JamScreen> {
                 const SizedBox(height: 2),
                 Text(
                   c.lastMessage,
-                  style: const TextStyle(
-                    color: Color(0xFFa1a1aa),
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
                     fontSize: 12,
                   ),
                   maxLines: 1,
@@ -385,7 +385,7 @@ class _JamScreenState extends State<JamScreen> {
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: Color(0xFFa1a1aa), size: 20),
+          Icon(Icons.chevron_right, color: SpotterfyTheme.mutedDark, size: 20),
         ],
       ),
     );
@@ -397,8 +397,8 @@ class _JamScreenState extends State<JamScreen> {
       leading: _avatar(f.photoUrl, 38),
       title: Text(
         f.displayName,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: SpotterfyTheme.text,
           fontWeight: FontWeight.w600,
           fontSize: 14,
         ),
@@ -416,9 +416,9 @@ class _JamScreenState extends State<JamScreen> {
             onPressed: () => _createSession(context, withFriend: f),
           ),
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.chat_bubble_outline,
-              color: Colors.white,
+              color: SpotterfyTheme.text,
               size: 20,
             ),
             tooltip: 'Message',
@@ -437,9 +437,9 @@ class _JamScreenState extends State<JamScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF0f1d17),
+        color: SpotterfyTheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1a3a2a)),
+        border: Border.all(color: SpotterfyTheme.borderColor),
       ),
       child: Row(
         children: [
@@ -447,10 +447,10 @@ class _JamScreenState extends State<JamScreen> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: const Color(0xFF1a3a2a),
+              color: SpotterfyTheme.borderColor,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.groups, color: Color(0xFF10b981)),
+            child: Icon(Icons.groups, color: SpotterfyTheme.primary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -459,15 +459,15 @@ class _JamScreenState extends State<JamScreen> {
               children: [
                 Text(
                   s.name,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: SpotterfyTheme.text,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
                   '${s.participants.length} listening',
-                  style: const TextStyle(
-                    color: Color(0xFFa1a1aa),
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
                     fontSize: 12,
                   ),
                 ),
@@ -480,8 +480,8 @@ class _JamScreenState extends State<JamScreen> {
               await jam.joinSession(auth.user!.uid, s.id);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10b981),
-              foregroundColor: Colors.white,
+              backgroundColor: SpotterfyTheme.primary,
+              foregroundColor: SpotterfyTheme.text,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -599,20 +599,20 @@ class _JamScreenState extends State<JamScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF0f1d17),
+        backgroundColor: SpotterfyTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Create Jam Session',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: SpotterfyTheme.text),
         ),
         content: TextField(
           controller: nameController,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: SpotterfyTheme.text),
           decoration: InputDecoration(
             hintText: 'Session name',
-            hintStyle: const TextStyle(color: Color(0xFFa1a1aa)),
+            hintStyle: TextStyle(color: SpotterfyTheme.mutedDark),
             filled: true,
-            fillColor: const Color(0xFF0a1410),
+            fillColor: SpotterfyTheme.fill,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide.none,
@@ -622,9 +622,9 @@ class _JamScreenState extends State<JamScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Color(0xFFa1a1aa)),
+              style: TextStyle(color: SpotterfyTheme.mutedDark),
             ),
           ),
           ElevatedButton(
@@ -639,8 +639,8 @@ class _JamScreenState extends State<JamScreen> {
               if (ctx.mounted) Navigator.pop(ctx);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10b981),
-              foregroundColor: Colors.white,
+              backgroundColor: SpotterfyTheme.primary,
+              foregroundColor: SpotterfyTheme.text,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),

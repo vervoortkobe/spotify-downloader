@@ -1,9 +1,39 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/track_model.dart';
 import '../models/playlist_model.dart';
 import 'network_stats_service.dart';
+
+/// One poll of a backend scrape job.
+///
+/// Mirrors the JSON from `GET /api/scrape-progress/<jobId>`.
+class ScrapeProgress {
+  /// Tracks resolved so far.
+  final int completed;
+
+  /// Total tracks, or 0 while the backend is still enumerating them.
+  final int total;
+
+  /// `starting`, `scraping`, `complete` or `error`.
+  final String status;
+
+  const ScrapeProgress({
+    required this.completed,
+    required this.total,
+    required this.status,
+  });
+
+  bool get isComplete => status == 'complete';
+  bool get isError => status == 'error';
+
+  /// 0..1, or null while [total] is still unknown. A null here means the bar has
+  /// to stay indeterminate - guessing a percentage would jump around as the
+  /// backend discovers the playlist size.
+  double? get fraction =>
+      total > 0 ? (completed / total).clamp(0.0, 1.0) : null;
+}
 
 class ApiService {
   static const String _baseUrl = 'https://spotdl.vervoortkobe.be.eu.org/api';
@@ -44,6 +74,7 @@ class ApiService {
   static Future<PlaylistModel?> scrapePlaylist(
     String url, {
     String service = 'auto',
+    void Function(ScrapeProgress progress)? onProgress,
   }) async {
     try {
       final cleanUrl = url.split('?').first;
@@ -69,6 +100,15 @@ class ApiService {
         final tracks = (playlistData['tracks'] as List<dynamic>)
             .map((t) => TrackModel.fromJson(t as Map<String, dynamic>))
             .toList();
+        // Synchronous path, so report a single finished snapshot rather than
+        // leaving the caller's progress UI stuck at zero.
+        onProgress?.call(
+          ScrapeProgress(
+            completed: tracks.length,
+            total: tracks.length,
+            status: 'complete',
+          ),
+        );
         return PlaylistModel(
           id: cleanUrl.hashCode.toString(),
           // Raw title for display — stripping happens only on save (toFirestore).
@@ -88,7 +128,12 @@ class ApiService {
         return null;
       }
       debugPrint('scrapePlaylist jobId=$jobId polling...');
-      for (int i = 0; i < 120; i++) {
+      // The backend resolves the job on a worker thread, so this polls
+      // /api/scrape-progress. Each response carries the real completed/total,
+      // which is what makes "song 7 of 24" possible instead of a spinner that
+      // knows nothing.
+      var sawCompletion = false;
+      for (int i = 0; i < 240; i++) {
         await Future.delayed(const Duration(milliseconds: 500));
         final progRes = await http.get(
           Uri.parse('$_baseUrl/scrape-progress/$jobId'),
@@ -97,15 +142,28 @@ class ApiService {
         _trackDown(progRes.bodyBytes.length);
         if (progRes.statusCode != 200) continue;
         final prog = jsonDecode(progRes.body) as Map<String, dynamic>;
-        if (prog['status'] == 'complete') {
+        final snapshot = ScrapeProgress(
+          completed: (prog['completed'] as num?)?.toInt() ?? 0,
+          total: (prog['total'] as num?)?.toInt() ?? 0,
+          status: prog['status'] as String? ?? 'scraping',
+        );
+        onProgress?.call(snapshot);
+        if (snapshot.isComplete) {
           debugPrint('scrapePlaylist job complete');
+          sawCompletion = true;
           break;
         }
-        if (prog['status'] == 'error') {
+        if (snapshot.isError) {
           debugPrint('scrapePlaylist job error: $prog');
           return null;
         }
         if (i % 4 == 0) debugPrint('scrapePlaylist progress $i: $prog');
+      }
+      if (!sawCompletion) {
+        // Two minutes without a terminal state. Fetching the result anyway would
+        // either 404 or, worse, return a half-built playlist.
+        debugPrint('scrapePlaylist timed out waiting for $jobId');
+        return null;
       }
       final resultRes = await http.get(
         Uri.parse('$_baseUrl/scrape-result/$jobId'),
@@ -210,24 +268,58 @@ class ApiService {
     }
   }
 
+  /// Streams a track to the caller and reports progress as bytes arrive.
+  ///
+  /// [onProgress] receives `(received, total)`. [total] is `-1` when the server
+  /// sends no Content-Length, in which case progress can only be indeterminate.
+  ///
+  /// This deliberately does *not* use `http.post`: that buffers the whole body
+  /// before returning, so the caller had no way to show a progress bar and the
+  /// notification sat at zero until the file had fully arrived.
   static Future<List<int>?> downloadTrack(
     TrackModel track, {
     String? sourceUrlOverride,
+    void Function(int received, int total)? onProgress,
   }) async {
+    final client = http.Client();
     try {
       final sourceUrl = sourceUrlOverride ?? track.sourceUrl;
       final reqBody = jsonEncode({...track.toJson(), 'sourceUrl': sourceUrl});
       _trackUp(reqBody);
-      final response = await http.post(
-        Uri.parse('$_baseUrl/download-track'),
-        headers: _headers(),
-        body: reqBody,
-      );
-      _trackDown(response.bodyBytes.length);
-      if (response.statusCode != 200) return null;
-      return response.bodyBytes;
+      final request =
+          http.Request('POST', Uri.parse('$_baseUrl/download-track'))
+            ..headers.addAll(_headers())
+            ..bodyBytes = utf8.encode(reqBody);
+      final response = await client.send(request);
+      if (response.statusCode != 200) {
+        client.close();
+        return null;
+      }
+      final total = response.contentLength ?? -1;
+      final bytes = BytesBuilder(copy: false);
+      var received = 0;
+      var lastReported = 0;
+      await for (final chunk in response.stream) {
+        bytes.add(chunk);
+        received += chunk.length;
+        // Throttle hard. A 5 MB track arrives as hundreds of chunks and each
+        // one would otherwise cost a platform-channel round trip plus a full
+        // notification rebuild, which is slower than the download itself.
+        final done = total > 0 && received >= total;
+        if (onProgress != null &&
+            (done || received - lastReported >= 64 * 1024)) {
+          lastReported = received;
+          onProgress(received, total);
+        }
+      }
+      client.close();
+      final out = bytes.takeBytes();
+      _trackDown(out.length);
+      onProgress?.call(received, total);
+      return out;
     } catch (e) {
       debugPrint('Download failed: $e');
+      client.close();
       return null;
     }
   }

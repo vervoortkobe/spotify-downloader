@@ -46,9 +46,9 @@ class _PlaylistPlayButtonState extends State<PlaylistPlayButton> {
     final Color border;
 
     if (!_enabled) {
-      background = Colors.white.withValues(alpha: 0.04);
+      background = SpotterfyTheme.overlay(0.04);
       foreground = SpotterfyTheme.mutedDark;
-      border = Colors.white.withValues(alpha: 0.06);
+      border = SpotterfyTheme.overlay(0.06);
     } else if (_held) {
       // Solid green on press, matching the now-playing transport button.
       background = SpotterfyTheme.primary;
@@ -59,9 +59,9 @@ class _PlaylistPlayButtonState extends State<PlaylistPlayButton> {
       foreground = SpotterfyTheme.primary;
       border = SpotterfyTheme.primary.withValues(alpha: 0.5);
     } else {
-      background = Colors.white.withValues(alpha: 0.10);
-      foreground = Colors.white;
-      border = Colors.white.withValues(alpha: 0.14);
+      background = SpotterfyTheme.overlay(0.10);
+      foreground = SpotterfyTheme.onAccent;
+      border = SpotterfyTheme.overlay(0.14);
     }
 
     return Tooltip(

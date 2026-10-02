@@ -205,6 +205,12 @@ class PlaylistModel {
 
     // Owner unknown (community playlist imported before ownership was
     // recorded): drop a trailing " - Whatever" as the author hint.
+    //
+    // Only when the owner really is unknown. If we know who the owner is and the
+    // suffix doesn't match them, then that trailing segment is far more likely
+    // to be part of the title - "Jay-Z - The Blueprint" and "Nils Frahm - All
+    // Melody" are real playlists, and this used to truncate both to "Jay-Z".
+    if (owner.trim().isNotEmpty) return n;
     final generic = RegExp(r'\s+[-–—]\s+[^-+–—]+$');
     final m = generic.firstMatch(n);
     if (m != null) {

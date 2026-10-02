@@ -6,9 +6,10 @@ PlaylistModel _playlist({
   String owner = 'Spotify',
   String creatorUid = 'system_discover',
   bool isUsersOwn = false,
+  String name = 'Top Hits',
 }) => PlaylistModel(
   id: 'p1',
-  name: 'Top Hits',
+  name: name,
   owner: owner,
   creatorUid: creatorUid,
   isUsersOwn: isUsersOwn,
@@ -79,6 +80,31 @@ void main() {
       );
       final stripped = mine.withoutCreator();
       expect(stripped.isUsersOwn, isTrue);
+    });
+  });
+
+  group('PlaylistModel.displayName', () {
+    test('drops the scraper owner suffix from an imported playlist', () {
+      // Spotify/YouTube hand back "Playlist - Owner" as the *name*, so an
+      // imported playlist otherwise shows the author twice.
+      final p = _playlist(name: 'Top Hits - Spotify');
+      expect(p.displayName, 'Top Hits');
+    });
+
+    test('drops a "by Owner" suffix too', () {
+      final p = _playlist(name: 'Top Hits by Spotify');
+      expect(p.displayName, 'Top Hits');
+    });
+
+    test('leaves a dash that is part of the title alone', () {
+      // A mid-string dash is real content, not an author suffix.
+      final p = _playlist(name: 'Jay-Z - The Blueprint');
+      expect(p.displayName, 'Jay-Z - The Blueprint');
+    });
+
+    test('never returns an empty title', () {
+      final p = _playlist(name: ' - Spotify');
+      expect(p.displayName.trim(), isNotEmpty);
     });
   });
 }

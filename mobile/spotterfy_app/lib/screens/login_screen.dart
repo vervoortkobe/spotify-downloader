@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/main_screen.dart';
 import 'package:spotterfy_app/screens/suspended_screen.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -29,7 +30,7 @@ class LoginScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF07110b),
+      backgroundColor: SpotterfyTheme.pageBackground,
       body: Stack(
         children: [
           CustomPaint(size: Size.infinite, painter: WavesPainter()),
@@ -45,14 +46,12 @@ class LoginScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(32),
                       border: Border.all(
-                        color: const Color(0xFF10b981),
+                        color: SpotterfyTheme.primary,
                         width: 3,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(
-                            0xFF10b981,
-                          ).withValues(alpha: 0.35),
+                          color: SpotterfyTheme.primary.withValues(alpha: 0.35),
                           blurRadius: 20,
                           spreadRadius: 1,
                         ),
@@ -72,7 +71,7 @@ class LoginScreen extends StatelessWidget {
                   Text(
                     'Spotterfy',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: SpotterfyTheme.text,
                       fontSize: 36,
                       fontWeight: FontWeight.bold,
                     ),
@@ -81,7 +80,7 @@ class LoginScreen extends StatelessWidget {
                   Text(
                     'Download & stream your favorite music',
                     style: TextStyle(
-                      color: const Color(0xFFa1a1aa),
+                      color: SpotterfyTheme.mutedDark,
                       fontSize: 16,
                     ),
                     textAlign: TextAlign.center,
@@ -120,8 +119,8 @@ class LoginScreen extends StatelessWidget {
                                   }
                                 },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF10b981),
-                            foregroundColor: Colors.white,
+                            backgroundColor: SpotterfyTheme.primary,
+                            foregroundColor: SpotterfyTheme.text,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
@@ -133,7 +132,7 @@ class LoginScreen extends StatelessWidget {
                                   height: 24,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Colors.white,
+                                    color: SpotterfyTheme.text,
                                   ),
                                 )
                               : Row(
@@ -172,8 +171,8 @@ class WavesPainter extends CustomPainter {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          const Color(0xFF10b981).withValues(alpha: 0.15),
-          const Color(0xFF10b981).withValues(alpha: 0.0),
+          SpotterfyTheme.primary.withValues(alpha: 0.15),
+          SpotterfyTheme.primary.withValues(alpha: 0.0),
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.fill;

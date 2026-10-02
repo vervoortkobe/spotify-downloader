@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/track_model.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._();
@@ -67,6 +68,25 @@ class NotificationService {
           '[NotificationService] createNotificationChannel failed: $e',
         );
       }
+      // Without this channel `showDownloadProgress` silently no-ops: posting to
+      // an unknown channel id is dropped rather than raising.
+      try {
+        await android?.createNotificationChannel(
+          AndroidNotificationChannel(
+            'download_channel',
+            'Downloads',
+            description: 'Progress for song and playlist downloads',
+            importance: Importance.low,
+            playSound: false,
+            enableVibration: false,
+            showBadge: false,
+          ),
+        );
+      } catch (e) {
+        debugPrint(
+          '[NotificationService] createNotificationChannel (download) failed: $e',
+        );
+      }
     }
 
     _initialized = true;
@@ -128,7 +148,7 @@ class NotificationService {
       visibility: NotificationVisibility.public,
       category: AndroidNotificationCategory.transport,
       ticker: 'Now Playing: ${track.title}',
-      color: const Color(0xFF10b981),
+      color: SpotterfyTheme.primary,
       colorized: true,
       largeIcon: track.cover.isNotEmpty
           ? null
@@ -192,6 +212,10 @@ class NotificationService {
   // Download notification ID (different from playback)
   static const int _downloadNotificationId = 100;
 
+  /// Import and download get separate ids so an import started while a song is
+  /// downloading can't overwrite the other's progress bar.
+  static const int importNotificationId = 101;
+
   /// Shows a download progress notification.
   ///
   /// [progress] should be between 0.0 and 1.0, or null for indeterminate.
@@ -199,6 +223,7 @@ class NotificationService {
   /// [subtitle] is an optional subtitle (e.g., "Downloading...", "Saving...")
   /// [maxProgress] and [progressValue] can be used for specific byte counts.
   Future<void> showDownloadProgress({
+    int id = _downloadNotificationId,
     required String title,
     String? subtitle,
     double? progress, // 0.0 to 1.0, or null for indeterminate
@@ -216,7 +241,7 @@ class NotificationService {
 
     final color = isError
         ? const Color(0xFFef4444)
-        : (isComplete ? const Color(0xFF10b981) : const Color(0xFF3b82f6));
+        : (isComplete ? SpotterfyTheme.primary : const Color(0xFF3b82f6));
 
     final body =
         subtitle ??
@@ -254,7 +279,7 @@ class NotificationService {
     );
 
     await _plugin!.show(
-      id: _downloadNotificationId,
+      id: id,
       title: title,
       body: body,
       notificationDetails: NotificationDetails(android: androidDetails),
@@ -262,9 +287,11 @@ class NotificationService {
   }
 
   /// Cancels the download notification.
-  Future<void> cancelDownloadNotification() async {
+  Future<void> cancelDownloadNotification({
+    int id = _downloadNotificationId,
+  }) async {
     if (_plugin != null) {
-      await _plugin!.cancel(id: _downloadNotificationId);
+      await _plugin!.cancel(id: id);
     }
   }
 }

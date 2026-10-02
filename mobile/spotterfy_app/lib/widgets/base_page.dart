@@ -57,13 +57,13 @@ class BasePageScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isSearch = searchController != null;
     // Unified dark gradient like Jam/Chat page + Onboarding waves base
-    const gradientBg = LinearGradient(
+    final gradientBg = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF0d1f14), Color(0xFF07110b), Color(0xFF050a07)],
+      colors: SpotterfyTheme.pageGradient,
     );
     return Container(
-      decoration: const BoxDecoration(gradient: gradientBg),
+      decoration: BoxDecoration(gradient: gradientBg),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         // keep pages visually identical; ignore per-page backgroundColor and use gradient
@@ -181,8 +181,8 @@ class BasePageScaffold extends StatelessWidget {
                 )
               : Text(
                   title!,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: SpotterfyTheme.text,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,

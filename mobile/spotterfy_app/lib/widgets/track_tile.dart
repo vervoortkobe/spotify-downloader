@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 class TrackTile extends StatelessWidget {
   final TrackModel track;
@@ -70,20 +71,20 @@ class TrackTile extends StatelessWidget {
       background: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
-          color: const Color(0xFF10b981),
+          color: SpotterfyTheme.primary,
           borderRadius: BorderRadius.circular(12),
         ),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 24),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.play_arrow, color: Colors.white, size: 18),
+            Icon(Icons.play_arrow, color: SpotterfyTheme.text, size: 18),
             SizedBox(width: 6),
             Text(
               'Play Now',
               style: TextStyle(
-                color: Colors.white,
+                color: SpotterfyTheme.text,
                 fontWeight: FontWeight.w700,
                 fontSize: 12,
               ),
@@ -94,25 +95,25 @@ class TrackTile extends StatelessWidget {
       secondaryBackground: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
-          color: const Color(0xFF1a3a2a),
+          color: SpotterfyTheme.borderColor,
           borderRadius: BorderRadius.circular(12),
         ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             Text(
               'Add to Queue',
               style: TextStyle(
-                color: Colors.white,
+                color: SpotterfyTheme.text,
                 fontWeight: FontWeight.w700,
                 fontSize: 12,
               ),
             ),
             SizedBox(width: 6),
-            Icon(Icons.queue_music, color: Colors.white, size: 18),
+            Icon(Icons.queue_music, color: SpotterfyTheme.text, size: 18),
           ],
         ),
       ),
@@ -138,7 +139,7 @@ class TrackTile extends StatelessWidget {
               SnackBar(
                 content: Text('Added "${track.title}" to queue'),
                 duration: const Duration(milliseconds: 900),
-                backgroundColor: const Color(0xFF0f1d17),
+                backgroundColor: SpotterfyTheme.surface,
               ),
             );
           }
@@ -149,22 +150,24 @@ class TrackTile extends StatelessWidget {
         margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
           color: selected
-              ? Color(0xFF10b981).withValues(alpha: 0.18)
+              ? SpotterfyTheme.primary.withValues(alpha: 0.18)
               : active
-              ? Color(0xFF10b981).withValues(alpha: 0.15)
+              ? SpotterfyTheme.primary.withValues(alpha: 0.15)
               : isSelected
-              ? Color(0xFF10b981).withValues(alpha: 0.1)
-              : Color(0xFF0f1d17),
+              ? SpotterfyTheme.primary.withValues(alpha: 0.1)
+              : SpotterfyTheme.surface,
           borderRadius: BorderRadius.circular(12),
           border: selected || active
-              ? Border.all(color: Color(0xFF10b981).withValues(alpha: 0.6))
+              ? Border.all(color: SpotterfyTheme.primary.withValues(alpha: 0.6))
               : isSelected
-              ? Border.all(color: Color(0xFF10b981).withValues(alpha: 0.3))
-              : Border.all(color: Color(0xFF1a3a2a).withValues(alpha: 0.3)),
+              ? Border.all(color: SpotterfyTheme.primary.withValues(alpha: 0.3))
+              : Border.all(
+                  color: SpotterfyTheme.borderColor.withValues(alpha: 0.3),
+                ),
           boxShadow: active
               ? [
                   BoxShadow(
-                    color: Color(0xFF10b981).withValues(alpha: 0.25),
+                    color: SpotterfyTheme.primary.withValues(alpha: 0.25),
                     blurRadius: 12,
                   ),
                 ]
@@ -186,7 +189,7 @@ class TrackTile extends StatelessWidget {
                           ? Icons.check_circle_rounded
                           : Icons.radio_button_unchecked_rounded,
                       color: selected
-                          ? const Color(0xFF10b981)
+                          ? SpotterfyTheme.primary
                           : const Color(0xFF4a4a4a),
                       size: 26,
                     ),
@@ -241,7 +244,7 @@ class TrackTile extends StatelessWidget {
             title: Text(
               track.title,
               style: TextStyle(
-                color: active ? Color(0xFF6ee7b7) : Colors.white,
+                color: active ? Color(0xFF6ee7b7) : SpotterfyTheme.text,
                 fontSize: 14,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
               ),
@@ -253,7 +256,10 @@ class TrackTile extends StatelessWidget {
                 Flexible(
                   child: Text(
                     track.artists,
-                    style: TextStyle(color: Color(0xFFa1a1aa), fontSize: 12),
+                    style: TextStyle(
+                      color: SpotterfyTheme.mutedDark,
+                      fontSize: 12,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -261,11 +267,11 @@ class TrackTile extends StatelessWidget {
                 // Round check marking the track as available offline.
                 if (isDownloaded) ...[
                   const SizedBox(width: 6),
-                  const Tooltip(
+                  Tooltip(
                     message: 'Downloaded',
                     child: Icon(
                       Icons.check_circle,
-                      color: Color(0xFF10b981),
+                      color: SpotterfyTheme.primary,
                       size: 14,
                     ),
                   ),
@@ -282,18 +288,22 @@ class TrackTile extends StatelessWidget {
                     child: CircularProgressIndicator(
                       value: progress / 100,
                       strokeWidth: 2,
-                      color: Color(0xFF10b981),
+                      color: SpotterfyTheme.primary,
                     ),
                   ),
                 if (progress >= 100)
-                  Icon(Icons.check_circle, color: Color(0xFF10b981), size: 20),
+                  Icon(
+                    Icons.check_circle,
+                    color: SpotterfyTheme.primary,
+                    size: 20,
+                  ),
                 if (track.durationMs > 0)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: Text(
                       _fmtDuration(Duration(milliseconds: track.durationMs)),
                       style: TextStyle(
-                        color: Color(0xFFa1a1aa),
+                        color: SpotterfyTheme.mutedDark,
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
                       ),
@@ -304,8 +314,8 @@ class TrackTile extends StatelessWidget {
                     icon: Icon(
                       isDownloaded ? Icons.download_done : Icons.download,
                       color: isDownloaded
-                          ? const Color(0xFF10b981)
-                          : Color(0xFFa1a1aa),
+                          ? SpotterfyTheme.primary
+                          : SpotterfyTheme.mutedDark,
                       size: 20,
                     ),
                     tooltip: isDownloaded
@@ -316,14 +326,14 @@ class TrackTile extends StatelessWidget {
                     constraints: BoxConstraints(),
                   ),
                 if (isDownloading)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(right: 8),
                     child: SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Color(0xFF10b981),
+                        color: SpotterfyTheme.primary,
                       ),
                     ),
                   ),
@@ -334,8 +344,8 @@ class TrackTile extends StatelessWidget {
                           ? Icons.bookmark_rounded
                           : Icons.bookmark_border_rounded,
                       color: isSaved
-                          ? const Color(0xFF10b981)
-                          : const Color(0xFFa1a1aa),
+                          ? SpotterfyTheme.primary
+                          : SpotterfyTheme.mutedDark,
                       size: 20,
                     ),
                     tooltip: isSaved ? 'Saved to library' : 'Save to library',
@@ -347,7 +357,9 @@ class TrackTile extends StatelessWidget {
                 IconButton(
                   icon: Icon(
                     Icons.queue_music,
-                    color: isSelected ? Color(0xFF10b981) : Color(0xFFa1a1aa),
+                    color: isSelected
+                        ? SpotterfyTheme.primary
+                        : SpotterfyTheme.mutedDark,
                     size: 20,
                   ),
                   onPressed: () {
@@ -359,7 +371,7 @@ class TrackTile extends StatelessWidget {
                       SnackBar(
                         content: Text('Added "${track.title}" to queue'),
                         duration: Duration(milliseconds: 900),
-                        backgroundColor: Color(0xFF0f1d17),
+                        backgroundColor: SpotterfyTheme.surface,
                       ),
                     );
                   },
@@ -373,10 +385,10 @@ class TrackTile extends StatelessWidget {
                           ? Icons.pause_circle_filled
                           : Icons.play_circle_filled,
                       color: active
-                          ? Color(0xFF10b981)
+                          ? SpotterfyTheme.primary
                           : isSelected
-                          ? Color(0xFF10b981)
-                          : Color(0xFFa1a1aa),
+                          ? SpotterfyTheme.primary
+                          : SpotterfyTheme.mutedDark,
                       size: 28,
                     ),
                     onPressed: onPlay,

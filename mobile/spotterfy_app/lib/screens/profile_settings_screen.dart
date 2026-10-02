@@ -35,8 +35,8 @@ class ProfileSettingsScreen extends StatelessWidget {
               Center(
                 child: Text(
                   name.isEmpty ? 'No name set' : name,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: SpotterfyTheme.text,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
@@ -330,12 +330,12 @@ class _EditTextDialogState extends State<_EditTextDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: SpotterfyTheme.surface,
-      title: Text(widget.title, style: const TextStyle(color: Colors.white)),
+      title: Text(widget.title, style: TextStyle(color: SpotterfyTheme.text)),
       content: TextField(
         controller: _controller,
         autofocus: true,
         maxLines: 1,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: SpotterfyTheme.text),
         decoration: InputDecoration(
           hintText: widget.hint,
           hintStyle: TextStyle(color: SpotterfyTheme.muted),

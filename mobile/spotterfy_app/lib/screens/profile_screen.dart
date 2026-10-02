@@ -18,6 +18,7 @@ import 'package:spotterfy_app/screens/downloads_screen.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
 import 'package:spotterfy_app/screens/playlist_detail_screen.dart';
 import 'package:spotterfy_app/screens/settings_screen.dart';
+import 'package:spotterfy_app/screens/admin_screen.dart';
 
 /// A user's profile.
 ///
@@ -173,6 +174,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Navigator.push(context, swipeRoute(const SettingsScreen()));
                 },
               ),
+              // Admin-only, and only for the signed-in user's own profile.
+              // Another member's profile has no business offering moderation
+              // tools, so the uid check is not just `auth.isAdmin`.
+              if (auth.isAdmin && _targetUid == null) ...[
+                const SizedBox(height: 8),
+                _actionButton(
+                  context,
+                  icon: Icons.shield,
+                  title: 'Admin Panel',
+                  onTap: () {
+                    Navigator.push(context, swipeRoute(const AdminScreen()));
+                  },
+                ),
+              ],
               const SizedBox(height: 8),
               _actionButton(
                 context,
@@ -772,7 +787,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: Color(0xFFa1a1aa)),
+                Icon(Icons.chevron_right, color: SpotterfyTheme.mutedDark),
               ],
             ),
           ),

@@ -106,9 +106,9 @@ class _AppBottomNavState extends State<AppBottomNav> {
       onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
       onHorizontalDragEnd: _handleSwipe,
       child: NavigationBarTheme(
-        data: const NavigationBarThemeData(height: 80),
+        data: NavigationBarThemeData(height: 80),
         child: NavigationBar(
-          backgroundColor: const Color(0xFF121212),
+          backgroundColor: Color(0xFF121212),
           indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.15),
           selectedIndex: widget.currentIndex.clamp(0, 3),
           // Reselecting the tab you are already on pops that tab back to its
@@ -121,25 +121,31 @@ class _AppBottomNavState extends State<AppBottomNav> {
             }
           },
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          destinations: const [
+          destinations: [
             NavigationDestination(
-              icon: Icon(Icons.explore_outlined, color: Colors.white),
-              selectedIcon: Icon(Icons.explore, color: Colors.white),
+              icon: Icon(Icons.explore_outlined, color: SpotterfyTheme.text),
+              selectedIcon: Icon(Icons.explore, color: SpotterfyTheme.text),
               label: 'Discover',
             ),
             NavigationDestination(
-              icon: Icon(Icons.search, color: Colors.white),
-              selectedIcon: Icon(Icons.search, color: Colors.white),
+              icon: Icon(Icons.search, color: SpotterfyTheme.text),
+              selectedIcon: Icon(Icons.search, color: SpotterfyTheme.text),
               label: 'Search',
             ),
             NavigationDestination(
-              icon: Icon(Icons.library_music_outlined, color: Colors.white),
-              selectedIcon: Icon(Icons.library_music, color: Colors.white),
+              icon: Icon(
+                Icons.library_music_outlined,
+                color: SpotterfyTheme.text,
+              ),
+              selectedIcon: Icon(
+                Icons.library_music,
+                color: SpotterfyTheme.text,
+              ),
               label: 'Library',
             ),
             NavigationDestination(
-              icon: Icon(Icons.forum_outlined, color: Colors.white),
-              selectedIcon: Icon(Icons.forum, color: Colors.white),
+              icon: Icon(Icons.forum_outlined, color: SpotterfyTheme.text),
+              selectedIcon: Icon(Icons.forum, color: SpotterfyTheme.text),
               label: 'Chat',
             ),
           ],

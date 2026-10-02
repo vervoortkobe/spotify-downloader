@@ -8,10 +8,10 @@ import 'package:spotterfy_app/services/network_stats_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 
-// Follows the accent, so this cannot be a const any more.
+// Follows the accent, so these cannot be const any more.
 final _playlistColor = SpotterfyTheme.primary;
 const _imageColor = Color(0xFF38bdf8);
-const _otherColor = Color(0xFFa1a1aa);
+final _otherColor = SpotterfyTheme.mutedDark;
 
 class StorageSnapshot {
   final int at;

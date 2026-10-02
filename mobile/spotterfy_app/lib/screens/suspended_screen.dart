@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 /// Shown instead of the app when the signed-in account has been suspended.
 ///
@@ -17,7 +18,7 @@ class SuspendedScreen extends StatelessWidget {
     final reason = context.select<AuthProvider, String>((a) => a.bannedReason);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF07110b),
+      backgroundColor: SpotterfyTheme.pageBackground,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -39,11 +40,11 @@ class SuspendedScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-                const Text(
+                Text(
                   'Account suspended',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white,
+                    color: SpotterfyTheme.text,
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
@@ -54,8 +55,8 @@ class SuspendedScreen extends StatelessWidget {
                       ? 'This account has been suspended. Contact support if you think this is a mistake.'
                       : reason,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFFa1a1aa),
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
                     fontSize: 14,
                     height: 1.45,
                   ),
@@ -78,16 +79,16 @@ class SuspendedScreen extends StatelessWidget {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0f1d17),
+                      backgroundColor: SpotterfyTheme.surface,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Sign out',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: SpotterfyTheme.text,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

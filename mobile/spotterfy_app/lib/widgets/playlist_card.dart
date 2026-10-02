@@ -59,7 +59,7 @@ class PlaylistCard extends StatelessWidget {
           border: Border.all(
             color: active
                 ? SpotterfyTheme.primary.withValues(alpha: 0.55)
-                : Colors.white.withValues(alpha: 0.06),
+                : SpotterfyTheme.overlay(0.06),
             width: active ? 1.2 : 1,
           ),
         ),
@@ -195,7 +195,7 @@ class _Cover extends StatelessWidget {
         border: Border.all(
           color: active
               ? SpotterfyTheme.primary.withValues(alpha: 0.6)
-              : Colors.white.withValues(alpha: 0.08),
+              : SpotterfyTheme.overlay(0.08),
         ),
       ),
       child: ClipRRect(

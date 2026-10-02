@@ -81,8 +81,8 @@ class _PlaylistHeader extends StatelessWidget {
                       // "By <owner>" sits directly underneath, so the title
                       // drops the " - Owner" suffix the scraper adds.
                       playlist.displayName,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.4,
@@ -101,8 +101,8 @@ class _PlaylistHeader extends StatelessWidget {
                         playlist.owner.isEmpty
                             ? 'Created by you'
                             : 'By ${playlist.owner}',
-                        style: const TextStyle(
-                          color: Color(0xFFa1a1aa),
+                        style: TextStyle(
+                          color: SpotterfyTheme.mutedDark,
                           fontSize: 12,
                         ),
                         maxLines: 1,
@@ -158,13 +158,13 @@ class _PlaylistHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: const Color(0xFF10b981).withValues(alpha: 0.12),
+              color: SpotterfyTheme.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
               b,
-              style: const TextStyle(
-                color: Color(0xFF10b981),
+              style: TextStyle(
+                color: SpotterfyTheme.primary,
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.2,
@@ -175,13 +175,13 @@ class _PlaylistHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.07),
+              color: SpotterfyTheme.overlay(0.07),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
               '$downloaded downloaded',
-              style: const TextStyle(
-                color: Color(0xFFa1a1aa),
+              style: TextStyle(
+                color: SpotterfyTheme.mutedDark,
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
               ),
@@ -195,13 +195,13 @@ class _PlaylistHeader extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: SpotterfyTheme.overlay(0.05),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.help_outline,
                 size: 11,
-                color: Color(0xFFa1a1aa),
+                color: SpotterfyTheme.mutedDark,
               ),
             ),
           ),
@@ -228,7 +228,7 @@ class _PlaylistHeader extends StatelessWidget {
   }
 
   Widget _artworkFallback() => Container(
-    color: const Color(0xFF282828),
+    color: SpotterfyTheme.card,
     child: const Icon(Icons.queue_music, color: Color(0xFF4a4a4a), size: 40),
   );
 }
@@ -248,7 +248,7 @@ class _PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF10b981),
+      color: SpotterfyTheme.primary,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -293,7 +293,7 @@ class _SecondaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withValues(alpha: 0.06),
+      color: SpotterfyTheme.overlay(0.06),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -303,17 +303,17 @@ class _SecondaryButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            border: Border.all(color: SpotterfyTheme.overlay(0.12)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: Colors.white, size: 19),
+              Icon(icon, color: SpotterfyTheme.text, size: 19),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: SpotterfyTheme.text,
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
                 ),
@@ -364,8 +364,8 @@ class _SquareButton extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: active
-            ? const Color(0xFF10b981).withValues(alpha: 0.18)
-            : Colors.white.withValues(alpha: 0.06),
+            ? SpotterfyTheme.primary.withValues(alpha: 0.18)
+            : SpotterfyTheme.overlay(0.06),
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           onTap: onPressed,
@@ -378,14 +378,14 @@ class _SquareButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: active
-                    ? const Color(0xFF10b981).withValues(alpha: 0.5)
-                    : Colors.white.withValues(alpha: 0.1),
+                    ? SpotterfyTheme.primary.withValues(alpha: 0.5)
+                    : SpotterfyTheme.overlay(0.1),
               ),
             ),
             child: Icon(
               icon,
               size: 19,
-              color: active ? const Color(0xFF10b981) : Colors.white,
+              color: active ? SpotterfyTheme.primary : SpotterfyTheme.text,
             ),
           ),
         ),
@@ -419,9 +419,9 @@ class _OwnerProfileButton extends StatelessWidget {
           height: 34,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0xFF282828),
+            color: SpotterfyTheme.card,
             border: Border.all(
-              color: const Color(0xFF10b981).withValues(alpha: 0.35),
+              color: SpotterfyTheme.primary.withValues(alpha: 0.35),
             ),
             image: photoUrl.isNotEmpty
                 ? DecorationImage(
@@ -742,28 +742,28 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   child: TextField(
                     controller: _searchController,
                     focusNode: _searchFocus,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    cursorColor: const Color(0xFF10b981),
+                    style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
+                    cursorColor: SpotterfyTheme.primary,
                     textInputAction: TextInputAction.search,
                     onChanged: _setQuery,
                     decoration: InputDecoration(
                       hintText: 'Search in playlist',
                       hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.35),
+                        color: SpotterfyTheme.overlay(0.35),
                         fontSize: 14,
                       ),
-                      prefixIcon: const Icon(
+                      prefixIcon: Icon(
                         Icons.search,
                         size: 19,
-                        color: Color(0xFFa1a1aa),
+                        color: SpotterfyTheme.mutedDark,
                       ),
                       suffixIcon: _searchController.text.isEmpty
                           ? null
                           : IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.close,
                                 size: 17,
-                                color: Color(0xFFa1a1aa),
+                                color: SpotterfyTheme.mutedDark,
                               ),
                               tooltip: 'Clear search',
                               onPressed: () {
@@ -773,7 +773,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                             ),
                       isDense: true,
                       filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.05),
+                      fillColor: SpotterfyTheme.overlay(0.05),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
                       ),
@@ -813,23 +813,23 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   '${visible.length} of ${_playlist.tracks.length} '
                   '${_playlist.tracks.length == 1 ? 'song' : 'songs'}'
                   '${_sort == _PlaylistSort.custom ? '' : ' • ${_sort.label}'}',
-                  style: const TextStyle(
-                    color: Color(0xFFa1a1aa),
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
                     fontSize: 11,
                   ),
                 ),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: _resetView,
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.restart_alt,
                     size: 14,
-                    color: Color(0xFF10b981),
+                    color: SpotterfyTheme.primary,
                   ),
-                  label: const Text(
+                  label: Text(
                     'Reset',
                     style: TextStyle(
-                      color: Color(0xFF10b981),
+                      color: SpotterfyTheme.primary,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
@@ -865,15 +865,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: SpotterfyTheme.overlay(0.2),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'Sort by',
               style: TextStyle(
-                color: Colors.white,
+                color: SpotterfyTheme.text,
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
               ),
@@ -891,10 +891,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   _setSort(v);
                 },
                 dense: true,
-                activeColor: const Color(0xFF10b981),
+                activeColor: SpotterfyTheme.primary,
                 title: Text(
                   s.label,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
                 ),
               ),
             const SizedBox(height: 8),
@@ -908,7 +908,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   Widget build(BuildContext context) {
     return SwipeBackWrapper(
       child: Scaffold(
-        backgroundColor: const Color(0xFF07110b),
+        backgroundColor: SpotterfyTheme.pageBackground,
         // No footer of its own. This screen lives on its tab's navigation stack
         // inside MainScreen, so MainScreen's navbar + mini player are already
         // visible underneath and stay tappable from here. Rendering a second
@@ -921,48 +921,51 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 backgroundColor: Colors.transparent,
                 elevation: 0,
                 leading: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
+                  icon: Icon(Icons.close, color: SpotterfyTheme.text),
                   tooltip: 'Clear selection',
                   onPressed: _clearSelection,
                 ),
                 title: Text(
                   '${_selectedIds.length} selected',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: SpotterfyTheme.text,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 actions: [
                   IconButton(
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.playlist_add_check,
-                      color: Colors.white,
+                      color: SpotterfyTheme.text,
                     ),
                     tooltip: 'Select all',
                     onPressed: _selectAll,
                   ),
                   IconButton(
-                    icon: const Icon(Icons.play_arrow, color: Colors.white),
+                    icon: Icon(Icons.play_arrow, color: SpotterfyTheme.text),
                     tooltip: 'Play selection',
                     onPressed: () => _playSelection(context),
                   ),
                   IconButton(
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.download_outlined,
-                      color: Colors.white,
+                      color: SpotterfyTheme.text,
                     ),
                     tooltip: 'Download selection',
                     onPressed: () =>
                         _downloadSelectedOrAll(context, wholeList: false),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.queue_music, color: Colors.white),
+                    icon: Icon(Icons.queue_music, color: SpotterfyTheme.text),
                     tooltip: 'Add selection to queue',
                     onPressed: () => _queueSelection(context),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.white),
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: SpotterfyTheme.text,
+                    ),
                     tooltip: 'Delete downloads of selection',
                     onPressed: () =>
                         _deleteDownloadsOfSelection(context, wholeList: false),
@@ -974,8 +977,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 backgroundColor: Colors.transparent,
                 elevation: 0,
                 title: Text(
-                  _playlist.name,
-                  style: const TextStyle(color: Colors.white, fontSize: 18),
+                  _playlist.displayName,
+                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 18),
                 ),
                 actions: [
                   // Profile button for a playlist someone else created, so you can see
@@ -997,15 +1000,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   if (!_playlist.isCustom)
                     IconButton(
                       icon: _syncing
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Color(0xFF10b981),
+                                color: SpotterfyTheme.primary,
                               ),
                             )
-                          : const Icon(Icons.sync, color: Color(0xFFa1a1aa)),
+                          : Icon(Icons.sync, color: SpotterfyTheme.mutedDark),
                       tooltip: 'Check for updates',
                       onPressed: _syncing
                           ? null
@@ -1013,25 +1016,25 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     ),
                   if (_playlist.isCustom)
                     IconButton(
-                      icon: const Icon(Icons.share, color: Color(0xFFa1a1aa)),
+                      icon: Icon(Icons.share, color: SpotterfyTheme.mutedDark),
                       onPressed: () => _sharePlaylist(context),
                     ),
                   // Whole-playlist download / delete, for when you don't want to
                   // pick songs one by one.
                   if (_playlist.tracks.isNotEmpty) ...[
                     IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.download_outlined,
-                        color: Color(0xFFa1a1aa),
+                        color: SpotterfyTheme.mutedDark,
                       ),
                       tooltip: 'Download whole playlist',
                       onPressed: () =>
                           _downloadSelectedOrAll(context, wholeList: true),
                     ),
                     IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.download_done,
-                        color: Color(0xFFa1a1aa),
+                        color: SpotterfyTheme.mutedDark,
                       ),
                       tooltip: 'Delete downloaded songs',
                       onPressed: () =>
@@ -1056,8 +1059,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () => _forceSyncTracks(showFeedback: true),
-                color: const Color(0xFF10b981),
-                backgroundColor: const Color(0xFF0f1d17),
+                color: SpotterfyTheme.primary,
+                backgroundColor: SpotterfyTheme.surface,
                 child: _playlist.tracks.isEmpty
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
@@ -1068,16 +1071,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(
+                                  Icon(
                                     Icons.music_note_outlined,
-                                    color: Color(0xFFa1a1aa),
+                                    color: SpotterfyTheme.mutedDark,
                                     size: 64,
                                   ),
                                   const SizedBox(height: 16),
-                                  const Text(
+                                  Text(
                                     'No tracks found',
                                     style: TextStyle(
-                                      color: Colors.white,
+                                      color: SpotterfyTheme.text,
                                       fontSize: 18,
                                     ),
                                   ),
@@ -1093,14 +1096,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                     TextButton.icon(
                                       onPressed: () =>
                                           _forceSyncTracks(showFeedback: true),
-                                      icon: const Icon(
+                                      icon: Icon(
                                         Icons.refresh,
-                                        color: Color(0xFF10b981),
+                                        color: SpotterfyTheme.primary,
                                       ),
-                                      label: const Text(
+                                      label: Text(
                                         'Fetch Tracks',
                                         style: TextStyle(
-                                          color: Color(0xFF10b981),
+                                          color: SpotterfyTheme.primary,
                                         ),
                                       ),
                                     ),
@@ -1116,9 +1119,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         trackVisibility: false,
                         thickness: 4,
                         radius: const Radius.circular(8),
-                        thumbColor: const Color(
-                          0xFF10b981,
-                        ).withValues(alpha: 0.5),
+                        thumbColor: SpotterfyTheme.primary.withValues(
+                          alpha: 0.5,
+                        ),
                         child: _visibleTracks.isEmpty
                             ? ListView(
                                 physics: const AlwaysScrollableScrollPhysics(),
@@ -1130,16 +1133,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
-                                          const Icon(
+                                          Icon(
                                             Icons.search_off_rounded,
-                                            color: Color(0xFFa1a1aa),
+                                            color: SpotterfyTheme.mutedDark,
                                             size: 44,
                                           ),
                                           const SizedBox(height: 12),
-                                          const Text(
+                                          Text(
                                             'No matching songs',
                                             style: TextStyle(
-                                              color: Colors.white,
+                                              color: SpotterfyTheme.text,
                                               fontSize: 16,
                                               fontWeight: FontWeight.w700,
                                             ),
@@ -1149,18 +1152,18 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                             'Nothing in this playlist matches '
                                             '"${_query.trim()}"',
                                             textAlign: TextAlign.center,
-                                            style: const TextStyle(
-                                              color: Color(0xFFa1a1aa),
+                                            style: TextStyle(
+                                              color: SpotterfyTheme.mutedDark,
                                               fontSize: 12,
                                             ),
                                           ),
                                           const SizedBox(height: 14),
                                           TextButton(
                                             onPressed: _resetView,
-                                            child: const Text(
+                                            child: Text(
                                               'Clear search and sort',
                                               style: TextStyle(
-                                                color: Color(0xFF10b981),
+                                                color: SpotterfyTheme.primary,
                                               ),
                                             ),
                                           ),
@@ -1279,11 +1282,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final start = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: SpotterfyTheme.surface,
         title: Text(
           'Download ${missing.length} ${missing.length == 1 ? 'song' : 'songs'}?',
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: SpotterfyTheme.text,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -1302,9 +1305,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
+            child: Text(
               'Download',
-              style: TextStyle(color: Color(0xFF10b981)),
+              style: TextStyle(color: SpotterfyTheme.primary),
             ),
           ),
         ],
@@ -1344,10 +1347,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
+        backgroundColor: SpotterfyTheme.surface,
+        title: Text(
           'Delete downloads?',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: SpotterfyTheme.text,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         content: Text(
           'Removes the downloaded files for ${ids.length} '

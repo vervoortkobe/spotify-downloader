@@ -10,10 +10,11 @@ class AppBackground extends StatelessWidget {
   final Widget child;
 
   /// Unified dark gradient, matching the Jam/Chat page and onboarding waves.
-  static const gradient = LinearGradient(
+  /// A getter, not a static final, so it picks up an accent change.
+  static LinearGradient get gradient => LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [Color(0xFF0d1f14), Color(0xFF07110b), Color(0xFF050a07)],
+    colors: SpotterfyTheme.pageGradient,
   );
 
   const AppBackground({super.key, required this.child});
@@ -21,7 +22,7 @@ class AppBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: const BoxDecoration(gradient: gradient),
+      decoration: BoxDecoration(gradient: gradient),
       child: child,
     );
   }
@@ -66,8 +67,8 @@ class AppGradientScaffold extends StatelessWidget {
                   ? null
                   : Text(
                       title!,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
