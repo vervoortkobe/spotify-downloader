@@ -10,6 +10,7 @@ import 'providers/admin_provider.dart';
 import 'providers/download_provider.dart';
 import 'providers/social_provider.dart';
 import 'providers/status_provider.dart';
+import 'providers/theme_controller.dart';
 import 'services/network_stats_service.dart';
 import 'screens/splash_screen.dart';
 
@@ -57,12 +58,28 @@ class SpotterfyApp extends StatelessWidget {
           lazy: true,
         ),
       ],
-      child: MaterialApp(
-        navigatorKey: navigatorKey,
-        title: 'Spotterfy',
-        debugShowCheckedModeBanner: false,
-        theme: SpotterfyTheme.darkTheme,
-        home: const SplashScreen(),
+      child: Builder(
+        builder: (context) {
+          // The palette is applied once before the first frame, then re-applied
+          // and repainted whenever ThemeController fires. Rebuilding here (below
+          // MaterialApp) is what makes the change reach every screen: the
+          // colours in SpotterfyTheme are plain statics, so a widget only picks
+          // up a new one when its build() runs again.
+          final theme = ThemeController.instance;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!theme.isLoaded) theme.load();
+          });
+          return ListenableBuilder(
+            listenable: theme,
+            builder: (context, _) => MaterialApp(
+              navigatorKey: navigatorKey,
+              title: 'Spotterfy',
+              debugShowCheckedModeBanner: false,
+              theme: SpotterfyTheme.darkTheme,
+              home: const SplashScreen(),
+            ),
+          );
+        },
       ),
     );
   }

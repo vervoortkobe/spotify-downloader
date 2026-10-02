@@ -5,8 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/social_provider.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
+import 'package:spotterfy_app/screens/suspended_screen.dart';
 import 'package:spotterfy_app/screens/onboarding_screen.dart';
-import 'package:spotterfy_app/screens/admin_screen.dart';
 import 'package:spotterfy_app/screens/main_screen.dart';
 import 'package:spotterfy_app/services/firebase_service.dart' as fb;
 import 'package:spotterfy_app/widgets/refresh_button.dart';
@@ -374,8 +374,14 @@ class _AuthGateState extends State<_AuthGate> {
 
   Widget _targetFor(AuthProvider auth) {
     if (!auth.isLoggedIn) return const LoginScreen();
+    // Suspension outranks everything else, including onboarding and admin: a
+    // banned account must not reach the app by any route.
+    if (auth.needsModeration) return const SuspendedScreen();
     if (auth.needsOnboarding) return const OnboardingScreen();
-    if (auth.isAdmin) return const AdminScreen();
+    // Admins get the normal app, not a separate panel. The admin tools live in
+    // Settings, because routing admins *into* the panel meant they could not use
+    // the app at all - and it made "view this user's profile" from the panel a
+    // dead end with no way back.
     return const MainScreen();
   }
 }

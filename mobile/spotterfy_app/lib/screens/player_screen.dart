@@ -216,7 +216,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                             const SizedBox(height: 6),
                             Text(
                               track.artists,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: SpotterfyTheme.muted,
                                 fontSize: 15,
                                 height: 1.3,
@@ -241,7 +241,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                           child: !isRadio
                               ? Text(
                                   '${currentIndex + 1} / ${player.queue.length} in queue',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: SpotterfyTheme.muted,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
@@ -271,7 +271,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                                     const SizedBox(width: 8),
                                     Text(
                                       'Radio • can seek back ${player.radioMaxListened.inSeconds ~/ 60} min',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: SpotterfyTheme.muted,
                                         fontSize: 11,
                                       ),
@@ -875,7 +875,7 @@ class _SeekSection extends StatelessWidget {
                 valueListenable: player.positionNotifier,
                 builder: (context, pos, _) => Text(
                   _fmtDuration(pos),
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: SpotterfyTheme.muted,
                     fontSize: 12,
                     fontFeatures: [FontFeature.tabularFigures()],
@@ -884,7 +884,7 @@ class _SeekSection extends StatelessWidget {
               ),
               Text(
                 _fmtDuration(dur),
-                style: const TextStyle(
+                style: TextStyle(
                   color: SpotterfyTheme.muted,
                   fontSize: 12,
                   fontFeatures: [FontFeature.tabularFigures()],
@@ -1021,7 +1021,7 @@ class _PlayerCover extends StatelessWidget {
         fadeInDuration: const Duration(milliseconds: 200),
         placeholder: (_, _) => Container(color: SpotterfyTheme.surface),
         errorWidget: (_, _, _) =>
-            const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64),
+            Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64),
       );
     }
     final src = track.sourceUrl;
@@ -1044,6 +1044,6 @@ class _PlayerCover extends StatelessWidget {
         },
       );
     }
-    return const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64);
+    return Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 64);
   }
 }

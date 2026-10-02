@@ -120,7 +120,7 @@ class PlaylistCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.schedule_rounded,
                           color: SpotterfyTheme.mutedDark,
                           size: 12,
@@ -220,10 +220,6 @@ Widget _placeholder() {
     width: 58,
     height: 58,
     color: SpotterfyTheme.surface,
-    child: const Icon(
-      Icons.library_music,
-      color: SpotterfyTheme.muted,
-      size: 26,
-    ),
+    child: Icon(Icons.library_music, color: SpotterfyTheme.muted, size: 26),
   );
 }

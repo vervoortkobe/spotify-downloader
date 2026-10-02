@@ -1,16 +1,98 @@
 import 'package:flutter/material.dart';
 
+/// A selectable palette.
+class AppPalette {
+  final String name;
+
+  /// Accent for primary actions and active states.
+  final Color primary;
+  final Color primaryDark;
+
+  /// True-black surfaces for OLED panels.
+  final bool amoled;
+
+  const AppPalette({
+    required this.name,
+    required this.primary,
+    required this.primaryDark,
+    this.amoled = false,
+  });
+}
+
 class SpotterfyTheme {
-  // Spotify color palette
-  static const Color primary = Color(0xFF1DB954); // Spotify green
-  static const Color primaryDark = Color(0xFF1ED760);
-  static const Color primaryBg = Color(0x1A1DB954); // 10% opacity green
-  static const Color background = Color(0xFF191414); // Spotify dark background
-  static const Color surface = Color(0xFF1E1E1E); // Card background
-  static const Color card = Color(0xFF282828); // Elevated surface
-  static const Color text = Color(0xFFFFFFFF); // Pure white
-  static const Color muted = Color(0xFFB3B3B3); // Spotify muted text
-  static const Color mutedDark = Color(0xFF6A6A6A);
+  // Spotify color palette.
+  //
+  // These were `static const`, which made a runtime theme impossible: a const is
+  // frozen at compile time, so an accent change after launch could never reach
+  // the hundreds of call sites that read them. They are mutable statics now, and
+  // ThemeController repaints the tree whenever one changes. Read sites are
+  // unchanged - they were already just reading these names.
+  static Color primary = const Color(0xFF1DB954); // Spotify green
+  static Color primaryDark = const Color(0xFF1ED760);
+  static Color background = const Color(0xFF191414); // Spotify dark background
+  static Color surface = const Color(0xFF1E1E1E); // Card background
+  static Color card = const Color(0xFF282828); // Elevated surface
+  static Color text = const Color(0xFFFFFFFF); // Pure white
+  static Color muted = const Color(0xFFB3B3B3); // Spotify muted text
+  static Color mutedDark = const Color(0xFF6A6A6A);
+
+  /// 10% accent wash, derived so it follows the accent instead of going stale.
+  static Color get primaryBg =>
+      Color.alphaBlend(primary.withValues(alpha: 0.10), background);
+
+  /// Accents offered by the theme page. Each is checked for legibility against
+  /// the dark surfaces - a prettier accent that hurts readability is not one.
+  static const List<AppPalette> palettes = [
+    AppPalette(
+      name: 'Spotify green',
+      primary: Color(0xFF1DB954),
+      primaryDark: Color(0xFF1ED760),
+    ),
+    AppPalette(
+      name: 'Emerald',
+      primary: Color(0xFF10B981),
+      primaryDark: Color(0xFF34D399),
+    ),
+    AppPalette(
+      name: 'Sky',
+      primary: Color(0xFF38BDF8),
+      primaryDark: Color(0xFF7DD3FC),
+    ),
+    AppPalette(
+      name: 'Violet',
+      primary: Color(0xFFA78BFA),
+      primaryDark: Color(0xFFC4B5FD),
+    ),
+    AppPalette(
+      name: 'Rose',
+      primary: Color(0xFFF472B6),
+      primaryDark: Color(0xFFFB9DC8),
+    ),
+    AppPalette(
+      name: 'Amber',
+      primary: Color(0xFFFBBF24),
+      primaryDark: Color(0xFFFCD34D),
+    ),
+  ];
+
+  /// True when the app is currently on OLED black.
+  static bool get isAmoled => background == const Color(0xFF000000);
+
+  /// Points every colour at [palette]. Called by ThemeController before it asks
+  /// the tree to rebuild, so anything reading a colour during build sees it.
+  static void apply(AppPalette palette) {
+    primary = palette.primary;
+    primaryDark = palette.primaryDark;
+    if (palette.amoled) {
+      background = const Color(0xFF000000);
+      surface = const Color(0xFF0A0A0A);
+      card = const Color(0xFF141414);
+    } else {
+      background = const Color(0xFF191414);
+      surface = const Color(0xFF1E1E1E);
+      card = const Color(0xFF282828);
+    }
+  }
 
   static ThemeData get darkTheme {
     return ThemeData(

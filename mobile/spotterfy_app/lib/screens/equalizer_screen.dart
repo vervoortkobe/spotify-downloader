@@ -22,7 +22,7 @@ class EqualizerScreen extends StatelessWidget {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: const Text(
+          title: Text(
             'Equalizer',
             style: TextStyle(
               color: SpotterfyTheme.text,
@@ -39,13 +39,13 @@ class EqualizerScreen extends StatelessWidget {
               _card(
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.graphic_eq,
                       color: SpotterfyTheme.primary,
                       size: 22,
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -79,7 +79,7 @@ class EqualizerScreen extends StatelessWidget {
               const SizedBox(height: 16),
               if (!eq.ready)
                 _card(
-                  const Row(
+                  Row(
                     children: [
                       SizedBox(
                         width: 18,
@@ -100,7 +100,7 @@ class EqualizerScreen extends StatelessWidget {
                   ),
                 )
               else ...[
-                const Text(
+                Text(
                   'Presets',
                   style: TextStyle(
                     color: SpotterfyTheme.muted,
@@ -154,13 +154,13 @@ class EqualizerScreen extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.speaker,
                             color: SpotterfyTheme.primary,
                             size: 22,
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -193,7 +193,7 @@ class EqualizerScreen extends StatelessWidget {
                       ),
                       Row(
                         children: [
-                          const Text(
+                          Text(
                             'Strength',
                             style: TextStyle(
                               color: SpotterfyTheme.muted,
@@ -219,7 +219,7 @@ class EqualizerScreen extends StatelessWidget {
                             child: Text(
                               '+${eq.bassStrength.toStringAsFixed(0)} dB',
                               textAlign: TextAlign.end,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: SpotterfyTheme.text,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -262,7 +262,7 @@ class EqualizerScreen extends StatelessWidget {
             width: 64,
             child: Text(
               _freqLabel(band.centerFrequency),
-              style: const TextStyle(
+              style: TextStyle(
                 color: SpotterfyTheme.muted,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -285,7 +285,7 @@ class EqualizerScreen extends StatelessWidget {
             child: Text(
               '${gain >= 0 ? '+' : ''}${gain.toStringAsFixed(1)}',
               textAlign: TextAlign.end,
-              style: const TextStyle(
+              style: TextStyle(
                 color: SpotterfyTheme.text,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,

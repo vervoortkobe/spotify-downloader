@@ -300,7 +300,7 @@ class _StorageScreenState extends State<StorageScreen> {
                       ),
                     ),
                     trailing: IconButton(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.play_circle_fill,
                         color: SpotterfyTheme.primary,
                       ),

@@ -139,7 +139,7 @@ class _JamScreenState extends State<JamScreen> {
                                   ? NetworkImage(f.photoUrl)
                                   : null,
                               child: f.photoUrl.isEmpty
-                                  ? const Icon(
+                                  ? Icon(
                                       Icons.person,
                                       color: SpotterfyTheme.muted,
                                     )
@@ -151,7 +151,7 @@ class _JamScreenState extends State<JamScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: SpotterfyTheme.muted,
                                 fontSize: 11,
                               ),
@@ -204,7 +204,7 @@ class _JamScreenState extends State<JamScreen> {
             ),
           ),
           if (badge > 0) ...[
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
@@ -221,12 +221,12 @@ class _JamScreenState extends State<JamScreen> {
               ),
             ),
           ],
-          const Spacer(),
+          Spacer(),
           ?trailing,
           if (onTap != null && badge > 0)
             TextButton(
               onPressed: onTap,
-              child: const Text(
+              child: Text(
                 'Mark read',
                 style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
               ),
@@ -267,7 +267,7 @@ class _JamScreenState extends State<JamScreen> {
                     fontSize: 14,
                   ),
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Text(
                   n.body,
                   style: const TextStyle(
@@ -285,7 +285,7 @@ class _JamScreenState extends State<JamScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.check,
                     color: SpotterfyTheme.primary,
                     size: 20,
@@ -385,7 +385,7 @@ class _JamScreenState extends State<JamScreen> {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, color: Color(0xFFa1a1aa), size: 20),
+          Icon(Icons.chevron_right, color: Color(0xFFa1a1aa), size: 20),
         ],
       ),
     );
@@ -407,7 +407,7 @@ class _JamScreenState extends State<JamScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.music_note,
               color: SpotterfyTheme.primary,
               size: 20,
@@ -553,7 +553,7 @@ class _JamScreenState extends State<JamScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(20, 18, 20, 4),
               child: Text(
                 'Create a jam with',
@@ -574,9 +574,9 @@ class _JamScreenState extends State<JamScreen> {
                     leading: _avatar(f.photoUrl, 20),
                     title: Text(
                       f.displayName,
-                      style: const TextStyle(color: SpotterfyTheme.text),
+                      style: TextStyle(color: SpotterfyTheme.text),
                     ),
-                    trailing: const Icon(
+                    trailing: Icon(
                       Icons.chevron_right,
                       color: SpotterfyTheme.muted,
                     ),

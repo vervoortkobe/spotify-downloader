@@ -133,7 +133,7 @@ class _QueueSheetState extends State<QueueSheet> {
             _normalBar(player, totalMs),
           const Divider(height: 1, color: Color(0x14FFFFFF)),
           if (queue.isEmpty)
-            const Expanded(
+            Expanded(
               child: Center(
                 child: Text(
                   'Nothing queued',
@@ -209,7 +209,7 @@ class _QueueSheetState extends State<QueueSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'Up Next',
                 style: TextStyle(
                   color: SpotterfyTheme.text,
@@ -218,19 +218,16 @@ class _QueueSheetState extends State<QueueSheet> {
                   letterSpacing: -0.2,
                 ),
               ),
-              const SizedBox(height: 2),
+              SizedBox(height: 2),
               Text(
                 count == 0
                     ? 'Empty'
                     : '$count ${count == 1 ? 'song' : 'songs'} • ${_fmtDuration(totalMs)}',
-                style: const TextStyle(
-                  color: SpotterfyTheme.muted,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
               ),
             ],
           ),
-          const Spacer(),
+          Spacer(),
           if (count > 0)
             TextButton.icon(
               onPressed: () {
@@ -238,12 +235,12 @@ class _QueueSheetState extends State<QueueSheet> {
                 player.clearQueue();
                 _afterChange('Queue cleared');
               },
-              icon: const Icon(
+              icon: Icon(
                 Icons.playlist_remove_rounded,
                 size: 16,
                 color: SpotterfyTheme.muted,
               ),
-              label: const Text(
+              label: Text(
                 'Clear',
                 style: TextStyle(
                   color: SpotterfyTheme.muted,
@@ -253,7 +250,7 @@ class _QueueSheetState extends State<QueueSheet> {
               ),
             ),
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.close_rounded,
               color: SpotterfyTheme.muted,
               size: 20,
@@ -472,7 +469,7 @@ class _QueueRow extends StatelessWidget {
                       : Text(
                           '${index + 1}',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: SpotterfyTheme.mutedDark,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -520,7 +517,7 @@ class _QueueRow extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       track.artists,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: SpotterfyTheme.muted,
                         fontSize: 12,
                       ),
@@ -534,7 +531,7 @@ class _QueueRow extends StatelessWidget {
               if (track.durationMs > 0)
                 Text(
                   _fmt(track.durationMs),
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: SpotterfyTheme.mutedDark,
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
@@ -555,7 +552,7 @@ class _QueueRow extends StatelessWidget {
 
   Widget _thumb() => Container(
     color: SpotterfyTheme.card,
-    child: const Icon(
+    child: Icon(
       Icons.music_note_rounded,
       color: SpotterfyTheme.muted,
       size: 20,
@@ -586,11 +583,7 @@ class _RowMenu extends StatelessWidget {
       height: 34,
       child: PopupMenuButton<String>(
         padding: EdgeInsets.zero,
-        icon: const Icon(
-          Icons.more_vert,
-          size: 18,
-          color: SpotterfyTheme.muted,
-        ),
+        icon: Icon(Icons.more_vert, size: 18, color: SpotterfyTheme.muted),
         color: SpotterfyTheme.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         onSelected: (v) {
@@ -606,7 +599,7 @@ class _RowMenu extends StatelessWidget {
         },
         itemBuilder: (_) => [
           if (onMoveUp != null)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'up',
               height: 40,
               child: Row(
@@ -622,7 +615,7 @@ class _RowMenu extends StatelessWidget {
               ),
             ),
           if (onMoveDown != null)
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'down',
               height: 40,
               child: Row(

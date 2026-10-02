@@ -53,6 +53,22 @@ class AuthProvider extends ChangeNotifier {
       _user!.hasCompletedOnboarding;
   bool get needsOnboarding => _user != null && !isProfileCompleted;
 
+  /// Account suspended from the admin panel.
+  ///
+  /// Checked before everything else on the way in, including onboarding, so a
+  /// banned account cannot skip the block by never finishing onboarding.
+  bool get isBanned => _user?.isBanned ?? false;
+
+  /// Reason shown on the suspended screen, when one was recorded.
+  String get bannedReason => _user?.bannedReason ?? '';
+
+  /// True when this account must be stopped at the door.
+  ///
+  /// A suspended admin is *not* let past: `isAdmin` is a separate field and
+  /// could otherwise be left set on a banned account, which would keep granting
+  /// access to the admin panel.
+  bool get needsModeration => isBanned;
+
   AuthProvider() {
     _init();
   }

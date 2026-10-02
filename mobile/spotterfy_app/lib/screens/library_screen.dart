@@ -41,7 +41,7 @@ class _StorageScanBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const LinearProgressIndicator(
+    return LinearProgressIndicator(
       minHeight: 2,
       backgroundColor: Colors.transparent,
       valueColor: AlwaysStoppedAnimation(SpotterfyTheme.primary),
@@ -255,46 +255,27 @@ class _LibraryScreenState extends State<LibraryScreen>
             unselectedLabelColor: SpotterfyTheme.muted,
             indicatorColor: SpotterfyTheme.primary,
             dividerColor: Colors.transparent,
-            // Each tab carries its own sort button. Tapping inside a Tab is
-            // handled by the button, not by the tab's own gesture, so the two
-            // never fight over the same pixels.
+            // Only the label lives in the tab now. The sort control used to sit
+            // inside the label next to the text, where it was cramped against the
+            // tab edge and easy to miss; it has its own strip below the tabs where
+            // it can show *which* order is active, not just that a sort exists.
             labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-            tabs: [
-              Tab(
-                height: 52,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Flexible(
-                      child: Text('Imported', overflow: TextOverflow.ellipsis),
-                    ),
-                    const SizedBox(width: 6),
-                    _LibrarySortButton(
-                      current: _importedSort,
-                      options: _importedSorts,
-                      onPicked: _setSort,
-                    ),
-                  ],
-                ),
-              ),
-              Tab(
-                height: 52,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Flexible(
-                      child: Text('Storage', overflow: TextOverflow.ellipsis),
-                    ),
-                    const SizedBox(width: 6),
-                    _LibrarySortButton(
-                      current: _storageSort,
-                      options: _storageSorts,
-                      onPicked: _setSort,
-                    ),
-                  ],
-                ),
-              ),
+            tabs: const [
+              Tab(height: 52, child: Text('Imported')),
+              Tab(height: 52, child: Text('Storage')),
             ],
+          ),
+          // Sort strip. Reads the active tab so the pill always describes the
+          // list actually on screen.
+          Builder(
+            builder: (context) => _SortStrip(
+              onImported: _tabController.index == 0,
+              importedSort: _importedSort,
+              importedOptions: _importedSorts,
+              storageSort: _storageSort,
+              storageOptions: _storageSorts,
+              onPicked: _setSort,
+            ),
           ),
           Expanded(
             child: TabBarView(
@@ -360,7 +341,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     list = _sortImported(list);
     // Show loading spinner over cache while first sync runs
     if (prov.isLoading && list.isEmpty) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(color: SpotterfyTheme.primary),
       );
     }
@@ -494,7 +475,7 @@ class _LibraryScreenState extends State<LibraryScreen>
         backgroundColor: SpotterfyTheme.surface,
         title: Text(
           isOwner ? 'Delete playlist?' : 'Remove from your library?',
-          style: const TextStyle(
+          style: TextStyle(
             color: SpotterfyTheme.text,
             fontWeight: FontWeight.w700,
           ),
@@ -503,12 +484,12 @@ class _LibraryScreenState extends State<LibraryScreen>
           isOwner
               ? '"${p.name}" will be deleted for you and for everyone it was shared with. This cannot be undone.'
               : '"${p.name}" will be removed from your library. The owner keeps it.',
-          style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+          style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(color: SpotterfyTheme.muted),
             ),
@@ -535,7 +516,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   Widget _storageTab() {
     // First visit only: waiting on the permission probe.
     if (_permPending) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(color: SpotterfyTheme.primary),
       );
     }
@@ -588,7 +569,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     // Nothing scanned yet. Later rescans deliberately fall through to the
     // cached list instead of this spinner.
     if (!_storageLoaded) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(color: SpotterfyTheme.primary),
       );
     }
@@ -1080,7 +1061,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                           Row(
                             children: [
                               if (isActiveFolder) ...[
-                                const Icon(
+                                Icon(
                                   Icons.graphic_eq_rounded,
                                   color: SpotterfyTheme.primary,
                                   size: 15,
@@ -1108,14 +1089,14 @@ class _LibraryScreenState extends State<LibraryScreen>
                             children: [
                               Text(
                                 '$count ${count == 1 ? 'song' : 'songs'}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: SpotterfyTheme.muted,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                               if (entry.folderPath != null) ...[
-                                const Text(
+                                Text(
                                   ' • ',
                                   style: TextStyle(
                                     color: SpotterfyTheme.mutedDark,
@@ -1128,7 +1109,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                                       '/storage/emulated/0/',
                                       '',
                                     ),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: SpotterfyTheme.muted,
                                       fontSize: 11,
                                     ),
@@ -1137,7 +1118,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                                   ),
                                 ),
                               ] else
-                                const Expanded(
+                                Expanded(
                                   child: Text(
                                     'loose tracks',
                                     style: TextStyle(
@@ -1174,7 +1155,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                     ],
                     if (entry.folderPath != null) ...[
                       const SizedBox(width: 6),
-                      const Icon(
+                      Icon(
                         Icons.chevron_right_rounded,
                         color: SpotterfyTheme.mutedDark,
                         size: 22,
@@ -1433,42 +1414,114 @@ enum _LibrarySort {
   final String label;
 }
 
-/// Square sort control, tinted while a non-default order is active.
-class _LibrarySortButton extends StatelessWidget {
-  final _LibrarySort current;
-  final List<_LibrarySort> options;
-
-  /// Called with the option the user picked.
+/// Thin strip under the tabs carrying the sort control for whichever list is
+/// showing.
+///
+/// Replaces the bare icon that used to sit inside the tab label. Two problems it
+/// fixed: the icon was wedged against the tab text with no room, and it showed
+/// nothing about the *current* order, so "is this list sorted by name or by date?"
+/// was unanswerable without opening the sheet and reading it.
+class _SortStrip extends StatelessWidget {
+  final bool onImported;
+  final _LibrarySort importedSort;
+  final List<_LibrarySort> importedOptions;
+  final _LibrarySort storageSort;
+  final List<_LibrarySort> storageOptions;
   final ValueChanged<_LibrarySort> onPicked;
 
-  const _LibrarySortButton({
-    required this.current,
-    required this.options,
+  const _SortStrip({
+    required this.onImported,
+    required this.importedSort,
+    required this.importedOptions,
+    required this.storageSort,
+    required this.storageOptions,
     required this.onPicked,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Sort by',
-      child: Material(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => _showSheet(context),
-          child: Container(
-            width: 42,
-            height: 42,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+    final current = onImported ? importedSort : storageSort;
+    final options = onImported ? importedOptions : storageOptions;
+    // "Recently added" / "Name" are the orders each tab opens on, so those are
+    // not worth calling out as a change.
+    final isDefault = onImported
+        ? current == _LibrarySort.recent
+        : current == _LibrarySort.name;
+
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.only(right: 12, left: 16),
+      alignment: Alignment.centerRight,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (!isDefault) ...[
+            Text(
+              current.label,
+              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
             ),
-            child: const Icon(
-              Icons.sort_rounded,
-              size: 19,
-              color: Colors.white,
+            const SizedBox(width: 8),
+          ],
+          _SortPill(
+            current: current,
+            options: options,
+            onPicked: onPicked,
+            highlighted: !isDefault,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pill showing the active ordering. Tinted only when the order is not the
+/// tab's default, so it reads as a live control rather than a permanent badge.
+class _SortPill extends StatelessWidget {
+  final _LibrarySort current;
+  final List<_LibrarySort> options;
+  final ValueChanged<_LibrarySort> onPicked;
+  final bool highlighted;
+
+  const _SortPill({
+    required this.current,
+    required this.options,
+    required this.onPicked,
+    required this.highlighted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = highlighted
+        ? SpotterfyTheme.primary
+        : const Color(0xFFa1a1aa);
+    return Tooltip(
+      message: 'Sort',
+      child: Material(
+        color: highlighted
+            ? SpotterfyTheme.primary.withValues(alpha: 0.14)
+            : Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => _showSheet(context),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.swap_vert_rounded, size: 17, color: accent),
+                const SizedBox(width: 6),
+                Text(
+                  'Sort',
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(Icons.expand_more_rounded, size: 16, color: accent),
+              ],
             ),
           ),
         ),

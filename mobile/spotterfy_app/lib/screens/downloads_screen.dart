@@ -63,7 +63,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SpotterfyTheme.surface,
-        title: const Text(
+        title: Text(
           'Delete downloads?',
           style: TextStyle(
             color: SpotterfyTheme.text,
@@ -73,12 +73,12 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         content: Text(
           'Removes ${ids.length} ${ids.length == 1 ? 'file' : 'files'} from this device. '
           'The songs stay in your library and will stream again.',
-          style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+          style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(color: SpotterfyTheme.muted),
             ),
@@ -172,7 +172,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                             ? NetworkImage(auth.user!.photoUrl)
                             : null,
                         child: (auth.user?.photoUrl.isEmpty ?? true)
-                            ? const Icon(
+                            ? Icon(
                                 Icons.person,
                                 color: SpotterfyTheme.muted,
                                 size: 18,
@@ -218,7 +218,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.download_done,
                     color: SpotterfyTheme.muted,
                     size: 56,
@@ -226,14 +226,14 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                   const SizedBox(height: 12),
                   Text(
                     _selecting ? 'Nothing selected' : 'No downloads yet',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: SpotterfyTheme.text,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(horizontal: 40),
                     child: Text(
                       'Long-press a song in a playlist to download it.\n'
@@ -256,7 +256,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     children: [
                       Text(
                         '${prov.count} ${prov.count == 1 ? 'song' : 'songs'}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: SpotterfyTheme.muted,
                           fontSize: 12,
                         ),
@@ -264,7 +264,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                       const SizedBox(width: 8),
                       Text(
                         '• ${_fmtBytes(prov.totalBytes)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: SpotterfyTheme.mutedDark,
                           fontSize: 12,
                         ),
@@ -331,7 +331,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SpotterfyTheme.surface,
-        title: const Text(
+        title: Text(
           'Delete download?',
           style: TextStyle(
             color: SpotterfyTheme.text,
@@ -340,12 +340,12 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         ),
         content: Text(
           '"${e.title}" will stream from the server again.',
-          style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+          style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(color: SpotterfyTheme.muted),
             ),

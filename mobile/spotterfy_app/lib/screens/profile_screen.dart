@@ -106,11 +106,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final playlistProv = context.watch<PlaylistProvider>();
     final user = auth.user;
 
+    // "Your playlists" means playlists this account owns. Filtering here rather
+    // than showing the whole provider list is what the heading promises.
+    final own = playlistProv.playlists
+        .where((p) => p.creatorUid == user?.uid)
+        .toList();
+
     return AppGradientScaffold(
       title: 'Profile',
       body: SingleChildScrollView(
+        // Bottom inset clears the mini player, which MainScreen draws over this
+        // page rather than inside it.
+        padding: const EdgeInsets.only(bottom: 140),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -119,33 +128,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 email: user?.email ?? '',
                 photoUrl: user?.photoUrl ?? '',
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               _sectionTitle('Your Stats'),
-              const SizedBox(height: 14),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _statItem('Playlists', '${playlistProv.playlists.length}'),
-                  _statItem(
-                    'Total Tracks',
-                    _calculateTotalTracks(playlistProv.playlists),
+                  Expanded(child: _statItem('Playlists', '${own.length}')),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _statItem(
+                      'Total Tracks',
+                      _calculateTotalTracks(own).toString(),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               _sectionTitle('Connection'),
-              const SizedBox(height: 14),
               _connectionTile(context),
-              const SizedBox(height: 28),
-              _sectionTitle('Your Playlists'),
-              const SizedBox(height: 8),
-              if (playlistProv.playlists.isEmpty)
+              const SizedBox(height: 24),
+              _sectionTitle(
+                'Your Playlists',
+                trailing: own.isEmpty ? null : '${own.length}',
+              ),
+              if (own.isEmpty)
                 _emptyHint('You have not imported any playlists yet.')
               else
-                ...playlistProv.playlists
-                    .where((p) => p.creatorUid == user?.uid)
-                    .map((playlist) => _playlistItem(context, playlist)),
-              const SizedBox(height: 28),
+                ...own.map((playlist) => _playlistItem(context, playlist)),
+              const SizedBox(height: 16),
+              _sectionTitle('More'),
               _actionButton(
                 context,
                 icon: Icons.download_done,
@@ -154,7 +164,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Navigator.push(context, swipeRoute(const DownloadsScreen()));
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _actionButton(
                 context,
                 icon: Icons.settings,
@@ -163,7 +173,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Navigator.push(context, swipeRoute(const SettingsScreen()));
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _actionButton(
                 context,
                 icon: Icons.logout,
@@ -171,6 +181,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 isDestructive: true,
                 onTap: () => _confirmSignOut(context),
               ),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -184,25 +195,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SpotterfyTheme.surface,
-        title: const Text(
-          'Sign Out',
-          style: TextStyle(color: SpotterfyTheme.text),
-        ),
-        content: const Text(
+        title: Text('Sign Out', style: TextStyle(color: SpotterfyTheme.text)),
+        content: Text(
           'Are you sure?',
           style: TextStyle(color: SpotterfyTheme.muted),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(color: SpotterfyTheme.muted),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
+            child: Text(
               'Sign Out',
               style: TextStyle(color: SpotterfyTheme.primary),
             ),
@@ -224,7 +232,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildOtherProfile(BuildContext context) {
     if (_loading) {
-      return const AppGradientScaffold(
+      return AppGradientScaffold(
         body: Center(
           child: CircularProgressIndicator(color: SpotterfyTheme.primary),
         ),
@@ -372,13 +380,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.hourglass_top,
                     color: SpotterfyTheme.muted,
                     size: 20,
                   ),
-                  const SizedBox(width: 12),
-                  const Expanded(
+                  SizedBox(width: 12),
+                  Expanded(
                     child: Text(
                       'Waiting for them to accept',
                       style: TextStyle(
@@ -393,7 +401,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         (r) => r.otherUid == uid && r.isPending,
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Cancel',
                       style: TextStyle(color: SpotterfyTheme.muted),
                     ),
@@ -482,79 +490,114 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String email,
     required String photoUrl,
   }) {
-    return Row(
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: SpotterfyTheme.surface,
-            borderRadius: BorderRadius.circular(40),
-            border: Border.all(
-              color: SpotterfyTheme.primary.withValues(alpha: 0.3),
-              width: 2,
-            ),
-            image: photoUrl.isNotEmpty
-                ? DecorationImage(
-                    image: CachedNetworkImageProvider(photoUrl),
-                    fit: BoxFit.cover,
-                  )
-                : null,
-            boxShadow: [
-              BoxShadow(
-                color: SpotterfyTheme.primary.withValues(alpha: 0.2),
-                blurRadius: 12,
-              ),
-            ],
-          ),
-          child: photoUrl.isEmpty
-              ? const Icon(Icons.person, color: SpotterfyTheme.muted, size: 40)
-              : null,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            SpotterfyTheme.primary.withValues(alpha: 0.16),
+            SpotterfyTheme.surface.withValues(alpha: 0.6),
+          ],
         ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                displayName,
-                style: const TextStyle(
-                  color: SpotterfyTheme.text,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: SpotterfyTheme.primary.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Centred avatar over centred text, rather than a left-aligned row.
+          // A profile reads as a portrait, and the centred stack keeps long
+          // names from colliding with the edge on a narrow screen.
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              color: SpotterfyTheme.surface,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: SpotterfyTheme.primary.withValues(alpha: 0.45),
+                width: 2.5,
               ),
-              if (email.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  email,
-                  style: const TextStyle(
-                    color: SpotterfyTheme.muted,
-                    fontSize: 14,
-                  ),
+              image: photoUrl.isNotEmpty
+                  ? DecorationImage(
+                      image: CachedNetworkImageProvider(photoUrl),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: SpotterfyTheme.primary.withValues(alpha: 0.22),
+                  blurRadius: 18,
                 ),
               ],
-            ],
+            ),
+            child: photoUrl.isEmpty
+                ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 44)
+                : null,
           ),
-        ),
-      ],
+          const SizedBox(height: 14),
+          Text(
+            displayName,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: SpotterfyTheme.text,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+            ),
+          ),
+          if (email.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              email,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
-  Widget _sectionTitle(String text) => Text(
-    text,
-    style: const TextStyle(
-      color: SpotterfyTheme.text,
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
-    ),
-  );
+  /// Section heading with an optional trailing count, so "Your playlists" can
+  /// report its size without the caller composing a string.
+  Widget _sectionTitle(String text, {String? trailing}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: SpotterfyTheme.text,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ),
+          if (trailing != null)
+            Text(
+              trailing,
+              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _emptyHint(String text) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
     child: Text(
       text,
-      style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+      style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
     ),
   );
 
@@ -588,7 +631,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         children: [
           _connectionRow(icon: connIcon, title: connTitle, color: connColor),
-          const Divider(color: SpotterfyTheme.card, height: 12),
+          Divider(color: SpotterfyTheme.card, height: 12),
           _connectionRow(
             icon: warp == true ? Icons.shield : Icons.shield_outlined,
             title: warpTitle,
@@ -613,7 +656,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 color: SpotterfyTheme.text,
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -636,16 +679,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               color: SpotterfyTheme.text,
               fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+            style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
           ),
         ],
       ),
@@ -653,39 +696,87 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _playlistItem(BuildContext context, PlaylistModel playlist) {
-    return ListTile(
-      leading: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: SpotterfyTheme.surface,
-          borderRadius: BorderRadius.circular(8),
+    // A rounded card with real artwork rather than a bare ListTile: the rows sit
+    // directly on the page background, so grouping them gives the section an
+    // edge and makes the artwork read as the thing you are picking.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: SpotterfyTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => Navigator.push(
+            context,
+            swipeRoute(PlaylistDetailScreen(playlist: playlist)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: playlist.coverUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: playlist.coverUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (_, _) =>
+                                Container(color: SpotterfyTheme.card),
+                            errorWidget: (_, _, _) => Container(
+                              color: SpotterfyTheme.card,
+                              child: Icon(
+                                Icons.music_note,
+                                color: SpotterfyTheme.muted,
+                                size: 22,
+                              ),
+                            ),
+                          )
+                        : Container(
+                            color: SpotterfyTheme.card,
+                            child: Icon(
+                              Icons.music_note,
+                              color: SpotterfyTheme.muted,
+                              size: 22,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        playlist.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: SpotterfyTheme.text,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${playlist.tracks.length} tracks  •  ${playlist.sourceLabel}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: SpotterfyTheme.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: Color(0xFFa1a1aa)),
+              ],
+            ),
+          ),
         ),
-        child: playlist.coverUrl.isNotEmpty
-            ? CachedNetworkImage(imageUrl: playlist.coverUrl, fit: BoxFit.cover)
-            : const Icon(
-                Icons.music_note,
-                color: SpotterfyTheme.muted,
-                size: 24,
-              ),
-      ),
-      title: Text(
-        playlist.displayName,
-        style: const TextStyle(
-          color: SpotterfyTheme.text,
-          fontWeight: FontWeight.w600,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        '${playlist.tracks.length} tracks • ${playlist.sourceLabel}',
-        style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
-      ),
-      trailing: const Icon(Icons.chevron_right, color: Color(0xFFa1a1aa)),
-      onTap: () => Navigator.push(
-        context,
-        swipeRoute(PlaylistDetailScreen(playlist: playlist)),
       ),
     );
   }

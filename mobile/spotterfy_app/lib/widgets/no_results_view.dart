@@ -45,34 +45,34 @@ class NoResultsView extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(icon, size: 48, color: SpotterfyTheme.muted),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             Text(
               title ?? (q.isEmpty ? 'Nothing found' : 'Nothing found for "$q"'),
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: SpotterfyTheme.text,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               message ?? 'Check the spelling or try a different search.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
             ),
             if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 20),
+              SizedBox(height: 20),
               TextButton.icon(
                 onPressed: onAction,
-                icon: const Icon(
+                icon: Icon(
                   Icons.clear,
                   color: SpotterfyTheme.primary,
                   size: 18,
                 ),
                 label: Text(
                   actionLabel!,
-                  style: const TextStyle(color: SpotterfyTheme.primary),
+                  style: TextStyle(color: SpotterfyTheme.primary),
                 ),
               ),
             ],

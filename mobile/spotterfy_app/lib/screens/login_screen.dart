@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/main_screen.dart';
-import 'package:spotterfy_app/screens/admin_screen.dart';
+import 'package:spotterfy_app/screens/suspended_screen.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -11,21 +11,20 @@ class LoginScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
-    // Already logged in - redirect
+    // Already logged in - redirect.
+    // A suspended account is stopped here before it can reach onboarding or the
+    // app, and admins land in the app like everyone else (the admin tools live
+    // in Settings).
     if (!auth.isLoading && auth.isLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
-        if (auth.isAdmin) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminScreen()),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const MainScreen()),
-          );
-        }
+        final target = auth.needsModeration
+            ? const SuspendedScreen()
+            : const MainScreen();
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => target),
+        );
       });
     }
 
@@ -100,21 +99,16 @@ class LoginScreen extends StatelessWidget {
                                   final success = await auth.signInWithGoogle();
                                   if (!context.mounted) return;
                                   if (success) {
-                                    if (auth.isAdmin) {
-                                      Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const AdminScreen(),
-                                        ),
-                                      );
-                                    } else {
-                                      Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const MainScreen(),
-                                        ),
-                                      );
-                                    }
+                                    // Re-read auth: signing in resolves the
+                                    // user document, so isBanned is only known
+                                    // now, not when this screen first built.
+                                    final target = auth.needsModeration
+                                        ? const SuspendedScreen()
+                                        : const MainScreen();
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => target),
+                                    );
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(

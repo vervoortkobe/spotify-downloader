@@ -132,7 +132,7 @@ class MiniPlayer extends StatelessWidget {
                         children: [
                           Text(
                             track.title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: SpotterfyTheme.text,
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
@@ -144,7 +144,7 @@ class MiniPlayer extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             track.artists,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: SpotterfyTheme.muted,
                               fontSize: 12,
                               height: 1.2,
@@ -246,7 +246,7 @@ class _MiniProgressRow extends StatelessWidget {
           valueListenable: player.positionNotifier,
           builder: (context, pos, _) => Text(
             '${_fmtDuration(pos.inMilliseconds)} / ${_fmtDuration(durMs)}',
-            style: const TextStyle(
+            style: TextStyle(
               color: SpotterfyTheme.muted,
               fontSize: 10,
               fontWeight: FontWeight.w500,
@@ -467,7 +467,7 @@ class _SwipeRevealBackground extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               color: SpotterfyTheme.primary,
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -491,7 +491,7 @@ class _MiniCover extends StatelessWidget {
         fit: BoxFit.cover,
         gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) =>
-            const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24),
+            Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24),
       );
     }
     final String src = track.sourceUrl as String? ?? '';
@@ -507,6 +507,6 @@ class _MiniCover extends StatelessWidget {
         radius: 14,
       );
     }
-    return const Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24);
+    return Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24);
   }
 }

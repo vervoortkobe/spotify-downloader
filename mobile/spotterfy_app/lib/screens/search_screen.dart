@@ -42,26 +42,49 @@ class _SearchScreenState extends State<SearchScreen> {
     "https://open.spotify.com/playlist/37i9dQZF1EIdSOY5WzY0Ah",
     "https://open.spotify.com/playlist/37i9dQZF1EIghNBbh3wJEC",
   ];
+
+  /// Artist playlists featured on the Discover page, in display order.
+  ///
+  /// Order is the on-screen order, so entries are moved by editing this list
+  /// rather than by any sort. Names come from the backend's discover scrape;
+  /// `_artistFallbackNames` only fills in before that data lands, which is why
+  /// they stay generic.
   static const _artistUrls = [
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO37wTNS?si=d30ba68980f8411d",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0PRpBu?si=c4dc443bd3b14107",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0lhGr6?si=c2960a61f7134cb2",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2O09Hg?si=7056b2b4c9a44633",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3tjkZi?si=6bdf9e673dfb4f3c",
-    "https://open.spotify.com/playlist/37i9dQZF1DWZUozJiHy44Y?si=68e8f43b4b3f4fb3",
-    "https://open.spotify.com/playlist/37i9dQZF1DX3D78h6FPBPC?si=668fb476846d4ff9",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1SVXaM?si=61d06e90cfef4173",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1VAWw8?si=3489cec8913640f4",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0ENBD2?si=b8835c3da8784dfe",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3154GY?si=81ca769127ae4000",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3GSvAY?si=b22ab600db044f58",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0rer1m?si=0f83f0c724374979",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3262Tm?si=c76cd2e9119e499d",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4gTUOY?si=324e042bf1804ea5",
-    "https://open.spotify.com/playlist/37i9dQZF1DX6p4TJxzMRDe?si=85f8b85180e040cc",
-    "https://open.spotify.com/playlist/66U9yz0mUOyY1fd40d2iMA?si=d30ba68980f8411d",
-    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0FQNnk?si=XWSHlTf_RkiboFOpz0pXiQ",
-    "https://open.spotify.com/playlist/37i9dQZF1DX8kP0ioXjxIA?si=668fb476846d4ff9",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO37wTNS?si=d30ba68980f8411d", // This Is Stromae
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0PRpBu?si=c4dc443bd3b14107", // This Is Avicii
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0lhGr6?si=c2960a61f7134cb2", // This Is GIMS
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2O09Hg?si=7056b2b4c9a44633", // This Is Juice WRLD
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3tjkZi?si=6bdf9e673dfb4f3c", // This Is Netsky
+    "https://open.spotify.com/playlist/37i9dQZF1DWZUozJiHy44Y?si=68e8f43b4b3f4fb3", // This Is Adele
+    "https://open.spotify.com/playlist/37i9dQZF1DX3D78h6FPBPC?si=668fb476846d4ff9", // This Is ABBA
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1SVXaM?si=61d06e90cfef4173", // This Is Michael Jackson
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0ENBD2?si=b8835c3da8784dfe", // This Is Queen
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3154GY?si=81ca769127ae4000", // This Is Bon Jovi
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3GSvAY?si=b22ab600db044f58", // This Is NF
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0rer1m?si=0f83f0c724374979", // This Is DJ Khaled
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3262Tm?si=c76cd2e9119e499d", // This Is Prince
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4gTUOY?si=324e042bf1804ea5", // This Is Eminem
+    "https://open.spotify.com/playlist/37i9dQZF1DX6p4TJxzMRDe?si=85f8b85180e040cc", // This Is One Direction
+    // --- New additions, between One Direction and Studio 100 Tophits ---
+    "https://open.spotify.com/playlist/37i9dQZF1DXaQm3ZVg9Z2X", // This Is Coldplay
+    // Grouped with the electronic artists, between Coldplay and Dua Lipa.
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4vD8f6", // This Is Calvin Harris
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO20Wzv2", // This Is Robin Schulz
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evNZY5NHq", // This Is Maroon 5
+    "https://open.spotify.com/playlist/37i9dQZF1DX3fRquEp6m8D", // This Is Dua Lipa
+    "https://open.spotify.com/playlist/37i9dQZF1DXc2aPBXGmXrt", // This Is Justin Bieber
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2yPKNc", // This Is Ava Max
+    "https://open.spotify.com/playlist/37i9dQZF1DX5KpP2LN299J", // This Is Taylor Swift
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3Jefw4", // This Is Katy Perry
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO40D0nC", // This Is Clean Bandit
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0SmMeI", // This Is Anne-Marie
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2yXXGB", // This Is Camila Cabello
+    "https://open.spotify.com/playlist/37i9dQZF1DWWxPM4nWdhyI", // This Is Ed Sheeran
+    // --- End new additions ---
+    "https://open.spotify.com/playlist/66U9yz0mUOyY1fd40d2iMA?si=d30ba68980f8411d", // Studio 100 Tophits
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0FQNnk?si=XWSHlTf_RkiboFOpz0pXiQ", // This Is K3
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO1VAWw8?si=3489cec8913640f4", // This Is Bazart (moved here, between K3 and BLACKPINK)
+    "https://open.spotify.com/playlist/37i9dQZF1DX8kP0ioXjxIA?si=668fb476846d4ff9", // This Is BLACKPINK
   ];
   static const _radioStations = [
     {
@@ -121,6 +144,15 @@ class _SearchScreenState extends State<SearchScreen> {
     'Rock Classics',
     'Pop Rising',
   ];
+
+  /// Generic placeholders for artist rows whose real title has not arrived from
+  /// the backend yet.
+  ///
+  /// The real names are known per playlist id (each entry in `_artistUrls` is a
+  /// "This Is ..." editorial playlist), but this list is *positional* - it is
+  /// indexed in lockstep with `_artistUrls`. Keeping one entry per url means
+  /// inserting an artist cannot shift every later placeholder onto the wrong
+  /// playlist, which is the failure mode a shorter modulo-cycled list would hit.
   static const _artistFallbackNames = [
     'This Is Artist Mix 1',
     'This Is Artist Mix 2',
@@ -141,6 +173,19 @@ class _SearchScreenState extends State<SearchScreen> {
     'This Is Artist Mix 17',
     'This Is Artist Mix 18',
     'This Is Artist Mix 19',
+    'This Is Artist Mix 20',
+    'This Is Artist Mix 21',
+    'This Is Artist Mix 22',
+    'This Is Artist Mix 23',
+    'This Is Artist Mix 24',
+    'This Is Artist Mix 25',
+    'This Is Artist Mix 26',
+    'This Is Artist Mix 27',
+    'This Is Artist Mix 28',
+    'This Is Artist Mix 29',
+    'This Is Artist Mix 30',
+    'This Is Artist Mix 31',
+    'This Is Artist Mix 32',
   ];
 
   final PlaylistService _discoverService = PlaylistService();
@@ -220,7 +265,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 'Save "${track.title}"',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   color: SpotterfyTheme.text,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -228,12 +273,12 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
             ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.favorite_rounded,
                 color: SpotterfyTheme.primary,
               ),
               title: const Text('Liked songs'),
-              subtitle: const Text(
+              subtitle: Text(
                 'Your saved songs',
                 style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
               ),
@@ -241,7 +286,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   Navigator.pop(sheetCtx, PlaylistProvider.likedSongsId),
             ),
             if (prov.playlists.isNotEmpty) ...[
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(20, 10, 20, 4),
                 child: Text(
                   'Add to a playlist',
@@ -259,7 +304,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   itemBuilder: (_, i) {
                     final p = prov.playlists[i];
                     return ListTile(
-                      leading: const Icon(
+                      leading: Icon(
                         Icons.queue_music_rounded,
                         color: SpotterfyTheme.muted,
                       ),
@@ -267,7 +312,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         p.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: SpotterfyTheme.text,
                           fontSize: 14,
                         ),
@@ -759,7 +804,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _songsSection(BuildContext context, String query) {
     if (query.isEmpty) return const SizedBox.shrink();
     if (_searching && _trackResults.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.fromLTRB(16, 18, 16, 8),
         child: Row(
           children: [
@@ -807,7 +852,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
                 child: Text(
                   '${_trackResults.length}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: SpotterfyTheme.muted,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -1007,7 +1052,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                       name.isNotEmpty
                                           ? name[0].toUpperCase()
                                           : '?',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: SpotterfyTheme.muted,
                                         fontSize: 20,
                                         fontWeight: FontWeight.w700,
@@ -1021,7 +1066,7 @@ class _SearchScreenState extends State<SearchScreen> {
                               ),
                               child: Text(
                                 name,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: SpotterfyTheme.text,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
@@ -1073,7 +1118,7 @@ class _SearchScreenState extends State<SearchScreen> {
                             (user['displayName'] ?? '?').isNotEmpty
                                 ? user['displayName']![0].toUpperCase()
                                 : '?',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: SpotterfyTheme.muted,
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
@@ -1099,7 +1144,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         if ((user['email'] ?? '').isNotEmpty)
                           Text(
                             user['email']!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: SpotterfyTheme.muted,
                               fontSize: 12,
                             ),
@@ -1111,7 +1156,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               Text(
                 'Public playlists',
                 style: TextStyle(
@@ -1120,13 +1165,13 @@ class _SearchScreenState extends State<SearchScreen> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               Flexible(
                 child: FutureBuilder<List<PlaylistModel>>(
                   future: _discoverService.getPlaylistsByCreator(uid),
                   builder: (_, snap) {
                     if (snap.connectionState != ConnectionState.done) {
-                      return const SizedBox(
+                      return SizedBox(
                         height: 90,
                         child: Center(
                           child: CircularProgressIndicator(
@@ -1138,7 +1183,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     }
                     final items = snap.data ?? const <PlaylistModel>[];
                     if (items.isEmpty) {
-                      return const SizedBox(
+                      return SizedBox(
                         height: 70,
                         child: Center(
                           child: Text(
@@ -1170,7 +1215,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                       memCacheWidth: 120,
                                       errorWidget: (_, _, _) => Container(
                                         color: SpotterfyTheme.card,
-                                        child: const Icon(
+                                        child: Icon(
                                           Icons.music_note,
                                           color: SpotterfyTheme.muted,
                                           size: 18,
@@ -1179,7 +1224,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                     )
                                   : Container(
                                       color: SpotterfyTheme.card,
-                                      child: const Icon(
+                                      child: Icon(
                                         Icons.music_note,
                                         color: SpotterfyTheme.muted,
                                         size: 18,
@@ -1199,7 +1244,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
                           subtitle: Text(
                             '${pl.tracks.length} tracks',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: SpotterfyTheme.muted,
                               fontSize: 12,
                             ),
@@ -1544,7 +1589,7 @@ class _DiscoverCoverState extends State<_DiscoverCover> {
 
   Widget _placeholder() => Container(
     color: SpotterfyTheme.surface,
-    child: const Center(
+    child: Center(
       child: Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 28),
     ),
   );
@@ -1649,27 +1694,23 @@ class _CommunityError extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             "Couldn't load community playlists",
             style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Text(
             message,
             style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           TextButton.icon(
             onPressed: onRetry,
-            icon: const Icon(
-              Icons.refresh,
-              color: SpotterfyTheme.primary,
-              size: 18,
-            ),
-            label: const Text(
+            icon: Icon(Icons.refresh, color: SpotterfyTheme.primary, size: 18),
+            label: Text(
               'Retry',
               style: TextStyle(color: SpotterfyTheme.primary),
             ),
@@ -1726,10 +1767,8 @@ class _RadioStationsPage extends StatelessWidget {
                         fit: BoxFit.cover,
                         placeholder: (context, _) =>
                             Container(color: SpotterfyTheme.surface),
-                        errorWidget: (context, _, _) => const Icon(
-                          Icons.radio,
-                          color: SpotterfyTheme.muted,
-                        ),
+                        errorWidget: (context, _, _) =>
+                            Icon(Icons.radio, color: SpotterfyTheme.muted),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -1745,7 +1784,7 @@ class _RadioStationsPage extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const Icon(
+                    Icon(
                       Icons.play_arrow,
                       color: SpotterfyTheme.primary,
                       size: 24,

@@ -28,6 +28,19 @@ DISCOVER_URLS = [
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3262Tm",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4gTUOY",
     "https://open.spotify.com/playlist/37i9dQZF1DX6p4TJxzMRDe",
+    # Artist playlists added to the Discover page. Scrape order here does not
+    # affect display order - the app lays out `_artistUrls` itself - but they are
+    # kept adjacent to their neighbours so the two lists stay easy to compare.
+    "https://open.spotify.com/playlist/37i9dQZF1DXaQm3ZVg9Z2X",
+    "https://open.spotify.com/playlist/37i9dQZF1DX3fRquEp6m8D",
+    "https://open.spotify.com/playlist/37i9dQZF1DXc2aPBXGmXrt",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2yPKNc",
+    "https://open.spotify.com/playlist/37i9dQZF1DX5KpP2LN299J",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO3Jefw4",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO40D0nC",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0SmMeI",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2yXXGB",
+    "https://open.spotify.com/playlist/37i9dQZF1DWWxPM4nWdhyI",
     "https://open.spotify.com/playlist/66U9yz0mUOyY1fd40d2iMA",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0FQNnk",
     "https://open.spotify.com/playlist/37i9dQZF1DX8kP0ioXjxIA",

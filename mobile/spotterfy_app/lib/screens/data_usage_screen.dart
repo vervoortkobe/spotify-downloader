@@ -5,8 +5,8 @@ import 'package:spotterfy_app/services/network_stats_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 
-const _wifiColor = SpotterfyTheme.primary;
-const _cellColor = Color(0xFF38bdf8);
+final _wifiColor = SpotterfyTheme.primary;
+final _cellColor = Color(0xFF38bdf8);
 
 class DataUsageScreen extends StatelessWidget {
   const DataUsageScreen({super.key});
@@ -21,7 +21,7 @@ class DataUsageScreen extends StatelessWidget {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: const Text(
+          title: Text(
             'Data Usage',
             style: TextStyle(
               color: SpotterfyTheme.text,
@@ -57,7 +57,7 @@ class DataUsageScreen extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 8),
     child: Text(
       t,
-      style: const TextStyle(
+      style: TextStyle(
         color: SpotterfyTheme.muted,
         fontSize: 12,
         fontWeight: FontWeight.w600,
@@ -137,7 +137,7 @@ class DataUsageScreen extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             'This session: ↓ ${NetworkStatsService.formatBytes(net.downBytes)} · ↑ ${NetworkStatsService.formatBytes(net.upBytes)}',
-            style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+            style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
           ),
         ],
       ),
@@ -160,14 +160,11 @@ class DataUsageScreen extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: SpotterfyTheme.muted,
-                    fontSize: 11,
-                  ),
+                  style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11),
                 ),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: SpotterfyTheme.text,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -190,11 +187,11 @@ class DataUsageScreen extends StatelessWidget {
           _usageRow(_wifiColor, 'Wi-Fi', wifi, total),
           const SizedBox(height: 10),
           _usageRow(_cellColor, 'Mobile data', cell, total),
-          const Divider(color: SpotterfyTheme.card, height: 24),
+          Divider(color: SpotterfyTheme.card, height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Total',
                 style: TextStyle(
                   color: SpotterfyTheme.text,
@@ -204,7 +201,7 @@ class DataUsageScreen extends StatelessWidget {
               ),
               Text(
                 NetworkStatsService.formatBytes(total),
-                style: const TextStyle(
+                style: TextStyle(
                   color: SpotterfyTheme.text,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -238,16 +235,13 @@ class DataUsageScreen extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: SpotterfyTheme.text,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 13),
                 ),
               ],
             ),
             Text(
               NetworkStatsService.formatBytes(value),
-              style: const TextStyle(
+              style: TextStyle(
                 color: SpotterfyTheme.text,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -294,7 +288,7 @@ class DataUsageScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (!hasData && !net.historyLoading)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
               child: Center(
                 child: Text(
@@ -322,10 +316,7 @@ class DataUsageScreen extends StatelessWidget {
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
       const SizedBox(width: 6),
-      Text(
-        label,
-        style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
-      ),
+      Text(label, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
     ],
   );
 
@@ -345,7 +336,7 @@ class DataUsageScreen extends StatelessWidget {
                 ? SpotterfyTheme.muted
                 : (backend ? _wifiColor : const Color(0xFFef4444)),
           ),
-          const Divider(color: SpotterfyTheme.card, height: 20),
+          Divider(color: SpotterfyTheme.card, height: 20),
           _serviceRow(
             icon: warp == true ? Icons.shield : Icons.shield_outlined,
             title: 'WARP',
@@ -370,7 +361,7 @@ class DataUsageScreen extends StatelessWidget {
       const SizedBox(width: 12),
       Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           color: SpotterfyTheme.text,
           fontSize: 15,
           fontWeight: FontWeight.w600,
@@ -437,11 +428,8 @@ class _UsageGraphPainter extends CustomPainter {
 
     final wifiPaint = Paint()..color = _wifiColor;
     final cellPaint = Paint()..color = _cellColor;
-    final labelStyle = const TextStyle(
-      color: SpotterfyTheme.muted,
-      fontSize: 10,
-    );
-    final valueStyle = const TextStyle(
+    final labelStyle = TextStyle(color: SpotterfyTheme.muted, fontSize: 10);
+    final valueStyle = TextStyle(
       color: SpotterfyTheme.text,
       fontSize: 9,
       fontWeight: FontWeight.w600,

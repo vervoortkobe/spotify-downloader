@@ -73,11 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ? NetworkImage(widget.peer.photoUrl)
                   : null,
               child: widget.peer.photoUrl.isEmpty
-                  ? const Icon(
-                      Icons.person,
-                      color: SpotterfyTheme.muted,
-                      size: 18,
-                    )
+                  ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18)
                   : null,
             ),
             const SizedBox(width: 10),
@@ -104,7 +100,7 @@ class _ChatScreenState extends State<ChatScreen> {
               builder: (context, snap) {
                 final messages = snap.data ?? const <ChatMessage>[];
                 if (messages.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),
                       child: Text(
@@ -187,7 +183,7 @@ class _ChatScreenState extends State<ChatScreen> {
               maxLines: 4,
               decoration: InputDecoration(
                 hintText: 'Message',
-                hintStyle: const TextStyle(color: SpotterfyTheme.muted),
+                hintStyle: TextStyle(color: SpotterfyTheme.muted),
                 isDense: true,
                 filled: true,
                 fillColor: SpotterfyTheme.surface,

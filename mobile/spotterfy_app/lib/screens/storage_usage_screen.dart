@@ -8,7 +8,8 @@ import 'package:spotterfy_app/services/network_stats_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 
-const _playlistColor = SpotterfyTheme.primary;
+// Follows the accent, so this cannot be a const any more.
+final _playlistColor = SpotterfyTheme.primary;
 const _imageColor = Color(0xFF38bdf8);
 const _otherColor = Color(0xFFa1a1aa);
 
@@ -138,18 +139,18 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SpotterfyTheme.surface,
-        title: const Text(
+        title: Text(
           'Reset cache?',
           style: TextStyle(color: SpotterfyTheme.text),
         ),
-        content: const Text(
+        content: Text(
           'Deletes playlist track files and cached covers. Playlists re-download on demand.',
           style: TextStyle(color: SpotterfyTheme.muted),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Cancel',
               style: TextStyle(color: SpotterfyTheme.muted),
             ),
@@ -178,10 +179,7 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
     if (!mounted) return;
     setState(() => _resetting = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Cache cleared'),
-        duration: Duration(seconds: 2),
-      ),
+      SnackBar(content: Text('Cache cleared'), duration: Duration(seconds: 2)),
     );
     await _measure(recordHistory: true);
   }
@@ -195,7 +193,7 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: const Text(
+          title: Text(
             'Storage usage',
             style: TextStyle(
               color: SpotterfyTheme.text,
@@ -209,7 +207,7 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'App storage',
                 style: TextStyle(
                   color: SpotterfyTheme.muted,
@@ -248,11 +246,11 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
                             _other,
                             total,
                           ),
-                          const Divider(color: SpotterfyTheme.card, height: 24),
+                          Divider(color: SpotterfyTheme.card, height: 24),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
+                              Text(
                                 'Total',
                                 style: TextStyle(
                                   color: SpotterfyTheme.text,
@@ -262,7 +260,7 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
                               ),
                               Text(
                                 NetworkStatsService.formatBytes(total),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: SpotterfyTheme.text,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
@@ -274,7 +272,7 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
                       ),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'History',
                 style: TextStyle(
                   color: SpotterfyTheme.muted,
@@ -298,7 +296,7 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
                     ),
                     const SizedBox(height: 12),
                     if (_history.length < 2)
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.symmetric(vertical: 24),
                         child: Center(
                           child: Text(
@@ -379,16 +377,13 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
                 const SizedBox(width: 8),
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: SpotterfyTheme.text,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 13),
                 ),
               ],
             ),
             Text(
               NetworkStatsService.formatBytes(value),
-              style: const TextStyle(
+              style: TextStyle(
                 color: SpotterfyTheme.text,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -421,10 +416,7 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
       const SizedBox(width: 6),
-      Text(
-        label,
-        style: const TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
-      ),
+      Text(label, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
     ],
   );
 }
@@ -510,10 +502,7 @@ class _StorageGraphPainter extends CustomPainter {
     }
 
     // Date labels: first, middle, last
-    final labelStyle = const TextStyle(
-      color: SpotterfyTheme.muted,
-      fontSize: 10,
-    );
+    final labelStyle = TextStyle(color: SpotterfyTheme.muted, fontSize: 10);
     void label(int i, double align) {
       final d = DateTime.fromMillisecondsSinceEpoch(history[i].at);
       final text = '${d.day}/${d.month}';
