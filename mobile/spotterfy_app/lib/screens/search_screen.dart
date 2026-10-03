@@ -67,6 +67,8 @@ class _SearchScreenState extends State<SearchScreen> {
     "https://open.spotify.com/playlist/37i9dQZF1DX6p4TJxzMRDe?si=85f8b85180e040cc", // This Is One Direction
     // --- New additions, between One Direction and Studio 100 Tophits ---
     "https://open.spotify.com/playlist/37i9dQZF1DXaQm3ZVg9Z2X", // This Is Coldplay
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0sQwP6", // This Is Pitbull
+    "https://open.spotify.com/playlist/37i9dQZF1DX6bnzK9KPvrz", // This Is The Weeknd
     // Grouped with the electronic artists, between Coldplay and Dua Lipa.
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO4vD8f6", // This Is Calvin Harris
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO20Wzv2", // This Is Robin Schulz
@@ -174,9 +176,11 @@ class _SearchScreenState extends State<SearchScreen> {
     'This Is Artist Mix 18',
     'This Is Artist Mix 19',
     'This Is Artist Mix 20',
+    'This Is Artist Mix 20',
     'This Is Artist Mix 21',
     'This Is Artist Mix 22',
     'This Is Artist Mix 23',
+    'This Is Artist Mix 24',
     'This Is Artist Mix 24',
     'This Is Artist Mix 25',
     'This Is Artist Mix 26',

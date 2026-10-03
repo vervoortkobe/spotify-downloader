@@ -32,6 +32,8 @@ DISCOVER_URLS = [
     # affect display order - the app lays out `_artistUrls` itself - but they are
     # kept adjacent to their neighbours so the two lists stay easy to compare.
     "https://open.spotify.com/playlist/37i9dQZF1DXaQm3ZVg9Z2X",
+    "https://open.spotify.com/playlist/37i9dQZF1DZ06evO0sQwP6",
+    "https://open.spotify.com/playlist/37i9dQZF1DX6bnzK9KPvrz",
     "https://open.spotify.com/playlist/37i9dQZF1DX3fRquEp6m8D",
     "https://open.spotify.com/playlist/37i9dQZF1DXc2aPBXGmXrt",
     "https://open.spotify.com/playlist/37i9dQZF1DZ06evO2yPKNc",

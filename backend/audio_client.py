@@ -189,6 +189,13 @@ class SpotifyEmbedAPI:
         """
         try:
             response = self._session.get(url, headers=self._headers())
+        except httpx.RemoteProtocolError:
+            # Transient transport corruption ("illegal chunk header") - the
+            # response body was cut mid-stream. Must be re-raised untouched:
+            # retry_on_network_error already lists RemoteProtocolError, but
+            # wrapping it in SpotifyDownAPIError below made that retry dead code,
+            # so a single flaky connection permanently failed the whole playlist.
+            raise
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
             raise NetworkError(f"Network error fetching embed page: {exc}") from exc
         except httpx.HTTPError as exc:
