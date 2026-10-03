@@ -15,7 +15,6 @@ import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/chat_screen.dart';
 import 'package:spotterfy_app/screens/downloads_screen.dart';
-import 'package:spotterfy_app/screens/login_screen.dart';
 import 'package:spotterfy_app/screens/playlist_detail_screen.dart';
 import 'package:spotterfy_app/screens/settings_screen.dart';
 import 'package:spotterfy_app/screens/admin_screen.dart';
@@ -206,6 +205,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _confirmSignOut(BuildContext context) async {
     final auth = context.read<AuthProvider>();
+    final social = context.read<SocialProvider>();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -235,12 +235,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (confirmed != true) return;
     await NetworkStatsService.instance?.setUserId(null);
+    // Tear the Firestore listeners down *before* revoking the token. They are
+    // all gated on `request.auth != null`, so leaving them attached across a
+    // sign-out makes every one of them answer PERMISSION_DENIED.
+    // Captured before the await above so no BuildContext crosses the gap.
+    social.syncUid(null);
     await auth.signOut();
-    if (!context.mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
+    // No navigation here. The splash screen is the auth gate - it watches
+    // AuthProvider and swaps MainScreen for LoginScreen in place. Navigating
+    // instead reparented MainScreen's TabNavigators, whose static per-tab
+    // GlobalKeys then duplicated and crashed the frame.
   }
 
   // ------------------------------------------------------------- other
@@ -382,46 +386,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
 
       case 'outgoing':
+        // Reads as "pressed": empty fill, accent border and accent text, so it
+        // looks like a toggle that is currently on. Tapping it unsends, which is
+        // the whole point of showing the state on the button itself rather than in
+        // a separate card with a Cancel link.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle('Friend request'),
+            _sectionTitle('Friendship'),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: SpotterfyTheme.surface,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.hourglass_top,
-                    color: SpotterfyTheme.muted,
-                    size: 20,
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => social.declineRequest(
+                  social.requests.firstWhere(
+                    (r) => r.otherUid == uid && r.isPending,
                   ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Waiting for them to accept',
-                      style: TextStyle(
-                        color: SpotterfyTheme.text,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => social.declineRequest(
-                      social.requests.firstWhere(
-                        (r) => r.otherUid == uid && r.isPending,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: TextStyle(color: SpotterfyTheme.muted),
-                    ),
-                  ),
-                ],
+                ),
+                icon: const Icon(Icons.hourglass_top, size: 18),
+                label: const Text('Friend request sent'),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: SpotterfyTheme.primary,
+                  side: BorderSide(color: SpotterfyTheme.primary),
+                ),
               ),
             ),
           ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:spotterfy_app/models/jam_session_model.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/jam_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
@@ -10,6 +11,7 @@ import 'package:spotterfy_app/widgets/base_page.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/chat_screen.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
+import 'package:spotterfy_app/widgets/jam_session_sheet.dart';
 
 /// The Chat tab: notifications, friend conversations, and live jam sessions.
 ///
@@ -81,9 +83,18 @@ class _JamScreenState extends State<JamScreen> {
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(),
       ),
+      // Sits above the mini player, which is drawn over this tab's navigator.
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _startMessage(context),
+        backgroundColor: SpotterfyTheme.primary,
+        foregroundColor: Colors.black,
+        tooltip: 'New message',
+        child: const Icon(Icons.chat_bubble_outline),
+      ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 110),
         children: [
+          if (jam.inJam) _jamBanner(context, jam.currentSession!),
           if (notifications.isNotEmpty) ...[
             _sectionHeader(
               'Notifications',
@@ -97,6 +108,39 @@ class _JamScreenState extends State<JamScreen> {
           if (chats.isNotEmpty) ...[
             _sectionHeader('Chats'),
             ...chats.map((c) => _chatRow(context, c)),
+          ] else if (notifications.isEmpty && friends.isEmpty && sessions.isEmpty && !jam.inJam && _query.isEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.chat_bubble_outline,
+                      color: SpotterfyTheme.mutedDark,
+                      size: 48,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No chats or jams yet',
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Start a conversation or join a jam session',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: SpotterfyTheme.mutedDark,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
 
           if (friends.isNotEmpty) ...[
@@ -474,25 +518,46 @@ class _JamScreenState extends State<JamScreen> {
               ],
             ),
           ),
-          ElevatedButton(
-            onPressed: () async {
-              if (auth.user == null) return;
-              await jam.joinSession(auth.user!.uid, s.id);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: SpotterfyTheme.primary,
-              foregroundColor: SpotterfyTheme.text,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          if (jam.inJam)
+            OutlinedButton(
+              onPressed: null,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: SpotterfyTheme.mutedDark,
+                side: BorderSide(color: SpotterfyTheme.borderColor),
               ),
+              child: const Text('In a jam'),
+            )
+          else
+            ElevatedButton(
+              onPressed: () async {
+                if (auth.user == null) return;
+                try {
+                  await jam.joinSession(auth.user!.uid, s.id);
+                } on StateError catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('$e')));
+                  }
+                  return;
+                }
+                if (context.mounted) showJamSessionSheet(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: SpotterfyTheme.primary,
+                foregroundColor: SpotterfyTheme.text,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Join'),
             ),
-            child: const Text('Join'),
-          ),
         ],
       ),
     );
   }
 
+  /// Shared by the friend rows and the jam picker.
   Widget _avatar(String photoUrl, double radius) => CircleAvatar(
     radius: radius,
     backgroundColor: SpotterfyTheme.surface,
@@ -510,39 +575,78 @@ class _JamScreenState extends State<JamScreen> {
     Navigator.push(context, swipeRoute(ProfileScreen(uid: uid)));
   }
 
-  /// Creates a jam. When launched from a friend row the session is named for
-  /// that friend and they're invited immediately; from the app bar it opens a
-  /// picker of friends.
-  void _createSession(BuildContext context, {SocialUser? withFriend}) {
-    if (withFriend != null) {
-      _showJamDialog(
-        context,
-        initialName: 'Jam with ${withFriend.displayName}',
-      );
-      return;
-    }
-    _showFriendPicker(context);
+  /// Persistent "you are in a jam" strip. Tapping it opens the session sheet.
+  Widget _jamBanner(BuildContext context, JamSessionModel session) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Material(
+        color: const Color(0xFF12241c),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => showJamSessionSheet(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.groups, color: SpotterfyTheme.primary, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        session.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: SpotterfyTheme.text,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        session.isPlaying ? 'Playing now' : 'Paused',
+                        style: TextStyle(
+                          color: SpotterfyTheme.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  color: SpotterfyTheme.muted,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
-  Future<void> _showFriendPicker(BuildContext context) async {
+  /// Picks a friend, then asks for the text and sends it.
+  ///
+  /// Two steps on purpose: "send a message" needs both a recipient and content,
+  /// and a single dialog that did both would have to invent a recipient when
+  /// the user only meant to open an existing conversation.
+  Future<void> _startMessage(BuildContext context) async {
     final uid = context.read<SocialProvider>().uid;
     if (uid == null) return;
     final friends = await SocialService.instance.friendsOnce(uid);
     if (!context.mounted) return;
-
     if (friends.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add a friend first — jams are with friends'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Add a friend first')));
       return;
     }
-
     final picked = await showModalBottomSheet<SocialUser>(
       context: context,
-      // Above the mini player: the sheet is opened on a tab navigator, which
-      // the mini player is drawn over.
       useRootNavigator: true,
       backgroundColor: SpotterfyTheme.surface,
       shape: const RoundedRectangleBorder(
@@ -554,9 +658,9 @@ class _JamScreenState extends State<JamScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: EdgeInsets.fromLTRB(20, 18, 20, 4),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
               child: Text(
-                'Create a jam with',
+                'Message',
                 style: TextStyle(
                   color: SpotterfyTheme.text,
                   fontSize: 17,
@@ -589,12 +693,123 @@ class _JamScreenState extends State<JamScreen> {
         ),
       ),
     );
-    if (picked != null && context.mounted) {
-      _showJamDialog(context, initialName: 'Jam with ${picked.displayName}');
-    }
+    if (picked == null || !context.mounted) return;
+
+    final text = await _promptMessage(context);
+    if (text == null || text.isEmpty || !context.mounted) return;
+    final auth = context.read<AuthProvider>();
+    await context.read<SocialProvider>().sendMessage(
+      myName: auth.user?.displayName ?? 'Me',
+      myPhoto: auth.user?.photoUrl ?? '',
+      peer: picked,
+      text: text,
+    );
   }
 
-  void _showJamDialog(BuildContext context, {String initialName = ''}) {
+  Future<String?> _promptMessage(BuildContext context) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: SpotterfyTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Message', style: TextStyle(color: SpotterfyTheme.text)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: TextStyle(color: SpotterfyTheme.text),
+          decoration: InputDecoration(
+            hintText: 'Type a message',
+            hintStyle: TextStyle(color: SpotterfyTheme.mutedDark),
+            filled: true,
+            fillColor: SpotterfyTheme.fill,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: SpotterfyTheme.mutedDark),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: SpotterfyTheme.primary,
+              foregroundColor: Colors.black,
+            ),
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Creates a jam. When launched from a friend row the session is named for
+  /// that friend and they're invited immediately; from the app bar it opens a
+  /// picker of friends.
+  void _createSession(BuildContext context, {SocialUser? withFriend}) {
+    if (withFriend != null) {
+      _showJamDialog(
+        context,
+        initialName: 'Jam with ${withFriend.displayName}',
+        invite: [withFriend.uid],
+      );
+      return;
+    }
+    _showFriendPicker(context);
+  }
+
+  /// Multi-select friend picker for the app-bar "new jam" action.
+  Future<void> _showFriendPicker(BuildContext context) async {
+    final uid = context.read<SocialProvider>().uid;
+    if (uid == null) return;
+    final friends = await SocialService.instance.friendsOnce(uid);
+    if (!context.mounted) return;
+
+    if (friends.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add a friend first — jams are with friends'),
+        ),
+      );
+      return;
+    }
+
+    final picked = await showModalBottomSheet<List<SocialUser>>(
+      context: context,
+      // Above the mini player: the sheet is opened on a tab navigator, which
+      // the mini player is drawn over.
+      useRootNavigator: true,
+      backgroundColor: SpotterfyTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) => _FriendPicker(friends: friends),
+    );
+    if (picked == null || picked.isEmpty || !context.mounted) return;
+
+    final names = picked.map((f) => f.displayName).toList();
+    final initial = names.length == 1
+        ? 'Jam with ${names.first}'
+        : 'Jam with ${names.take(2).join(', ')}${names.length > 2 ? ' +${names.length - 2}' : ''}';
+    _showJamDialog(
+      context,
+      initialName: initial,
+      invite: picked.map((f) => f.uid).toList(),
+    );
+  }
+
+  void _showJamDialog(
+    BuildContext context, {
+    String initialName = '',
+    List<String> invite = const [],
+  }) {
     final nameController = TextEditingController(text: initialName);
     showDialog(
       context: context,
@@ -634,9 +849,34 @@ class _JamScreenState extends State<JamScreen> {
               final playlistProv = context.read<PlaylistProvider>();
               final name = nameController.text.trim();
               if (auth.user == null || name.isEmpty) return;
-              final tracks = playlistProv.currentPlaylist?.tracks ?? [];
-              await jam.createSession(auth.user!.uid, name, tracks);
+              // One jam at a time: refuse rather than orphan the current session.
+              if (jam.inJam) {
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('You are already in a jam')),
+                  );
+                }
+                return;
+              }
+              final tracks = playlistProv.currentPlaylist?.tracks ?? const [];
+              try {
+                await jam.createSession(
+                  auth.user!.uid,
+                  name,
+                  tracks,
+                  invite: invite,
+                );
+              } on StateError catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('$e')));
+                }
+                return;
+              }
               if (ctx.mounted) Navigator.pop(ctx);
+              if (context.mounted) showJamSessionSheet(context);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: SpotterfyTheme.primary,
@@ -646,6 +886,114 @@ class _JamScreenState extends State<JamScreen> {
               ),
             ),
             child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Multi-select friend picker for starting a jam.
+///
+/// Returns the chosen friends, or null if dismissed. Multi-select because a jam
+/// is a group thing: the creator picks everyone up front rather than hoping they
+/// find the session in the live list.
+class _FriendPicker extends StatefulWidget {
+  final List<SocialUser> friends;
+
+  const _FriendPicker({required this.friends});
+
+  @override
+  State<_FriendPicker> createState() => _FriendPickerState();
+}
+
+class _FriendPickerState extends State<_FriendPicker> {
+  final Set<String> _selected = {};
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
+            child: Text(
+              'Who is in this jam?',
+              style: TextStyle(
+                color: SpotterfyTheme.text,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: widget.friends.length,
+              itemBuilder: (_, i) {
+                final f = widget.friends[i];
+                final on = _selected.contains(f.uid);
+                return ListTile(
+                  leading: CircleAvatar(
+                    radius: 20,
+                    backgroundColor: SpotterfyTheme.surface,
+                    backgroundImage: f.photoUrl.isNotEmpty
+                        ? NetworkImage(f.photoUrl)
+                        : null,
+                    child: f.photoUrl.isEmpty
+                        ? Icon(
+                            Icons.person,
+                            color: SpotterfyTheme.muted,
+                            size: 20,
+                          )
+                        : null,
+                  ),
+                  title: Text(
+                    f.displayName,
+                    style: TextStyle(color: SpotterfyTheme.text),
+                  ),
+                  trailing: Icon(
+                    on ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: on ? SpotterfyTheme.primary : SpotterfyTheme.muted,
+                  ),
+                  onTap: () => setState(() {
+                    if (on) {
+                      _selected.remove(f.uid);
+                    } else {
+                      _selected.add(f.uid);
+                    }
+                  }),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _selected.isEmpty
+                    ? null
+                    : () => Navigator.pop(
+                        context,
+                        widget.friends
+                            .where((f) => _selected.contains(f.uid))
+                            .toList(),
+                      ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: SpotterfyTheme.primary,
+                  foregroundColor: Colors.black,
+                ),
+                child: Text(
+                  _selected.isEmpty
+                      ? 'Select friends'
+                      : 'Add ${_selected.length} '
+                            '${_selected.length == 1 ? 'friend' : 'friends'}',
+                ),
+              ),
+            ),
           ),
         ],
       ),

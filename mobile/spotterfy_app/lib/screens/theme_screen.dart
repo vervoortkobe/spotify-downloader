@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:spotterfy_app/providers/theme_controller.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
+import 'package:spotterfy_app/widgets/app_chrome.dart';
 
 /// Accent colour and OLED black.
 ///
@@ -15,88 +16,97 @@ class ThemeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = ThemeController.instance;
 
-    return AppGradientScaffold(
-      title: 'Theme',
-      body: AnimatedBuilder(
-        animation: controller,
-        builder: (context, _) => ListView(
-          // Clears the mini player drawn over this page by MainScreen.
-          padding: const EdgeInsets.only(bottom: 140),
-          children: [
-            _SectionLabel('Accent colour'),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                'Used for buttons, active tabs, progress bars and links.',
-                style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
-              ),
-            ),
-            for (final p in SpotterfyTheme.palettes)
-              _AccentTile(
-                palette: p,
-                selected: controller.accent == p.name && !controller.oled,
-                // OLED is an orthogonal choice, so picking an accent keeps it.
-                onTap: () => controller.setAccent(p.name),
-              ),
-            const SizedBox(height: 12),
-            _SectionLabel('Display'),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+    return HideAppChrome(
+      child: AppGradientScaffold(
+        title: 'Theme',
+        body: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => ListView(
+            // Clears the nav bar drawn under this page by MainScreen.
+            padding: const EdgeInsets.only(bottom: 100),
+            children: [
+              _SectionLabel('Accent colour'),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  'Used for buttons, active tabs, progress bars and links.',
+                  style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
                 ),
-                decoration: BoxDecoration(
-                  color: SpotterfyTheme.surface,
-                  borderRadius: BorderRadius.circular(12),
+              ),
+              for (final p in SpotterfyTheme.palettes)
+                _AccentTile(
+                  palette: p,
+                  selected: controller.accent == p.name && !controller.oled,
+                  // OLED is an orthogonal choice, so picking an accent keeps it.
+                  onTap: () => controller.setAccent(p.name),
                 ),
-                child: Row(
-                  children: [
-                    Icon(Icons.contrast, color: SpotterfyTheme.muted, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'OLED black',
-                            style: TextStyle(
-                              color: SpotterfyTheme.text,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Pure black surfaces. Saves power and looks better '
-                            'on an OLED screen.',
-                            style: TextStyle(
-                              color: SpotterfyTheme.muted,
-                              fontSize: 12,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
+              const SizedBox(height: 12),
+              _SectionLabel('Display'),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: SpotterfyTheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.contrast,
+                        color: SpotterfyTheme.muted,
+                        size: 20,
                       ),
-                    ),
-                    Switch(
-                      value: controller.oled,
-                      activeThumbColor: SpotterfyTheme.primary,
-                      onChanged: (v) => controller.setOled(v),
-                    ),
-                  ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'OLED black',
+                              style: TextStyle(
+                                color: SpotterfyTheme.text,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Pure black surfaces. Saves power and looks better '
+                              'on an OLED screen.',
+                              style: TextStyle(
+                                color: SpotterfyTheme.muted,
+                                fontSize: 12,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: controller.oled,
+                        activeThumbColor: SpotterfyTheme.primary,
+                        onChanged: (v) => controller.setOled(v),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'Changes apply straight away and are remembered on this device.',
-                style: TextStyle(color: SpotterfyTheme.mutedDark, fontSize: 11),
+              const SizedBox(height: 20),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Changes apply straight away and are remembered on this device.',
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
+                    fontSize: 11,
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

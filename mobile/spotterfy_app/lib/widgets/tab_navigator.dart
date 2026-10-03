@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:spotterfy_app/widgets/app_bottom_nav.dart';
 
 /// A separate [Navigator] for each bottom-tab.
 ///
@@ -17,50 +16,37 @@ import 'package:spotterfy_app/widgets/app_bottom_nav.dart';
 ///
 /// The navigator is keyed per tab, which is what makes the stacks independent:
 /// the same key across tabs would share one stack.
+///
+/// The key itself is supplied by the [MainScreen] that owns this widget (one
+/// per tab, kept for the lifetime of that screen). It must NOT be a static
+/// per-tab key: a static key outlives the screen, so a screen that the auth
+/// gate swaps out and back in within one frame would leave the old tab's
+/// [Navigator] elements deactivated while still holding the key, and the new
+/// screen's tabs would claim the same keys - which crashes the frame with
+/// "Duplicate GlobalKeys detected in widget tree". Instance keys die with the
+/// screen, so a replacement screen always mints fresh keys.
 class TabNavigator extends StatelessWidget {
   final int tabIndex;
 
   /// The tab's own root page.
   final Widget root;
 
-  const TabNavigator({super.key, required this.tabIndex, required this.root});
+  /// The tab's navigator key, owned by the hosting [MainScreen].
+  final GlobalKey<NavigatorState> navKey;
+
+  const TabNavigator({
+    super.key,
+    required this.tabIndex,
+    required this.root,
+    required this.navKey,
+  });
 
   @override
-  @override
   Widget build(BuildContext context) {
-    // A GlobalKey per tab (memoised on tabIndex) rather than a ValueKey, so the
-    // controller can pop this specific stack when the nav destination is tapped.
-    // The navigator under the navbar is not this one while a sub-page is pushed,
-    // so MainScreen cannot reach it by lookup from a non-ancestor context.
-    final navKey = _keys.putIfAbsent(
-      tabIndex,
-      () => GlobalKey<NavigatorState>(),
-    );
     return Navigator(
       key: navKey,
       onGenerateRoute: (settings) =>
           MaterialPageRoute<dynamic>(settings: settings, builder: (_) => root),
     );
-  }
-
-  /// One key per tab index, kept for the lifetime of the app so the stacks stay
-  /// addressable from the nav bar.
-  static final Map<int, GlobalKey<NavigatorState>> _keys = {};
-
-  /// The live state of [tabIndex]'s own stack, or null before that tab's layer
-  /// has been built once.
-  static NavigatorState? navigatorFor(int tabIndex) =>
-      _keys[tabIndex]?.currentState;
-
-  /// Whether [tabIndex] currently has a sub-page pushed on top of its root.
-  static bool canPopTab(int tabIndex) =>
-      _keys[tabIndex]?.currentState?.canPop() ?? false;
-
-  /// Publishes each tab's navigator to the nav bar. Called from MainScreen
-  /// after the tab layer is built.
-  static void registerAll() {
-    for (final entry in _keys.entries) {
-      tabNavController.registerNavigator(entry.key, entry.value.currentState);
-    }
   }
 }

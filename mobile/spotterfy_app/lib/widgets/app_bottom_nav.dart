@@ -40,12 +40,23 @@ class TabNavController extends ChangeNotifier {
   final Map<int, NavigatorState> _navigators = {};
 
   void registerNavigator(int index, NavigatorState? state) {
-    if (state == null) {
+    // A screen that was swapped out (auth gate) can still have a
+    // pending registration callback; its navigator is defunct by then,
+    // so drop it rather than handing callers a dead stack.
+    if (state == null || !state.mounted) {
       _navigators.remove(index);
       return;
     }
     _navigators[index] = state;
   }
+
+  /// The live navigator of tab [index]'s own stack, or null before that
+  /// tab's layer has been built (or after its screen was disposed).
+  NavigatorState? navigatorOf(int index) => _navigators[index];
+
+  /// Whether tab [index] currently has a sub-page pushed on top of its
+  /// root.
+  bool canPopTab(int index) => _navigators[index]?.canPop() ?? false;
 
   /// Tapping the nav destination for the tab you are already on pops that tab
   /// back to its root, the same way tapping a folder in a file manager does.

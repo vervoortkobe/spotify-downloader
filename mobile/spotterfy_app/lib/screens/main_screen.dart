@@ -11,6 +11,7 @@ import 'search_screen.dart';
 import 'library_screen.dart';
 import 'yt_search_screen.dart';
 import 'jam_screen.dart';
+import 'package:spotterfy_app/widgets/app_chrome.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -69,6 +70,18 @@ class _MainScreenState extends State<MainScreen>
     JamScreen(), // Chat
   ];
 
+  /// One navigator key per tab, owned by *this* screen.
+  ///
+  /// Deliberately not a static per-tab key: a static key outlives the
+  /// screen, so when the auth gate swaps this screen out and a new one
+  /// in within a single frame, the old tabs' [Navigator] elements are
+  /// deactivated while still holding the keys and the new screen's tabs
+  /// claim the same ones - "Duplicate GlobalKeys detected in widget
+  /// tree". Instance keys die with the screen, so each screen mints its
+  /// own and no two live elements ever share a key.
+  late final List<GlobalKey<NavigatorState>> _tabKeys =
+      List.generate(_tabs.length, (_) => GlobalKey<NavigatorState>());
+
   /// Nav destination tapped while that tab is already showing.
   ///
   /// Pops the tab's own stack to its root. The tab keeps its identity, so
@@ -90,14 +103,18 @@ class _MainScreenState extends State<MainScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Publish the active tab so pushed screens (e.g. a playlist) can render the
-    // same nav bar with the correct selection.
-    tabNavController.currentIndex = _currentIndex;
-    // Publish each tab's navigator so the nav bar can pop a tab back to its
-    // root. Re-registered every build because a tab's state is only attached
-    // once its layer has been built.
+    // Publish the active tab and each tab's navigator so pushed screens
+    // and the nav bar can reach them. Deferred to a post-frame callback:
+    // the current-index setter notifies listeners, and notifying during
+    // build is what throws "setState() or markNeedsBuild() called
+    // during build". Re-registered every frame because a tab's state is
+    // only attached once its layer has been built.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) TabNavigator.registerAll();
+      if (!mounted) return;
+      tabNavController.currentIndex = _currentIndex;
+      for (var i = 0; i < _tabKeys.length; i++) {
+        tabNavController.registerNavigator(i, _tabKeys[i].currentState);
+      }
     });
     // A pushed screen asked to switch tabs (e.g. tapped a nav destination).
     if (tabNavController.hasPendingRequest) {
@@ -177,8 +194,8 @@ class _MainScreenState extends State<MainScreen>
   ///    make a sub-page feel like a dead end, and losing a download or a
   ///    half-finished import to a stray back press is worse than a no-op.
   void _handleSystemBack() {
-    if (TabNavigator.canPopTab(_currentIndex)) {
-      TabNavigator.navigatorFor(_currentIndex)?.pop();
+    if (tabNavController.canPopTab(_currentIndex)) {
+      tabNavController.navigatorOf(_currentIndex)?.pop();
       return;
     }
     if (_currentIndex != _homeTab) {
@@ -189,7 +206,11 @@ class _MainScreenState extends State<MainScreen>
   /// Draws one tab, animating it in when it is the target of the current switch
   /// and out when it is the tab being left behind.
   Widget _tabLayer(int i) {
-    final tab = TabNavigator(tabIndex: i, root: _tabs[i]);
+    final tab = TabNavigator(
+      tabIndex: i,
+      navKey: _tabKeys[i],
+      root: _tabs[i],
+    );
     final entering = i == _currentIndex;
     final leaving = i == _leavingIndex;
 
@@ -233,8 +254,18 @@ class _MainMiniPlayerWrapper extends StatelessWidget {
   const _MainMiniPlayerWrapper();
   @override
   Widget build(BuildContext context) {
-    final player = context.watch<PlayerProvider>();
-    if (player.currentTrack == null) return const SizedBox.shrink();
-    return const SafeArea(top: false, child: MiniPlayer());
+    // Rebuild on chrome changes too: a settings page registers itself on mount
+    // and unregisters on dispose, and this has to react to both.
+    return ValueListenableBuilder<int>(
+      valueListenable: AppChrome.instance.revision,
+      builder: (context, _, _) {
+        if (!AppChrome.instance.miniPlayerVisible) {
+          return const SizedBox.shrink();
+        }
+        final player = context.watch<PlayerProvider>();
+        if (player.currentTrack == null) return const SizedBox.shrink();
+        return const SafeArea(top: false, child: MiniPlayer());
+      },
+    );
   }
 }

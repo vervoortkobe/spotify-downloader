@@ -100,11 +100,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         displayName: _nameController.text.trim(),
         spotifyUrl: url,
       );
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-      );
+      // No navigation: the splash screen is the auth gate and swaps this for
+      // MainScreen once needsOnboarding clears. Pushing MainScreen instead would
+      // replace the gate and break sign-out.
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -117,12 +115,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _skip() async {
     final auth = context.read<AuthProvider>();
-    await auth.skipOnboarding();
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const MainScreen()),
-    );
+await auth.skipOnboarding();
+      // No navigation - see _finish above.
   }
 
   @override

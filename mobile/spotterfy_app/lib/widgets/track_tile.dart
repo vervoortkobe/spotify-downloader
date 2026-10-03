@@ -251,32 +251,14 @@ class TrackTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            subtitle: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    track.artists,
-                    style: TextStyle(
-                      color: SpotterfyTheme.mutedDark,
-                      fontSize: 12,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                // Round check marking the track as available offline.
-                if (isDownloaded) ...[
-                  const SizedBox(width: 6),
-                  Tooltip(
-                    message: 'Downloaded',
-                    child: Icon(
-                      Icons.check_circle,
-                      color: SpotterfyTheme.primary,
-                      size: 14,
-                    ),
-                  ),
-                ],
-              ],
+            subtitle: Text(
+              track.artists,
+              style: TextStyle(
+                color: SpotterfyTheme.mutedDark,
+                fontSize: 12,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,

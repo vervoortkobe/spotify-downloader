@@ -1043,195 +1043,177 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   ],
                 ],
               ),
-        body: Column(
-          children: [
-            if (_playlist.tracks.isNotEmpty)
-              _PlaylistHeader(
-                playlist: _playlist,
-                onPlay: _playAll,
-                onShuffle: _shuffleAll,
-                isMine:
-                    _playlist.isUsersOwn ||
-                    (_playlist.creatorUid.isNotEmpty &&
-                        _playlist.creatorUid == _myUid),
-              ),
-            if (_playlist.tracks.isNotEmpty) _viewControls(),
-            Expanded(
-              child: RefreshIndicator(
+        body: _playlist.tracks.isEmpty
+            ? RefreshIndicator(
                 onRefresh: () => _forceSyncTracks(showFeedback: true),
                 color: SpotterfyTheme.primary,
                 backgroundColor: SpotterfyTheme.surface,
-                child: _playlist.tracks.isEmpty
-                    ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: [
-                          SizedBox(
-                            height: MediaQuery.of(context).size.height * 0.7,
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.music_note_outlined,
-                                    color: SpotterfyTheme.mutedDark,
-                                    size: 64,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No tracks found',
-                                    style: TextStyle(
-                                      color: SpotterfyTheme.text,
-                                      fontSize: 18,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  if (_playlist.isCustom)
-                                    ElevatedButton(
-                                      onPressed: () => _addTrack(context),
-                                      child: const Text(
-                                        'Add tracks from your library',
-                                      ),
-                                    )
-                                  else
-                                    TextButton.icon(
-                                      onPressed: () =>
-                                          _forceSyncTracks(showFeedback: true),
-                                      icon: Icon(
-                                        Icons.refresh,
-                                        color: SpotterfyTheme.primary,
-                                      ),
-                                      label: Text(
-                                        'Fetch Tracks',
-                                        style: TextStyle(
-                                          color: SpotterfyTheme.primary,
-                                        ),
-                                      ),
-                                    ),
-                                ],
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.7,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.music_note_outlined,
+                              color: SpotterfyTheme.mutedDark,
+                              size: 64,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No tracks found',
+                              style: TextStyle(
+                                color: SpotterfyTheme.text,
+                                fontSize: 18,
                               ),
                             ),
-                          ),
-                        ],
-                      )
-                    : RawScrollbar(
-                        controller: _scrollController,
-                        thumbVisibility: true,
-                        trackVisibility: false,
-                        thickness: 4,
-                        radius: const Radius.circular(8),
-                        thumbColor: SpotterfyTheme.primary.withValues(
-                          alpha: 0.5,
+                            const SizedBox(height: 8),
+                            if (_playlist.isCustom)
+                              ElevatedButton(
+                                onPressed: () => _addTrack(context),
+                                child: const Text(
+                                  'Add tracks from your library',
+                                ),
+                              )
+                            else
+                              TextButton.icon(
+                                onPressed: () =>
+                                    _forceSyncTracks(showFeedback: true),
+                                icon: Icon(
+                                  Icons.refresh,
+                                  color: SpotterfyTheme.primary,
+                                ),
+                                label: Text(
+                                  'Fetch Tracks',
+                                  style: TextStyle(
+                                    color: SpotterfyTheme.primary,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                        child: _visibleTracks.isEmpty
-                            ? ListView(
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                children: [
-                                  SizedBox(
-                                    height: 320,
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.search_off_rounded,
-                                            color: SpotterfyTheme.mutedDark,
-                                            size: 44,
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            'No matching songs',
-                                            style: TextStyle(
-                                              color: SpotterfyTheme.text,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            'Nothing in this playlist matches '
-                                            '"${_query.trim()}"',
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              color: SpotterfyTheme.mutedDark,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 14),
-                                          TextButton(
-                                            onPressed: _resetView,
-                                            child: Text(
-                                              'Clear search and sort',
-                                              style: TextStyle(
-                                                color: SpotterfyTheme.primary,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : RefreshIndicator(
+                onRefresh: () => _forceSyncTracks(showFeedback: true),
+                color: SpotterfyTheme.primary,
+                backgroundColor: SpotterfyTheme.surface,
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _PlaylistHeader(
+                        playlist: _playlist,
+                        onPlay: _playAll,
+                        onShuffle: _shuffleAll,
+                        isMine:
+                            _playlist.isUsersOwn ||
+                            (_playlist.creatorUid.isNotEmpty &&
+                                _playlist.creatorUid == _myUid),
+                      ),
+                    ),
+                    SliverToBoxAdapter(child: _viewControls()),
+                    if (_visibleTracks.isEmpty)
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 320,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.search_off_rounded,
+                                  color: SpotterfyTheme.mutedDark,
+                                  size: 44,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'No matching songs',
+                                  style: TextStyle(
+                                    color: SpotterfyTheme.text,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Nothing in this playlist matches '
+                                  '"${_query.trim()}"',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: SpotterfyTheme.mutedDark,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                TextButton(
+                                  onPressed: _resetView,
+                                  child: Text(
+                                    'Clear search and sort',
+                                    style: TextStyle(
+                                      color: SpotterfyTheme.primary,
                                     ),
                                   ),
-                                ],
-                              )
-                            : ListView.builder(
-                                controller: _scrollController,
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                // Clears the shared mini player that MainScreen
-                                // overlays at the bottom of this tab's stack. There is
-                                // no Scaffold bottomNavigationBar inset here, so the
-                                // room has to be added to the list itself.
-                                padding: const EdgeInsets.only(bottom: 92),
-                                itemCount: _visibleTracks.length,
-                                itemBuilder: (_, i) {
-                                  final track = _visibleTracks[i];
-                                  final player = context
-                                      .watch<PlayerProvider>();
-                                  final downloads = context
-                                      .watch<DownloadProvider>();
-                                  final isPlaying =
-                                      player.currentTrack?.id == track.id &&
-                                      player.isPlaying;
-                                  return TrackTile(
-                                    track: track,
-                                    isSelected:
-                                        player.currentTrack?.id == track.id,
-                                    isPlaying: isPlaying,
-                                    // Long press opens multi-select; in selection mode
-                                    // a tap toggles instead of playing.
-                                    onLongPress: () => _toggleSelection(track),
-                                    selectionMode: _selecting,
-                                    selected: _selectedIds.contains(track.id),
-                                    isDownloaded: downloads.isDownloaded(
-                                      track.id,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (_, i) {
+                            final track = _visibleTracks[i];
+                            final player = context.watch<PlayerProvider>();
+                            final downloads = context.watch<DownloadProvider>();
+                            final isPlaying =
+                                player.currentTrack?.id == track.id &&
+                                player.isPlaying;
+                            return TrackTile(
+                              track: track,
+                              isSelected: player.currentTrack?.id == track.id,
+                              isPlaying: isPlaying,
+                              // Long press opens multi-select; in selection mode
+                              // a tap toggles instead of playing.
+                              onLongPress: () => _toggleSelection(track),
+                              selectionMode: _selecting,
+                              selected: _selectedIds.contains(track.id),
+                              isDownloaded: downloads.isDownloaded(track.id),
+                              isDownloading:
+                                  downloads.states[track.id] ==
+                                  DownloadState.downloading,
+                              onDownload: () => _toggleDownload(context, track),
+                              onPlay: _selecting
+                                  ? () => _toggleSelection(track)
+                                  // The row index is into the *visible* list, so
+                                  // the real position in playlist order is
+                                  // resolved from the track itself. Otherwise
+                                  // tapping row 2 of a sorted list would start
+                                  // playback from whichever song happens to sit
+                                  // second in the original order.
+                                  : () => _playTrack(
+                                      context,
+                                      track,
+                                      _playbackOrder.indexWhere(
+                                        (t) => t.id == track.id,
+                                      ),
                                     ),
-                                    isDownloading:
-                                        downloads.states[track.id] ==
-                                        DownloadState.downloading,
-                                    onDownload: () =>
-                                        _toggleDownload(context, track),
-                                    onPlay: _selecting
-                                        ? () => _toggleSelection(track)
-                                        // The row index is into the *visible* list, so
-                                        // the real position in playlist order is
-                                        // resolved from the track itself. Otherwise
-                                        // tapping row 2 of a sorted list would start
-                                        // playback from whichever song happens to sit
-                                        // second in the original order.
-                                        : () => _playTrack(
-                                            context,
-                                            track,
-                                            _playbackOrder.indexWhere(
-                                              (t) => t.id == track.id,
-                                            ),
-                                          ),
-                                  );
-                                },
-                              ),
+                            );
+                          },
+                          childCount: _visibleTracks.length,
+                        ),
                       ),
+                    SliverToBoxAdapter(child: SizedBox(height: 92)),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

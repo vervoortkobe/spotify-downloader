@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
+import 'package:spotterfy_app/widgets/app_chrome.dart';
 
 /// The account details that used to be three loose rows on the Settings page.
 ///
@@ -20,80 +21,82 @@ class ProfileSettingsScreen extends StatelessWidget {
     final spotifyUrl = user?.spotifyProfileUrl ?? '';
     final photoUrl = user?.photoUrl ?? '';
 
-    return AppGradientScaffold(
-      title: 'Profile',
-      body: SingleChildScrollView(
-        // Clears the mini player drawn over this page by MainScreen.
-        padding: const EdgeInsets.only(bottom: 140),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: _avatar(photoUrl, name)),
-              const SizedBox(height: 12),
-              Center(
-                child: Text(
-                  name.isEmpty ? 'No name set' : name,
-                  style: TextStyle(
-                    color: SpotterfyTheme.text,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              if (user?.email.isNotEmpty ?? false)
+    return HideAppChrome(
+      child: AppGradientScaffold(
+        title: 'Profile',
+        body: SingleChildScrollView(
+          // Clears the mini player drawn over this page by MainScreen.
+          padding: const EdgeInsets.only(bottom: 140),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: _avatar(photoUrl, name)),
+                const SizedBox(height: 12),
                 Center(
                   child: Text(
-                    user!.email,
-                    style: TextStyle(color: SpotterfyTheme.muted),
+                    name.isEmpty ? 'No name set' : name,
+                    style: TextStyle(
+                      color: SpotterfyTheme.text,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              const SizedBox(height: 28),
-              _label('Details'),
-              _row(
-                icon: Icons.badge_outlined,
-                title: 'Name',
-                subtitle: name.isEmpty ? 'Not set' : name,
-                onTap: () => _editName(context, auth, name),
-              ),
-              const SizedBox(height: 12),
-              _row(
-                icon: Icons.link,
-                title: 'Spotify URL',
-                subtitle: spotifyUrl.isEmpty ? 'Not linked' : spotifyUrl,
-                onTap: () => _editSpotifyUrl(context, auth, spotifyUrl),
-              ),
-              const SizedBox(height: 28),
-              _label('Account'),
-              _row(
-                icon: Icons.alternate_email,
-                title: 'Email',
-                subtitle: (user?.email.isNotEmpty ?? false)
-                    ? user!.email
-                    : 'Not available',
-                // Sign-in identity, not something the user can type here.
-                onTap: null,
-              ),
-              const SizedBox(height: 12),
-              if (user?.createdAt != null) ...[
+                if (user?.email.isNotEmpty ?? false)
+                  Center(
+                    child: Text(
+                      user!.email,
+                      style: TextStyle(color: SpotterfyTheme.muted),
+                    ),
+                  ),
+                const SizedBox(height: 28),
+                _label('Details'),
                 _row(
-                  icon: Icons.cake_outlined,
-                  title: 'Joined',
-                  subtitle: _date(user!.createdAt),
+                  icon: Icons.badge_outlined,
+                  title: 'Name',
+                  subtitle: name.isEmpty ? 'Not set' : name,
+                  onTap: () => _editName(context, auth, name),
+                ),
+                const SizedBox(height: 12),
+                _row(
+                  icon: Icons.link,
+                  title: 'Spotify URL',
+                  subtitle: spotifyUrl.isEmpty ? 'Not linked' : spotifyUrl,
+                  onTap: () => _editSpotifyUrl(context, auth, spotifyUrl),
+                ),
+                const SizedBox(height: 28),
+                _label('Account'),
+                _row(
+                  icon: Icons.alternate_email,
+                  title: 'Email',
+                  subtitle: (user?.email.isNotEmpty ?? false)
+                      ? user!.email
+                      : 'Not available',
+                  // Sign-in identity, not something the user can type here.
                   onTap: null,
                 ),
                 const SizedBox(height: 12),
+                if (user?.createdAt != null) ...[
+                  _row(
+                    icon: Icons.cake_outlined,
+                    title: 'Joined',
+                    subtitle: _date(user!.createdAt),
+                    onTap: null,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (auth.isAdmin)
+                  _row(
+                    icon: Icons.shield_outlined,
+                    title: 'Role',
+                    subtitle: 'Administrator',
+                    onTap: null,
+                  ),
+                const SizedBox(height: 8),
               ],
-              if (auth.isAdmin)
-                _row(
-                  icon: Icons.shield_outlined,
-                  title: 'Role',
-                  subtitle: 'Administrator',
-                  onTap: null,
-                ),
-              const SizedBox(height: 8),
-            ],
+            ),
           ),
         ),
       ),

@@ -17,71 +17,130 @@ class JamProvider extends ChangeNotifier {
   JamSessionModel? get currentSession => _currentSession;
   List<JamSessionModel> get activeSessions => _activeSessions;
 
+  /// True while this user is in a jam. Enforces "one jam at a time": creating or
+  /// joining a second session is refused while this is true.
+  bool get inJam => _currentSession != null;
+
+  /// Only the creator may end a jam; everyone else leaves instead.
+  bool canEnd(String? uid) =>
+      _currentSession != null &&
+      uid != null &&
+      _currentSession!.createdBy == uid;
+
+  /// The shared queue, deserialized from the session document.
+  ///
+  /// Stored as full track JSON so the queue can be played without a second fetch.
+  List<TrackModel> get currentQueue => _currentSession?.tracks ?? const [];
+
   JamProvider() {
-    _activeSub = _jamService.getActiveSessions().listen((snap) {
-      _activeSessions = snap.docs
-          .map(
-            (d) => JamSessionModel(
-              id: d.id,
-              name: d['name'] as String? ?? '',
-              createdBy: d['createdBy'] as String? ?? '',
-              tracks: [],
-              participants:
-                  (d['participants'] as List<dynamic>?)
-                      ?.map((e) => e as String)
-                      .toList() ??
-                  [],
-            ),
-          )
-          .toList();
-      notifyListeners();
-    });
+    _activeSub = _jamService.getActiveSessions().listen(
+      (snap) {
+        _activeSessions = snap.docs
+            .map(
+              (d) => JamSessionModel(
+                id: d.id,
+                name: d['name'] as String? ?? '',
+                createdBy: d['createdBy'] as String? ?? '',
+                tracks: [],
+                participants:
+                    (d['participants'] as List<dynamic>?)
+                        ?.map((e) => e as String)
+                        .toList() ??
+                    [],
+              ),
+            )
+            .toList();
+        notifyListeners();
+      },
+      // See SocialProvider._onListenError: a listener without an error handler
+      // turns every PERMISSION_DENIED (which is what a revoked token produces)
+      // into an unhandled async exception.
+      onError: _onListenError,
+    );
   }
 
+  void _onListenError(Object error, StackTrace stack) {
+    debugPrint('[Jam] listener stopped: $error');
+  }
+
+  /// Creates a session and subscribes to it.
+  ///
+  /// [invite] are uids to add as participants up front. Refuses if already in a
+  /// jam - one at a time, so a second create would silently orphan the first.
   Future<String> createSession(
     String uid,
     String name,
-    List<TrackModel> tracks,
-  ) async {
-    final id = await _jamService.createJamSession(uid, name, tracks);
-    _sessionSub = _jamService.listenToJamSession(id).listen((snap) {
+    List<TrackModel> tracks, {
+    List<String> invite = const [],
+  }) async {
+    if (_currentSession != null) throw StateError('already in a jam');
+    final id = await _jamService.createJamSession(
+      uid,
+      name,
+      tracks,
+      invite: invite,
+    );
+    _subscribe(id);
+    return id;
+  }
+
+  Future<void> joinSession(String uid, String sessionId) async {
+    if (_currentSession != null) throw StateError('already in a jam');
+    await _jamService.joinJamSession(uid, sessionId);
+    _subscribe(sessionId);
+  }
+
+  /// Subscribes to [sessionId] and parses the full document, including the
+  /// shared queue.
+  void _subscribe(String sessionId) {
+    _sessionSub?.cancel();
+    _sessionSub = _jamService.listenToJamSession(sessionId).listen((snap) {
+      if (!snap.exists) {
+        _currentSession = null;
+        notifyListeners();
+        return;
+      }
+      final data = snap.data() ?? const {};
+      final raw = (data['tracks'] as List<dynamic>? ?? const []);
       _currentSession = JamSessionModel(
         id: snap.id,
-        name: snap['name'] as String? ?? '',
-        createdBy: snap['createdBy'] as String? ?? '',
-        tracks: [],
-        currentTrackId: snap['currentTrackIndex']?.toString(),
-        currentPositionMs: snap['currentPositionMs'] as int? ?? 0,
-        isPlaying: snap['isPlaying'] as bool? ?? false,
+        name: data['name'] as String? ?? '',
+        createdBy: data['createdBy'] as String? ?? '',
+        tracks: raw
+            .map(
+              (t) => TrackModel.fromJson(Map<String, dynamic>.from(t as Map)),
+            )
+            .toList(),
+        currentTrackIndex: (data['currentTrackIndex'] as num?)?.toInt() ?? 0,
+        currentPositionMs: (data['currentPositionMs'] as num?)?.toInt() ?? 0,
+        isPlaying: data['isPlaying'] as bool? ?? false,
         participants:
-            (snap['participants'] as List<dynamic>?)
+            (data['participants'] as List<dynamic>?)
                 ?.map((e) => e as String)
                 .toList() ??
             [],
       );
       notifyListeners();
-    });
-    return id;
+    }, onError: _onListenError);
   }
 
-  Future<void> joinSession(String uid, String sessionId) async {
-    await _jamService.joinJamSession(uid, sessionId);
-    _sessionSub = _jamService.listenToJamSession(sessionId).listen((snap) {
-      _currentSession = JamSessionModel(
-        id: snap.id,
-        name: snap['name'] as String? ?? '',
-        createdBy: snap['createdBy'] as String? ?? '',
-        tracks: [],
-        participants: [],
-      );
-      notifyListeners();
-    });
+  /// Ends the jam. Creator only - see [canEnd].
+  Future<void> endSession(String uid) async {
+    final session = _currentSession;
+    if (session == null) return;
+    if (session.createdBy != uid) {
+      throw StateError('only the creator can end a jam');
+    }
+    await _jamService.endJamSession(uid, session.id);
+    _sessionSub?.cancel();
+    _currentSession = null;
+    notifyListeners();
   }
 
   Future<void> leaveSession(String uid) async {
-    if (_currentSession != null) {
-      await _jamService.leaveJamSession(uid, _currentSession!.id);
-    }
+    final session = _currentSession;
+    if (session == null) return;
+    await _jamService.leaveJamSession(uid, session.id);
     _sessionSub?.cancel();
     _currentSession = null;
     notifyListeners();

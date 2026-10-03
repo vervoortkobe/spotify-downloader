@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
-import 'package:spotterfy_app/screens/login_screen.dart';
+import 'package:spotterfy_app/providers/social_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
 /// Shown instead of the app when the signed-in account has been suspended.
@@ -67,16 +67,13 @@ class SuspendedScreen extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: () async {
                       final auth = context.read<AuthProvider>();
+                      // Same reason as the profile page's sign-out: stop the
+                      // Firestore listeners before the token is revoked.
+                      context.read<SocialProvider>().syncUid(null);
                       await auth.signOut();
-                      if (!context.mounted) return;
-                      // Replace rather than push: there is nothing to go "back"
-                      // to, and leaving this on the stack would let a swipe-back
-                      // reveal the app again.
-                      await Navigator.of(context).pushReplacement(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const LoginScreen(),
-                        ),
-                      );
+                      // No navigation: the splash screen is the auth gate and
+                      // swaps this for LoginScreen in place. See the profile
+                      // page's sign-out for why navigating here crashes.
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: SpotterfyTheme.surface,

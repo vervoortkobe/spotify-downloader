@@ -58,19 +58,33 @@ class SocialProvider extends ChangeNotifier {
     _friendsSub = _service.friendsStream(uid).listen((v) {
       _friends = v;
       notifyListeners();
-    });
+    }, onError: _onListenError);
     _requestsSub = _service.friendRequestsStream(uid).listen((v) {
       _requests = v;
       notifyListeners();
-    });
+    }, onError: _onListenError);
     _notificationsSub = _service.notificationsStream(uid).listen((v) {
       _notifications = v;
       notifyListeners();
-    });
+    }, onError: _onListenError);
     _chatsSub = _service.chatsStream(uid).listen((v) {
       _chats = v;
       notifyListeners();
-    });
+    }, onError: _onListenError);
+  }
+
+  /// Swallows listener errors instead of letting them escape.
+  ///
+  /// A `Stream.listen` with no `onError` turns *any* stream error into an
+  /// unhandled async exception, which in debug prints an `Unhandled Exception`
+  /// and in release takes the isolate's error handler. Every one of these
+  /// queries is gated on `request.auth != null`, so the common trigger is
+  /// ordinary: the token is revoked by a sign-out while the listen is still
+  /// attached, and Firestore answers `PERMISSION_DENIED`. That is a normal
+  /// lifecycle event, not a fault worth crashing on - the data simply stops
+  /// updating until [syncUid] is called again with a live uid.
+  void _onListenError(Object error, StackTrace stack) {
+    debugPrint('[Social] listener stopped: $error');
   }
 
   void stop() {

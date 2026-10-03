@@ -10,6 +10,7 @@ import 'package:spotterfy_app/screens/storage_usage_screen.dart';
 import 'package:spotterfy_app/screens/theme_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
+import 'package:spotterfy_app/widgets/app_chrome.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -25,92 +26,98 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
-    return AppGradientScaffold(
-      title: 'Settings',
-      body: SingleChildScrollView(
-        // The version block sits at the end of the column, and the mini player is
-        // drawn by MainScreen *over* this scroll view rather than inside it. This
-        // inset is what stops "Check for updates" landing underneath the mini
-        // player and becoming untappable - it has to clear the mini player and
-        // the nav bar below it, not just the column.
-        padding: const EdgeInsets.only(bottom: 150),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Profile now leads to a sub-page that owns both fields, instead of
-              // Profile / Name / Spotify URL being three unrelated rows here.
-              _sectionLabel('Account'),
-              _settingsItem(
-                Icons.person,
-                'Profile',
-                subtitle: auth.user?.displayName ?? 'Not set',
-                onTap: () => Navigator.push(
-                  context,
-                  swipeRoute(const ProfileSettingsScreen()),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-              _sectionLabel('Appearance'),
-              _settingsItem(
-                Icons.brightness_6,
-                'Theme',
-                subtitle: 'Accent colour and OLED black',
-                onTap: () =>
-                    Navigator.push(context, swipeRoute(const ThemeScreen())),
-              ),
-
-              const SizedBox(height: 24),
-              _sectionLabel('Playback'),
-              _settingsItem(
-                Icons.graphic_eq,
-                'Equalizer',
-                onTap: () {
-                  Navigator.push(context, swipeRoute(EqualizerScreen()));
-                },
-              ),
-
-              const SizedBox(height: 24),
-              _sectionLabel('Network'),
-              _settingsItem(
-                Icons.data_usage,
-                'Data Usage',
-                onTap: () {
-                  Navigator.push(context, swipeRoute(DataUsageScreen()));
-                },
-              ),
-
-              const SizedBox(height: 24),
-              _sectionLabel('Storage'),
-              _settingsItem(
-                Icons.storage,
-                'Storage usage',
-                onTap: () {
-                  Navigator.push(
+    return HideAppChrome(
+      child: AppGradientScaffold(
+        title: 'Settings',
+        body: SingleChildScrollView(
+          // The version block sits at the end of the column, and the mini player is
+          // drawn by MainScreen *over* this scroll view rather than inside it. This
+          // inset is what stops "Check for updates" landing underneath the mini
+          // player and becoming untappable - it has to clear the mini player and
+          // the nav bar below it, not just the column.
+          padding: const EdgeInsets.only(bottom: 150),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Profile now leads to a sub-page that owns both fields, instead of
+                // Profile / Name / Spotify URL being three unrelated rows here.
+                _sectionLabel('Account'),
+                _settingsItem(
+                  Icons.person,
+                  'Profile',
+                  subtitle: auth.user?.displayName ?? 'Not set',
+                  onTap: () => Navigator.push(
                     context,
-                    swipeRoute(const StorageUsageScreen()),
-                  );
-                },
-              ),
+                    swipeRoute(const ProfileSettingsScreen()),
+                  ),
+                ),
 
-              const SizedBox(height: 24),
-              _sectionLabel('About'),
-              _settingsItem(
-                Icons.info_outline,
-                'About Spotterfy',
-                onTap: () {},
-              ),
-              _settingsItem(Icons.privacy_tip, 'Privacy Policy', onTap: () {}),
-              _settingsItem(Icons.feedback, 'Send Feedback', onTap: () {}),
-              const SizedBox(height: 20),
+                const SizedBox(height: 24),
+                _sectionLabel('Appearance'),
+                _settingsItem(
+                  Icons.brightness_6,
+                  'Theme',
+                  subtitle: 'Accent colour and OLED black',
+                  onTap: () =>
+                      Navigator.push(context, swipeRoute(const ThemeScreen())),
+                ),
 
-              // Kept last, but with the scroll inset above it so it clears the
-              // mini player instead of hiding behind it.
-              _versionRow(context),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 24),
+                _sectionLabel('Playback'),
+                _settingsItem(
+                  Icons.graphic_eq,
+                  'Equalizer',
+                  onTap: () {
+                    Navigator.push(context, swipeRoute(EqualizerScreen()));
+                  },
+                ),
+
+                const SizedBox(height: 24),
+                _sectionLabel('Network'),
+                _settingsItem(
+                  Icons.data_usage,
+                  'Data Usage',
+                  onTap: () {
+                    Navigator.push(context, swipeRoute(DataUsageScreen()));
+                  },
+                ),
+
+                const SizedBox(height: 24),
+                _sectionLabel('Storage'),
+                _settingsItem(
+                  Icons.storage,
+                  'Storage usage',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      swipeRoute(const StorageUsageScreen()),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 24),
+                _sectionLabel('About'),
+                _settingsItem(
+                  Icons.info_outline,
+                  'About Spotterfy',
+                  onTap: () {},
+                ),
+                _settingsItem(
+                  Icons.privacy_tip,
+                  'Privacy Policy',
+                  onTap: () {},
+                ),
+                _settingsItem(Icons.feedback, 'Send Feedback', onTap: () {}),
+                const SizedBox(height: 20),
+
+                // Kept last, but with the scroll inset above it so it clears the
+                // mini player instead of hiding behind it.
+                _versionRow(context),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),

@@ -9,8 +9,9 @@ class JamService {
   Future<String> createJamSession(
     String uid,
     String name,
-    List<TrackModel> tracks,
-  ) async {
+    List<TrackModel> tracks, {
+    List<String> invite = const [],
+  }) async {
     final docRef = await _firestore.collection('jam_sessions').add({
       'name': name,
       'createdBy': uid,
@@ -18,9 +19,18 @@ class JamService {
       'currentTrackIndex': 0,
       'currentPositionMs': 0,
       'isPlaying': false,
+      'ended': false,
       'participants': [uid],
       'createdAt': FieldValue.serverTimestamp(),
     });
+    // Invite everyone up front rather than making them find the session in the
+    // live list: a jam you were invited to should already list you as a
+    // participant, so it shows up as "your jam" the moment it is created.
+    if (invite.isNotEmpty) {
+      await _firestore.collection('jam_sessions').doc(docRef.id).update({
+        'participants': FieldValue.arrayUnion(invite),
+      });
+    }
     return docRef.id;
   }
 
@@ -33,6 +43,22 @@ class JamService {
   Future<void> leaveJamSession(String uid, String sessionId) async {
     await _firestore.collection('jam_sessions').doc(sessionId).update({
       'participants': FieldValue.arrayRemove([uid]),
+    });
+  }
+
+  /// Ends a session outright. Only the creator may call this.
+  ///
+  /// The document is marked rather than deleted: `firestore.rules` sets
+  /// `allow delete: false` on `jam_sessions`, so a client-side delete is
+  /// rejected. Marking `ended` + `isPlaying: false` achieves the same visible
+  /// result - the session drops out of the live list and every participant's
+  /// listener sees it close.
+  Future<void> endJamSession(String uid, String sessionId) async {
+    await _firestore.collection('jam_sessions').doc(sessionId).update({
+      'ended': true,
+      'endedBy': uid,
+      'endedAt': FieldValue.serverTimestamp(),
+      'isPlaying': false,
     });
   }
 
@@ -49,7 +75,9 @@ class JamService {
     await _firestore.collection('jam_sessions').doc(sessionId).update(data);
   }
 
-  Stream<DocumentSnapshot> listenToJamSession(String sessionId) {
+  Stream<DocumentSnapshot<Map<String, dynamic>>> listenToJamSession(
+    String sessionId,
+  ) {
     return _firestore.collection('jam_sessions').doc(sessionId).snapshots();
   }
 

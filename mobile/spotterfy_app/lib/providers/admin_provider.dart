@@ -7,7 +7,6 @@ enum AdminFilter {
   all('All'),
   banned('Banned'),
   admins('Admins'),
-  pending('Pending'),
   active('Active now');
 
   const AdminFilter(this.label);
@@ -30,7 +29,6 @@ class AdminStats {
   final int total;
   final int admins;
   final int banned;
-  final int pending;
   final int activeNow;
   final int newThisWeek;
   final int spotifyLinked;
@@ -40,7 +38,6 @@ class AdminStats {
     this.total = 0,
     this.admins = 0,
     this.banned = 0,
-    this.pending = 0,
     this.activeNow = 0,
     this.newThisWeek = 0,
     this.spotifyLinked = 0,
@@ -89,7 +86,6 @@ class AdminProvider extends ChangeNotifier {
       total: _users.length,
       admins: _users.where((u) => u.isAdmin).length,
       banned: _users.where((u) => u.isBanned).length,
-      pending: _users.where((u) => !u.isApproved).length,
       activeNow: _users.where((u) => u.isActiveNow).length,
       newThisWeek: _users.where((u) => u.createdAt.isAfter(weekAgo)).length,
       spotifyLinked: _users
@@ -110,8 +106,6 @@ class AdminProvider extends ChangeNotifier {
           return u.isBanned;
         case AdminFilter.admins:
           return u.isAdmin;
-        case AdminFilter.pending:
-          return !u.isApproved;
         case AdminFilter.active:
           return u.isActiveNow;
       }
@@ -158,8 +152,6 @@ class AdminProvider extends ChangeNotifier {
         return _users.where((u) => u.isBanned).length;
       case AdminFilter.admins:
         return _users.where((u) => u.isAdmin).length;
-      case AdminFilter.pending:
-        return _users.where((u) => !u.isApproved).length;
       case AdminFilter.active:
         return _users.where((u) => u.isActiveNow).length;
     }

@@ -6,6 +6,7 @@ import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/app_chrome.dart';
 
 /// Admin tools: user stats, search across every account, and moderation.
 ///
@@ -40,47 +41,49 @@ class _AdminScreenState extends State<AdminScreen> {
     final admin = context.watch<AdminProvider>();
     final myUid = context.select<AuthProvider, String?>((a) => a.user?.uid);
 
-    return Scaffold(
-      backgroundColor: SpotterfyTheme.pageBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text(
-          'Admin',
-          style: TextStyle(
-            color: SpotterfyTheme.text,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Reload',
-            icon: Icon(Icons.refresh, color: SpotterfyTheme.text),
-            onPressed: admin.isLoading ? null : () => admin.refresh(),
-          ),
-        ],
-      ),
-      body: admin.isLoading && admin.users.isEmpty
-          ? Center(
-              child: CircularProgressIndicator(color: SpotterfyTheme.primary),
-            )
-          : RefreshIndicator(
-              color: SpotterfyTheme.primary,
-              backgroundColor: SpotterfyTheme.surface,
-              onRefresh: () => admin.refresh(),
-              child: CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(child: _statsGrid(admin.stats)),
-                  SliverToBoxAdapter(child: _searchRow(admin)),
-                  SliverToBoxAdapter(child: _filterChips(admin)),
-                  if (admin.error != null)
-                    SliverToBoxAdapter(child: _errorBanner(admin.error!)),
-                  SliverToBoxAdapter(child: _listHeader(admin)),
-                  ..._userSlivers(admin, myUid),
-                  const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                ],
-              ),
+    return HideAppChrome(
+      child: Scaffold(
+        backgroundColor: SpotterfyTheme.pageBackground,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: Text(
+            'Admin',
+            style: TextStyle(
+              color: SpotterfyTheme.text,
+              fontWeight: FontWeight.w800,
             ),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Reload',
+              icon: Icon(Icons.refresh, color: SpotterfyTheme.text),
+              onPressed: admin.isLoading ? null : () => admin.refresh(),
+            ),
+          ],
+        ),
+        body: admin.isLoading && admin.users.isEmpty
+            ? Center(
+                child: CircularProgressIndicator(color: SpotterfyTheme.primary),
+              )
+            : RefreshIndicator(
+                color: SpotterfyTheme.primary,
+                backgroundColor: SpotterfyTheme.surface,
+                onRefresh: () => admin.refresh(),
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(child: _statsGrid(admin.stats)),
+                    SliverToBoxAdapter(child: _searchRow(admin)),
+                    SliverToBoxAdapter(child: _filterChips(admin)),
+                    if (admin.error != null)
+                      SliverToBoxAdapter(child: _errorBanner(admin.error!)),
+                    SliverToBoxAdapter(child: _listHeader(admin)),
+                    ..._userSlivers(admin, myUid),
+                    const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                  ],
+                ),
+              ),
+      ),
     );
   }
 
@@ -103,12 +106,6 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       ('Admins', '${s.admins}', Icons.shield, const Color(0xFFc084fc)),
       ('Suspended', '${s.banned}', Icons.gpp_maybe, const Color(0xFFef4444)),
-      (
-        'Pending',
-        '${s.pending}',
-        Icons.hourglass_empty,
-        const Color(0xFFfbbf24),
-      ),
       ('Spotify', '${s.spotifyLinked}', Icons.link, SpotterfyTheme.primary),
       ('In a jam', '${s.inJam}', Icons.groups, const Color(0xFFf472b6)),
     ];
@@ -510,9 +507,6 @@ class _AdminScreenState extends State<AdminScreen> {
                         if (u.isBanned) ...[
                           const SizedBox(width: 6),
                           const _Tag('Suspended', Color(0xFFef4444)),
-                        ] else if (!u.isApproved) ...[
-                          const SizedBox(width: 6),
-                          const _Tag('Pending', Color(0xFFfbbf24)),
                         ],
                         if (u.isActiveNow) ...[
                           const SizedBox(width: 6),
@@ -637,22 +631,6 @@ class _AdminScreenState extends State<AdminScreen> {
                               if (name != null) {
                                 await admin.setDisplayName(target.uid, name);
                               }
-                            },
-                    ),
-                    _action(
-                      icon: target.isApproved
-                          ? Icons.hourglass_empty
-                          : Icons.verified,
-                      color: const Color(0xFFa3e635),
-                      label: target.isApproved ? 'Revoke approval' : 'Approve',
-                      subtitle: target.isApproved
-                          ? 'Return them to the pending state'
-                          : 'Let them finish onboarding',
-                      onTap: busy
-                          ? null
-                          : () {
-                              Navigator.pop(sheetCtx);
-                              admin.setApproved(target.uid, !target.isApproved);
                             },
                     ),
                     _action(

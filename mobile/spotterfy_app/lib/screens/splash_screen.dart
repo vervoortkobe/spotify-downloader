@@ -250,13 +250,11 @@ class _SplashScreenState extends State<SplashScreen>
                             ),
                           ),
                           const SizedBox(height: 6),
-                          // Split into two widgets rather than one string with
-                          // an embedded \n: the second line is a separate thought
-                          // and gets its own tighter tracking, so the pair reads
-                          // as a tagline and an aside rather than one long
-                          // tracked-out sentence.
+                          // Two full sentences, each on its own line. Kept as
+                          // separate widgets rather than one string with an
+                          // embedded \n so the second can be dimmer and tighter.
                           Text(
-                            'Enjoy listening to your music\nwith no ads.',
+                            'Enjoy listening to your music with no ads.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: SpotterfyTheme.overlay(0.45),
@@ -368,33 +366,34 @@ class _AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<_AuthGate> {
-  bool _navigated = false;
+  /// Last uid handed to SocialProvider, so a sign-out/sign-in pair re-subscribes
+  /// instead of being swallowed by a one-shot "already navigated" flag.
+  String? _syncedUid;
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    if (!_navigated && !auth.isLoading) {
-      _navigated = true;
-      // Friend/notification/message streams only start once we know who is
-      // signed in, otherwise they'd subscribe as a null uid and silently do
-      // nothing.
-      if (auth.isLoggedIn) {
-        context.read<SocialProvider>().syncUid(auth.user?.uid);
-      }
+    if (auth.isLoading) return const SizedBox.shrink();
+
+    // Returns the target directly rather than pushing it. This screen *is* the
+    // auth gate: sign-out flips isLoggedIn, this rebuilds, and the whole
+    // MainScreen subtree (mini player, nav bar and all) is swapped for
+    // LoginScreen in place.
+    //
+    // It used to pushReplacement to get there, which reparented MainScreen's
+    // TabNavigators - those hold static per-tab GlobalKeys, so the reparent
+    // duplicated them and threw "Duplicate GlobalKeys detected in widget tree".
+    final uid = auth.user?.uid;
+    if (uid != _syncedUid) {
+      _syncedUid = uid;
+      // Deferred: syncUid calls notifyListeners, which must not happen during
+      // build.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 200),
-            pageBuilder: (_, _, _) => _targetFor(auth),
-            transitionsBuilder: (_, anim, _, child) =>
-                FadeTransition(opacity: anim, child: child),
-          ),
-        );
+        context.read<SocialProvider>().syncUid(uid);
       });
     }
-    return const SizedBox.shrink();
+    return _targetFor(auth);
   }
 
   Widget _targetFor(AuthProvider auth) {
