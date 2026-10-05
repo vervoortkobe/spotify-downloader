@@ -12,11 +12,14 @@ import 'package:spotterfy_app/services/audio_handler.dart';
 import 'package:spotterfy_app/services/auto_media_library.dart';
 import 'package:spotterfy_app/services/download_service.dart';
 import 'package:spotterfy_app/providers/equalizer_provider.dart';
+import 'package:spotterfy_app/providers/playback_settings_controller.dart';
 
 class PlayerProvider extends ChangeNotifier {
   // just_audio player with the shared EQ pipeline (equalizer + loudness).
   // Audio focus/session config lives in SpotterfyAudioHandler._initSession.
-  late final AudioPlayer _player;
+  // Not final: a crossfade swaps in a secondary player once the incoming
+  // track has fully faded in (see [_finishCrossfade]).
+  late AudioPlayer _player;
   TrackModel? _currentTrack;
   List<TrackModel> _queue = [];
   int _currentIndex = -1;
@@ -28,6 +31,11 @@ class PlayerProvider extends ChangeNotifier {
   /// whether restoring into the media session is worth a resume hint - never to
   /// start audio by itself.
   bool _wasPlayingBeforeRestart = false;
+
+  /// The in-flight restore of the persisted session. [_restoreForAuto] awaits
+  /// it so the queue/track are on disk-backed state before they are published
+  /// to the media session.
+  Future<void>? _stateLoadFuture;
   Duration _duration = Duration.zero;
   Duration _buffered = Duration.zero;
 
@@ -87,7 +95,7 @@ class PlayerProvider extends ChangeNotifier {
         androidAudioEffects: [androidEqualizer, androidLoudnessEnhancer],
       ),
     );
-    _loadPlayerState();
+    _stateLoadFuture = _loadPlayerState();
     _requestNotificationPermission();
     // Android Auto connects to the media browser service without ever opening
     // the app, so nothing else would restore the previous session into the
@@ -102,7 +110,29 @@ class PlayerProvider extends ChangeNotifier {
     // MainActivity is attached, which burns our single AudioService.init()
     // attempt (it can only be called once per process). Init lazily on
     // first play() instead, when the Activity is guaranteed ready.
-    _player.positionStream.listen((pos) {
+    _bindPlayerStreams(_player);
+  }
+
+  // Stream subscriptions for the current primary player. Held so they can be
+  // cancelled and re-pointed when a crossfade swaps the primary player.
+  StreamSubscription<Duration>? _posSub;
+  StreamSubscription<Duration?>? _durSub;
+  StreamSubscription<Duration>? _bufSub;
+  StreamSubscription<PlayerState>? _stateSub;
+
+  /// Subscribes the provider's streams to [player].
+  ///
+  /// Called once in the constructor and again after a crossfade swaps the
+  /// primary player, so position/duration/state events always follow
+  /// whichever player [_player] currently owns. Re-binding cancels the
+  /// previous subscriptions, which also detaches the outgoing player's
+  /// listeners so its late "completed" event can't double-skip.
+  void _bindPlayerStreams(AudioPlayer player) {
+    _posSub?.cancel();
+    _durSub?.cancel();
+    _bufSub?.cancel();
+    _stateSub?.cancel();
+    _posSub = player.positionStream.listen((pos) {
       _position = pos;
       if (isRadio && _isPlaying) {
         if (pos > _radioMaxListened) _radioMaxListened = pos;
@@ -110,8 +140,9 @@ class PlayerProvider extends ChangeNotifier {
       audioHandler?.updatePosition(pos, _duration, _isPlaying);
       // Notifies only the progress bars. See [positionNotifier].
       positionNotifier.value = pos;
+      _maybeStartCrossfade();
     });
-    _player.durationStream.listen((dur) {
+    _durSub = player.durationStream.listen((dur) {
       // Live radio has no duration (null) - keep the previous value.
       if (dur == null) return;
       _duration = dur;
@@ -133,27 +164,185 @@ class PlayerProvider extends ChangeNotifier {
       }
       notifyListeners();
     });
-    _player.bufferedPositionStream.listen((buf) {
+    _bufSub = player.bufferedPositionStream.listen((buf) {
       _buffered = buf;
       audioHandler?.updateBuffered(buf);
       notifyListeners();
     });
-    _player.playerStateStream.listen((state) {
+    _stateSub = player.playerStateStream.listen((state) {
+      if (_crossfading) {
+        // The outgoing track winding down under a crossfade: its state is no
+        // longer the source of truth for the UI, and the crossfade owns the
+        // transition, so its completion must not also skip.
+        return;
+      }
       _isPlaying = state.playing;
       _completed = state.processingState == ProcessingState.completed;
       if (_completed) {
-        if (_queue.isNotEmpty && _currentIndex < _queue.length - 1) {
-          next();
-          return;
-        } else {
-          _isPlaying = false;
-          audioHandler?.updatePosition(_position, _duration, false);
-        }
+        _onTrackCompleted();
+        return;
       }
       _handleRadioDrift();
       audioHandler?.updatePosition(_position, _duration, _isPlaying);
       notifyListeners();
     });
+  }
+
+  /// Advances past a track that reached its end: the next queued track, or
+  /// a stop at the end of the queue.
+  void _onTrackCompleted() {
+    if (_queue.isNotEmpty && _currentIndex < _queue.length - 1) {
+      next();
+    } else {
+      _isPlaying = false;
+      audioHandler?.updatePosition(_position, _duration, false);
+    }
+  }
+
+  // --- crossfade ------------------------------------------------------
+
+  /// Whether a crossfade is currently overlapping the outgoing and incoming
+  /// track.
+  bool _crossfading = false;
+
+  /// The incoming track's player while [_crossfading] is true.
+  AudioPlayer? _crossPlayer;
+
+  /// Starts overlapping the next track over the last
+  /// [PlaybackSettingsController.crossfadeSeconds] of the current one.
+  ///
+  /// Only for automatic transitions (a track playing out): a manual skip is
+  /// instant by design, and pre-loading the next track on every track just to
+  /// cover manual skips would double streaming bandwidth for everyone.
+  void _maybeStartCrossfade() {
+    if (_crossfading || isRadio) return;
+    final seconds = PlaybackSettingsController.instance.crossfadeSeconds;
+    if (seconds <= 0) return;
+    if (!hasNext || _duration <= Duration.zero) return;
+    final remaining = _duration - _position;
+    if (remaining > Duration(seconds: seconds)) return;
+    final nextTrack = _queue[_currentIndex + 1];
+    _startCrossfade(nextTrack, Duration(seconds: seconds));
+  }
+
+  Future<void> _startCrossfade(TrackModel nextTrack, Duration fade) async {
+    _crossfading = true;
+    // The secondary player owns its own effect instances: an effect can only
+    // be attached to one player at a time, so the primary's singletons can't
+    // be shared. They're configured from the stored EQ state once this
+    // player is active (see EqualizerProvider.applyTo).
+    final crossEq = AndroidEqualizer();
+    final crossLoudness = AndroidLoudnessEnhancer();
+    final cross = AudioPlayer(
+      audioPipeline: AudioPipeline(
+        androidAudioEffects: [crossEq, crossLoudness],
+      ),
+    );
+    _crossPlayer = cross;
+    try {
+      final loaded = await _loadInto(cross, nextTrack);
+      if (!loaded) {
+        // The outgoing track may already have ended while this one loaded.
+        // Advance manually if so; otherwise it completes naturally.
+        await _cancelCrossfade();
+        if (_completed) _onTrackCompleted();
+        return;
+      }
+      // The incoming track is playing now, so its effect instances can be
+      // configured (parameters are only available once the player is active).
+      await EqualizerProvider.current?.applyTo([crossEq, crossLoudness]);
+      // Start the incoming track silently under the outgoing one, then ramp
+      // the two volumes in opposite directions over the fade.
+      await cross.setVolume(0);
+      const step = Duration(milliseconds: 50);
+      final steps =
+          (fade.inMilliseconds / step.inMilliseconds).round().clamp(1, 10000);
+      for (var i = 1; i <= steps; i++) {
+        await Future.delayed(step);
+        if (!_crossfading) return;
+        final t = i / steps;
+        await _player.setVolume(1 - t);
+        await cross.setVolume(t);
+        if (!_crossfading) {
+          // Cancelled mid-ramp: restore the outgoing volume.
+          await _player.setVolume(1);
+          return;
+        }
+      }
+      await _finishCrossfade(nextTrack, cross, [crossEq, crossLoudness]);
+    } catch (e) {
+      debugPrint('[Player] crossfade failed: $e');
+      await _cancelCrossfade();
+    }
+  }
+
+  /// Hands playback over to the crossfaded track: the outgoing player is
+  /// stopped and disposed, the incoming one becomes [_player], and the
+  /// provider's state moves onto the new track.
+  Future<void> _finishCrossfade(
+    TrackModel nextTrack,
+    AudioPlayer cross,
+    List<AndroidAudioEffect> crossEffects,
+  ) async {
+    _crossfading = false;
+    _crossPlayer = null;
+    // The queue may have been edited while the fade ran; only take over if
+    // the crossfaded track is still the expected next one.
+    if (_currentIndex + 1 >= _queue.length ||
+        _queue[_currentIndex + 1].id != nextTrack.id) {
+      await _cancelCrossfade();
+      // The outgoing track may already have ended; advance if so.
+      if (_completed) _onTrackCompleted();
+      return;
+    }
+    final old = _player;
+    _currentIndex++;
+    _currentTrack = nextTrack;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _buffered = Duration.zero;
+    _completed = false;
+    _starting = false;
+    _pauseRequested = false;
+    _isPlaying = true;
+    positionNotifier.value = Duration.zero;
+    durationNotifier.value = Duration.zero;
+    bufferedNotifier.value = Duration.zero;
+    _player = cross;
+    // Re-point the provider's streams at the new primary (this also detaches
+    // the outgoing player's listeners).
+    _bindPlayerStreams(_player);
+    notifyListeners();
+    // The outgoing track is fully faded out by now.
+    await old.stop();
+    await old.dispose();
+    // EQ changes from here on target the new primary's effect instances.
+    await EqualizerProvider.current?.bindEffects(crossEffects);
+    final h = audioHandler;
+    if (h != null) {
+      await h.updateTrack(
+        nextTrack,
+        queue: _queue,
+        position: Duration.zero,
+        duration: Duration.zero,
+        isPlaying: true,
+      );
+    }
+    _prefetchNextSource();
+    _savePlayerState();
+  }
+
+  /// Aborts an in-flight crossfade: the incoming player is disposed and the
+  /// outgoing one keeps playing (its volume is restored by the fade loop's
+  /// post-check, or was never touched).
+  Future<void> _cancelCrossfade() async {
+    final cross = _crossPlayer;
+    _crossPlayer = null;
+    _crossfading = false;
+    if (cross != null) {
+      await cross.stop();
+      await cross.dispose();
+    }
   }
 
   /// Writes a learned track length back onto the current track and its queue
@@ -218,6 +407,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> play(TrackModel track, {List<TrackModel>? queue}) async {
+    await _cancelCrossfade();
     if (queue != null) {
       _queue = List.from(queue);
       _currentIndex = queue.indexWhere((e) => e.id == track.id);
@@ -266,19 +456,43 @@ class PlayerProvider extends ChangeNotifier {
     } else {
       debugPrint('[Player] audioHandler is null — notification will not show');
     }
+    final loaded = await _loadInto(_player, track);
+    if (!loaded) {
+      // Every source failed: don't leave the UI showing a track that isn't
+      // audible. `_onTrackStarted` is skipped so `_isPlaying` stays false.
+      _starting = false;
+      _savePlayerState();
+      return;
+    }
+    await _onTrackStarted();
+    _starting = false;
+    _savePlayerState();
+  }
+
+  /// Loads [track] into [player] and starts it.
+  ///
+  /// Shared by [play] and the crossfade, which preloads the next track into a
+  /// second player so the two can overlap. Returns true once a source is
+  /// loaded and playing; false if every source failed (a crossfade then falls
+  /// back to a normal track change when the current one completes).
+  Future<bool> _loadInto(
+    AudioPlayer player,
+    TrackModel track, {
+    Duration startAt = Duration.zero,
+  }) async {
     // Local storage files: play directly from device, no backend
     if (_isLocalPath(track.sourceUrl)) {
       final path = track.sourceUrl.replaceFirst('file://', '');
       try {
-        await _player.setFilePath(path).timeout(const Duration(seconds: 30));
-        await _playUntilAudible();
-        await _onTrackStarted();
+        await player
+            .setFilePath(path, initialPosition: startAt)
+            .timeout(const Duration(seconds: 30));
+        await _playUntilAudibleOn(player);
+        return true;
       } catch (e) {
         debugPrint('[Player] local file failed: $e');
+        return false;
       }
-      _starting = false;
-      _savePlayerState();
-      return;
     }
 
     // A track downloaded from inside the app is played from disk, so it starts
@@ -287,14 +501,11 @@ class PlayerProvider extends ChangeNotifier {
     final downloaded = await _downloadedPathFor(track);
     if (downloaded != null) {
       try {
-        await _player
-            .setFilePath(downloaded)
+        await player
+            .setFilePath(downloaded, initialPosition: startAt)
             .timeout(const Duration(seconds: 30));
-        await _playUntilAudible();
-        await _onTrackStarted();
-        _starting = false;
-        _savePlayerState();
-        return;
+        await _playUntilAudibleOn(player);
+        return true;
       } catch (e) {
         debugPrint('[Player] downloaded file failed, streaming instead: $e');
       }
@@ -318,25 +529,30 @@ class PlayerProvider extends ChangeNotifier {
       final url = primary ?? fallback;
       // No explicit `stop()`: `setAudioSource` stops the current source itself,
       // so calling it first was a wasted platform round-trip per track.
-      await _player
-          .setAudioSource(AudioSource.uri(Uri.parse(url)))
+      await player
+          .setAudioSource(
+            AudioSource.uri(Uri.parse(url)),
+            initialPosition: startAt,
+          )
           .timeout(const Duration(seconds: 30));
-      await _playUntilAudible();
-      await _onTrackStarted();
+      await _playUntilAudibleOn(player);
+      return true;
     } catch (e) {
       debugPrint('[Player] primary failed: $e');
       try {
-        await _player
-            .setAudioSource(AudioSource.uri(Uri.parse(fallback)))
+        await player
+            .setAudioSource(
+              AudioSource.uri(Uri.parse(fallback)),
+              initialPosition: startAt,
+            )
             .timeout(const Duration(seconds: 35));
-        await _playUntilAudible();
-        await _onTrackStarted();
+        await _playUntilAudibleOn(player);
+        return true;
       } catch (e2) {
         debugPrint('[Player] fallback failed: $e2');
       }
     }
-    _starting = false;
-    _savePlayerState();
+    return false;
   }
 
   /// Warms the server-side extraction for the *next* queue track.
@@ -434,12 +650,27 @@ class PlayerProvider extends ChangeNotifier {
       await _player.seek(Duration.zero);
       _completed = false;
     }
-    await _playUntilAudible();
+    // After an app restart the player owns no audio source - only the queue,
+    // track and position were restored from disk - so the current track has
+    // to be loaded before it can play. Without this, pressing play on a
+    // restored session silently does nothing.
+    if (_player.processingState == ProcessingState.idle) {
+      final track = _currentTrack;
+      if (track == null) return;
+      await ensureAudioHandler();
+      _bindHandler();
+      _starting = true;
+      final loaded = await _loadInto(_player, track, startAt: _position);
+      _starting = false;
+      if (loaded) await _onTrackStarted();
+      return;
+    }
+    await _playUntilAudibleOn(_player);
   }
 
-  /// Starts playback and returns once audio is actually running.
+  /// Starts playback on [player] and returns once audio is actually running.
   ///
-  /// Must never `await _player.play()` directly. That future only completes when
+  /// Must never `await player.play()` directly. That future only completes when
   /// playback is *paused or stopped*, so awaiting it blocks here for the entire
   /// track. That was the root of "play takes ages" and "pause does nothing":
   /// [resume] held the caller open for the whole song, so the post-play state
@@ -448,20 +679,20 @@ class PlayerProvider extends ChangeNotifier {
   ///
   /// Waits on the playing state instead, with a ceiling so a stalled source
   /// still surfaces a TimeoutException for the caller's existing fallback.
-  Future<void> _playUntilAudible() async {
-    if (_player.playing) return;
+  Future<void> _playUntilAudibleOn(AudioPlayer player) async {
+    if (player.playing) return;
     // Nothing loaded at all: fail immediately rather than sitting out the whole
     // ceiling on a source that will never arrive.
-    if (_player.processingState == ProcessingState.idle) {
+    if (player.processingState == ProcessingState.idle) {
       throw StateError('play requested with no media loaded');
     }
-    final audible = _player.playingStream
+    final audible = player.playingStream
         .firstWhere((isPlaying) => isPlaying)
         .timeout(const Duration(seconds: 12));
     // Errors here would otherwise become an unhandled async error; the timeout
     // above is what reports a source that never starts.
     unawaited(
-      _player.play().catchError((Object e) {
+      player.play().catchError((Object e) {
         debugPrint('[Player] play() failed: $e');
       }),
     );
@@ -569,12 +800,20 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> pause() async {
+    await _cancelCrossfade();
     await _player.pause();
     audioHandler?.updatePosition(_position, _duration, false);
   }
 
   Future<void> resume() async {
     await _startPlayback();
+    // A restored track whose source failed to load leaves the player idle;
+    // don't broadcast a "playing" state that has no audio behind it.
+    if (!_player.playing && _player.processingState == ProcessingState.idle) {
+      _isPlaying = false;
+      notifyListeners();
+      return;
+    }
     audioHandler?.updatePosition(_position, _duration, true);
   }
 
@@ -600,6 +839,7 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> next() async {
     if (isRadio) return;
     if (_queue.isEmpty || _currentIndex >= _queue.length - 1) return;
+    await _cancelCrossfade();
     _currentIndex++;
     await play(_queue[_currentIndex], queue: _queue);
   }
@@ -611,6 +851,7 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
     if (_queue.isEmpty || _currentIndex <= 0) return;
+    await _cancelCrossfade();
     if (_position.inSeconds > 3) {
       await seekTo(Duration.zero);
       return;
@@ -620,6 +861,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    await _cancelCrossfade();
     await _player.stop();
     _isPlaying = false;
     _position = Duration.zero;
@@ -796,6 +1038,9 @@ class PlayerProvider extends ChangeNotifier {
     _radioDriftTimer?.cancel();
     _savePlayerState();
     _player.dispose();
+    // An in-flight fade notices via [_crossfading] and exits on its next
+    // tick; disposing the cross player here releases its audio resources.
+    _cancelCrossfade().catchError((_) {});
     super.dispose();
   }
 
@@ -808,6 +1053,14 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _restoreForAuto() async {
     try {
       await ensureAudioHandler();
+      // Wire the notification controls onto this provider now, so pressing
+      // play on a restored session actually starts playback. Without this the
+      // handler callbacks are still null and the notification would show a
+      // "playing" state with no audio behind it.
+      _bindHandler();
+      // The queue/track are restored asynchronously; make sure that has
+      // happened before publishing the session to the media session.
+      await _stateLoadFuture;
       final handler = audioHandler;
       if (handler == null) return;
       if (_queue.isEmpty) {

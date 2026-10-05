@@ -11,6 +11,7 @@ import 'providers/download_provider.dart';
 import 'providers/social_provider.dart';
 import 'providers/status_provider.dart';
 import 'providers/theme_controller.dart';
+import 'providers/playback_settings_controller.dart';
 import 'services/network_stats_service.dart';
 import 'screens/splash_screen.dart';
 
@@ -66,8 +67,10 @@ class SpotterfyApp extends StatelessWidget {
           // colours in SpotterfyTheme are plain statics, so a widget only picks
           // up a new one when its build() runs again.
           final theme = ThemeController.instance;
+          final playbackSettings = PlaybackSettingsController.instance;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!theme.isLoaded) theme.load();
+            if (!playbackSettings.isLoaded) playbackSettings.load();
           });
           return ListenableBuilder(
             listenable: theme,

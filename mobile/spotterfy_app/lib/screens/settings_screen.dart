@@ -10,6 +10,7 @@ import 'package:spotterfy_app/screens/storage_usage_screen.dart';
 import 'package:spotterfy_app/screens/theme_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
+import 'package:spotterfy_app/providers/playback_settings_controller.dart';
 import 'package:spotterfy_app/widgets/app_chrome.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -73,6 +74,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Navigator.push(context, swipeRoute(EqualizerScreen()));
                   },
                 ),
+                const SizedBox(height: 8),
+                _crossfadeRow(),
 
                 const SizedBox(height: 24),
                 _sectionLabel('Network'),
@@ -233,6 +236,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (x != y) return x > y;
     }
     return false;
+  }
+
+  /// Crossfade length between songs, in seconds (0 = off).
+  ///
+  /// Applied when a track plays out into the next one; manual skips stay
+  /// instant. The value is read by PlayerProvider when a fade is scheduled,
+  /// so a change takes effect on the next transition.
+  Widget _crossfadeRow() {
+    final settings = context.watch<PlaybackSettingsController>();
+    final seconds = settings.crossfadeSeconds;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: SpotterfyTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.swap_horiz, color: SpotterfyTheme.muted, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Song transition',
+                      style: TextStyle(
+                        color: SpotterfyTheme.text,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      seconds == 0
+                          ? 'Off'
+                          : '$seconds second${seconds == 1 ? '' : 's'}',
+                      style: TextStyle(
+                        color: SpotterfyTheme.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            ),
+            child: Slider(
+              value: seconds.toDouble(),
+              min: 0,
+              max: PlaybackSettingsController.maxSeconds.toDouble(),
+              divisions: PlaybackSettingsController.maxSeconds,
+              label: seconds == 0 ? 'Off' : '$seconds s',
+              activeColor: SpotterfyTheme.primary,
+              onChanged: (v) => settings.setCrossfadeSeconds(v.round()),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _settingsItem(

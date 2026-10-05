@@ -28,7 +28,7 @@ void main() {
       isEmpty,
       reason:
           'await on play() blocks until the track ends. Wait on playingStream '
-          'via _playUntilAudible() instead.',
+          'via _playUntilAudibleOn(player) instead.',
     );
   });
 
@@ -36,7 +36,7 @@ void main() {
     final source = playerProvider.readAsStringSync();
     expect(
       source,
-      contains('Future<void> _playUntilAudible()'),
+      contains('Future<void> _playUntilAudibleOn(AudioPlayer player)'),
       reason: 'the bounded playingStream wait should exist',
     );
     expect(source, contains('playingStream'));
@@ -46,7 +46,7 @@ void main() {
     final source = playerProvider.readAsStringSync();
     expect(
       source,
-      matches(RegExp(r'_playUntilAudible[\s\S]{0,900}?\.timeout\(')),
+      matches(RegExp(r'_playUntilAudibleOn[\s\S]{0,900}?\.timeout\(')),
       reason: 'the wait needs a ceiling or the toggle lock never releases',
     );
   });
