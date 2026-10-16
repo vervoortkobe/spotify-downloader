@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
-import 'package:spotterfy_app/screens/main_screen.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
 class OnboardingScreen extends StatefulWidget {

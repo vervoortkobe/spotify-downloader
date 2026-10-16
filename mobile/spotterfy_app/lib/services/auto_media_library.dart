@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
@@ -119,17 +118,13 @@ class AutoLibraryBridge {
       return cached;
     }
 
-    // Cold start: the car can browse before the splash has signed the user in
-    // and loaded their playlists. Answering straight away hands it an empty
-    // tree, and it keeps showing that empty tree because it does not poll.
-    // Bounded so a signed-out browse still returns promptly.
-    if (_libraryLoader != null) await _awaitReady();
-
     try {
       // The loader reaches Firestore, which is not ready yet when Android Auto
       // wakes the app before the splash has booted. Joining the splash's
       // initialisation here means the car waits for Firebase rather than
-      // failing the browse tree.
+      // failing the browse tree. It also loads the signed-in user's library on
+      // demand, so Android Auto does not depend on opening the phone's Library
+      // tab first.
       await FirebaseService.initialize();
       final base = await _libraryLoader?.call() ?? const AutoLibrarySnapshot();
       if (!base.isEmpty) _notifyReady();
@@ -179,28 +174,6 @@ class AutoLibraryBridge {
   DateTime? _lastGoodAt;
   static const Duration _snapshotTtl = Duration(seconds: 20);
 
-  /// Completed by [libraryReady], i.e. once the signed-in user's playlists have
-  /// finished their first load.
-  final Completer<void> _ready = Completer<void>();
-
-  /// How long a cold Android Auto start waits for that first load before
-  /// answering with whatever is in memory. Bounded so a browse that happens
-  /// while signed out still returns instead of hanging.
-  static const Duration _readyGrace = Duration(seconds: 4);
-
-  void markReady() {
-    if (!_ready.isCompleted) _ready.complete();
-  }
-
-  Future<void> _awaitReady() async {
-    if (_ready.isCompleted) return;
-    try {
-      await _ready.future.timeout(_readyGrace);
-    } on TimeoutException {
-      debugPrint('[Auto] browse answered before the library was ready');
-    }
-  }
-
   /// Drops the cached snapshot so the next browse re-resolves. Only for genuine
   /// mutations (a delete, the provider going away) - a plain load completing
   /// must not, or the car would re-resolve mid-drill-down and hit the very
@@ -212,9 +185,9 @@ class AutoLibraryBridge {
   /// Called by the app once the signed-in user's playlists are in memory, so a
   /// car that connected before login finished can offer them.
   void libraryReady() {
-    // Releases any browse that is waiting for the first load, and pushes a
-    // change so the car re-reads the tree.
-    markReady();
+    // A cold-start browse may already have cached the empty in-memory state.
+    // Drop it before asking the car to re-read the newly loaded library.
+    _invalidateSnapshot();
     _notifyReady();
     _notifyLibraryChanged();
   }

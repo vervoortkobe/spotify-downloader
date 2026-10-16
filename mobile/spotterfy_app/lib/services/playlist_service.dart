@@ -322,14 +322,14 @@ class PlaylistService {
       });
     } on FirebaseException catch (e) {
       // Legacy docs saved with creatorUid:'' fail the update rule
-      // (resource.data.creatorUid != uid). Reclaim by re-creating the doc
-      // with correct ownership; otherwise keep local cache only.
+      // (resource.data.creatorUid != uid). Reclaim an existing legacy doc with
+      // correct ownership; never create a new library entry for a missing id.
       if (e.code == 'permission-denied') {
         try {
           final existing = await docRef.get();
           final data = existing.data();
           final owner = (data?['creatorUid'] as String?) ?? '';
-          if (!existing.exists || owner.isEmpty) {
+          if (existing.exists && owner.isEmpty) {
             await docRef.set({
               'creatorUid': uid,
               'name': (data?['name'] as String?) ?? 'Playlist',

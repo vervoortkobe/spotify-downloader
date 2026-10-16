@@ -63,11 +63,13 @@ class MiniPlayer extends StatelessWidget {
         alignment: Alignment.centerLeft,
         icon: Icons.skip_previous,
         label: 'Previous',
+        isMatchingSize: true,
       ),
       secondaryBackground: _SwipeRevealBackground(
         alignment: Alignment.centerRight,
         icon: Icons.skip_next,
         label: 'Next',
+        isMatchingSize: true,
       ),
       child: GestureDetector(
         onTap: _openPlayer,
@@ -94,10 +96,6 @@ class MiniPlayer extends StatelessWidget {
                 offset: const Offset(0, -4),
               ),
             ],
-            border: Border.all(
-              color: SpotterfyTheme.primary.withValues(alpha: 0.18),
-              width: 1,
-            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -423,15 +421,46 @@ class _SwipeRevealBackground extends StatelessWidget {
   final Alignment alignment;
   final IconData icon;
   final String label;
+  final bool isMatchingSize;
 
   const _SwipeRevealBackground({
     required this.alignment,
     required this.icon,
     required this.label,
+    this.isMatchingSize = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (isMatchingSize) {
+      return Container(
+        color: Colors.transparent,
+        alignment: alignment,
+        // Exactly the size of the mini player — no extra padding that would
+        // make the swipe area (and the invisible background box) larger than
+        // the card itself. Inset the content slightly so the swipe glyph sits
+        // neatly inside the card edge.
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: SpotterfyTheme.primary, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: SpotterfyTheme.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
       decoration: BoxDecoration(

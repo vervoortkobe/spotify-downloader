@@ -26,6 +26,8 @@ class PlayerProvider extends ChangeNotifier {
   bool _isPlaying = false;
   bool _completed = false;
   Duration _position = Duration.zero;
+  DateTime _lastPositionChangeAt = DateTime.now();
+  Timer? _positionFallbackTimer;
 
   /// Whether playback was running when the app last exited. Only used to decide
   /// whether restoring into the media session is worth a resume hint - never to
@@ -111,6 +113,14 @@ class PlayerProvider extends ChangeNotifier {
     // attempt (it can only be called once per process). Init lazily on
     // first play() instead, when the Activity is guaranteed ready.
     _bindPlayerStreams(_player);
+    // just_audio's periodic position stream can stall on some streams even
+    // while the native player keeps advancing. Poll its cached position only
+    // after the normal stream has stopped changing, and fan that value out to
+    // both the in-app bars and the Android media session.
+    _positionFallbackTimer = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _syncPositionIfStale(),
+    );
   }
 
   // Stream subscriptions for the current primary player. Held so they can be
@@ -133,6 +143,7 @@ class PlayerProvider extends ChangeNotifier {
     _bufSub?.cancel();
     _stateSub?.cancel();
     _posSub = player.positionStream.listen((pos) {
+      if (pos != _position) _lastPositionChangeAt = DateTime.now();
       _position = pos;
       if (isRadio && _isPlaying) {
         if (pos > _radioMaxListened) _radioMaxListened = pos;
@@ -186,6 +197,33 @@ class PlayerProvider extends ChangeNotifier {
       audioHandler?.updatePosition(_position, _duration, _isPlaying);
       notifyListeners();
     });
+  }
+
+  void _syncPositionIfStale() {
+    if (!_isPlaying || !_player.playing) return;
+    if (DateTime.now().difference(_lastPositionChangeAt) <
+        const Duration(seconds: 1)) {
+      return;
+    }
+    try {
+      final pos = _player.position;
+      if (pos != _position) {
+        _position = pos;
+        _lastPositionChangeAt = DateTime.now();
+        positionNotifier.value = pos;
+        audioHandler?.updatePosition(pos, _duration, _isPlaying);
+      }
+      final dur = _player.duration;
+      if (dur != null && dur > Duration.zero && dur != _duration) {
+        _duration = dur;
+        durationNotifier.value = dur;
+        _applyDurationToTrack(dur.inMilliseconds);
+        audioHandler?.updatePosition(_position, dur, _isPlaying);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[Player] position fallback poll failed: $e');
+    }
   }
 
   /// Advances past a track that reached its end: the next queued track, or
@@ -255,8 +293,10 @@ class PlayerProvider extends ChangeNotifier {
       // the two volumes in opposite directions over the fade.
       await cross.setVolume(0);
       const step = Duration(milliseconds: 50);
-      final steps =
-          (fade.inMilliseconds / step.inMilliseconds).round().clamp(1, 10000);
+      final steps = (fade.inMilliseconds / step.inMilliseconds).round().clamp(
+        1,
+        10000,
+      );
       for (var i = 1; i <= steps; i++) {
         await Future.delayed(step);
         if (!_crossfading) return;
@@ -285,7 +325,6 @@ class PlayerProvider extends ChangeNotifier {
     List<AndroidAudioEffect> crossEffects,
   ) async {
     _crossfading = false;
-    _crossPlayer = null;
     // The queue may have been edited while the fade ran; only take over if
     // the crossfaded track is still the expected next one.
     if (_currentIndex + 1 >= _queue.length ||
@@ -295,6 +334,7 @@ class PlayerProvider extends ChangeNotifier {
       if (_completed) _onTrackCompleted();
       return;
     }
+    _crossPlayer = null;
     final old = _player;
     _currentIndex++;
     _currentTrack = nextTrack;
@@ -337,11 +377,15 @@ class PlayerProvider extends ChangeNotifier {
   /// post-check, or was never touched).
   Future<void> _cancelCrossfade() async {
     final cross = _crossPlayer;
+    if (cross == null) return;
     _crossPlayer = null;
     _crossfading = false;
-    if (cross != null) {
-      await cross.stop();
-      await cross.dispose();
+    await cross.stop();
+    await cross.dispose();
+    try {
+      await _player.setVolume(1);
+    } catch (e) {
+      debugPrint('[Player] could not restore volume after crossfade: $e');
     }
   }
 
@@ -572,25 +616,53 @@ class PlayerProvider extends ChangeNotifier {
     for (final ahead in [1, 2]) {
       final next = _currentIndex + ahead;
       if (next < 0 || next >= _queue.length) continue;
-      final upcoming = _queue[next];
-      // Local files and direct radio streams need no resolution.
-      if (_isLocalPath(upcoming.sourceUrl)) continue;
-      if (isDirectRadioUrl(upcoming.sourceUrl)) continue;
-      final url = ApiService.streamTrackUrl(upcoming.sourceUrl);
-      if (_prefetchedUrls.contains(url)) continue;
-      _prefetchedUrls.add(url);
-      // Sent right away rather than on a delay: the whole point is to have the
-      // extraction finished before the track is needed, and the old 2s wait just
-      // threw away the start of that window.
-      Timer.run(() {
-        try {
-          http
-              .head(Uri.parse(url))
-              .timeout(const Duration(seconds: 8))
-              .then((_) {}, onError: (_) {});
-        } catch (_) {}
-      });
+      prefetchTrack(_queue[next]);
     }
+  }
+
+  /// Resolves a playlist's first stream while the listener is looking at its
+  /// details, rather than making them wait for yt-dlp after they press Play.
+  void prefetchTrack(TrackModel track) {
+    if (_isLocalPath(track.sourceUrl) ||
+        track.id.startsWith('radio_') ||
+        isDirectRadioUrl(track.sourceUrl) ||
+        _isRadioUrl(track.sourceUrl)) {
+      return;
+    }
+    final source = track.sourceUrl.isNotEmpty
+        ? track.sourceUrl
+        : 'ytsearch1:${track.title} ${track.artists} audio';
+    _prefetchSource(source);
+  }
+
+  void _prefetchSource(String source) {
+    if (source.isEmpty ||
+        _isLocalPath(source) ||
+        isDirectRadioUrl(source) ||
+        _isRadioUrl(source)) {
+      return;
+    }
+    final url = ApiService.streamTrackUrl(source);
+    if (!_prefetchedUrls.add(url)) return;
+
+    // Sent immediately: the extraction should finish while the user reviews
+    // the playlist, and the server reuses its resolved URL for playback.
+    unawaited(() async {
+      try {
+        final response = await http
+            .head(Uri.parse(url))
+            .timeout(const Duration(seconds: 8));
+        if (response.statusCode >= 400) {
+          _prefetchedUrls.remove(url);
+          debugPrint(
+            '[Player] source prefetch returned HTTP ${response.statusCode}',
+          );
+        }
+      } catch (e) {
+        _prefetchedUrls.remove(url);
+        debugPrint('[Player] source prefetch failed: $e');
+      }
+    }());
   }
 
   /// Stream URLs already warmed by [_prefetchNextSource], so repeatedly
@@ -1036,6 +1108,7 @@ class PlayerProvider extends ChangeNotifier {
   @override
   void dispose() {
     _radioDriftTimer?.cancel();
+    _positionFallbackTimer?.cancel();
     _savePlayerState();
     _player.dispose();
     // An in-flight fade notices via [_crossfading] and exits on its next

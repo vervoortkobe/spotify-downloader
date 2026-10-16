@@ -26,6 +26,9 @@ class _PlaylistHeader extends StatelessWidget {
   final PlaylistModel playlist;
   final VoidCallback onPlay;
   final VoidCallback onShuffle;
+  final VoidCallback onAddToLibrary;
+  final bool canAddToLibrary;
+  final bool isAddingToLibrary;
 
   /// Whether [playlist] belongs to the signed-in user.
   ///
@@ -39,6 +42,9 @@ class _PlaylistHeader extends StatelessWidget {
     required this.playlist,
     required this.onPlay,
     required this.onShuffle,
+    required this.onAddToLibrary,
+    required this.canAddToLibrary,
+    required this.isAddingToLibrary,
     required this.isMine,
   });
 
@@ -137,6 +143,19 @@ class _PlaylistHeader extends StatelessWidget {
               ),
             ],
           ),
+          if (canAddToLibrary) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: _SecondaryButton(
+                icon: isAddingToLibrary
+                    ? Icons.hourglass_top_rounded
+                    : Icons.library_add_outlined,
+                label: isAddingToLibrary ? 'Adding...' : 'Add to library',
+                onTap: isAddingToLibrary ? () {} : onAddToLibrary,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -465,6 +484,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   final ScrollController _scrollController = ScrollController();
   bool _syncing = false;
+  bool _addingToLibrary = false;
 
   /// Owner of the playlist, when it came from another user.
   String? get _ownerUid {
@@ -592,10 +612,23 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _maybeSyncTracks();
+        if (_playlist.tracks.isNotEmpty) {
+          context.read<PlayerProvider>().prefetchTrack(_playlist.tracks.first);
+        }
+        _preparePlaylistTracks();
         _loadOwnerProfile();
       }
     });
+  }
+
+  Future<void> _preparePlaylistTracks() async {
+    try {
+      await _maybeSyncTracks();
+      if (!mounted || _playlist.tracks.isEmpty) return;
+      context.read<PlayerProvider>().prefetchTrack(_playlist.tracks.first);
+    } catch (e) {
+      debugPrint('[Playlist] could not prepare first track: $e');
+    }
   }
 
   @override
@@ -685,10 +718,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       });
 
       final auth = context.read<AuthProvider>();
-      if (auth.user != null) {
+      final uid = auth.user?.uid;
+      final isOwnedByUser =
+          uid != null &&
+          (_playlist.creatorUid == uid ||
+              (_playlist.creatorUid.isEmpty && _playlist.isUsersOwn));
+      if (uid != null && isOwnedByUser) {
         try {
           await context.read<PlaylistProvider>().syncPlaylistTracks(
-            auth.user!.uid,
+            uid,
             _playlist.id,
             scraped.tracks,
           );
@@ -906,6 +944,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
+    final playlistProvider = context.watch<PlaylistProvider>();
+    final isMine =
+        _playlist.isUsersOwn ||
+        (_playlist.creatorUid.isNotEmpty && _playlist.creatorUid == user?.uid);
     return SwipeBackWrapper(
       child: Scaffold(
         backgroundColor: SpotterfyTheme.pageBackground,
@@ -1112,10 +1155,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         playlist: _playlist,
                         onPlay: _playAll,
                         onShuffle: _shuffleAll,
-                        isMine:
-                            _playlist.isUsersOwn ||
-                            (_playlist.creatorUid.isNotEmpty &&
-                                _playlist.creatorUid == _myUid),
+                        isMine: isMine,
+                        canAddToLibrary:
+                            user != null &&
+                            !isMine &&
+                            !playlistProvider.isInLibrary(_playlist),
+                        isAddingToLibrary: _addingToLibrary,
+                        onAddToLibrary: _addToLibrary,
                       ),
                     ),
                     SliverToBoxAdapter(child: _viewControls()),
@@ -1168,47 +1214,44 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       )
                     else
                       SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (_, i) {
-                            final track = _visibleTracks[i];
-                            final player = context.watch<PlayerProvider>();
-                            final downloads = context.watch<DownloadProvider>();
-                            final isPlaying =
-                                player.currentTrack?.id == track.id &&
-                                player.isPlaying;
-                            return TrackTile(
-                              track: track,
-                              isSelected: player.currentTrack?.id == track.id,
-                              isPlaying: isPlaying,
-                              // Long press opens multi-select; in selection mode
-                              // a tap toggles instead of playing.
-                              onLongPress: () => _toggleSelection(track),
-                              selectionMode: _selecting,
-                              selected: _selectedIds.contains(track.id),
-                              isDownloaded: downloads.isDownloaded(track.id),
-                              isDownloading:
-                                  downloads.states[track.id] ==
-                                  DownloadState.downloading,
-                              onDownload: () => _toggleDownload(context, track),
-                              onPlay: _selecting
-                                  ? () => _toggleSelection(track)
-                                  // The row index is into the *visible* list, so
-                                  // the real position in playlist order is
-                                  // resolved from the track itself. Otherwise
-                                  // tapping row 2 of a sorted list would start
-                                  // playback from whichever song happens to sit
-                                  // second in the original order.
-                                  : () => _playTrack(
-                                      context,
-                                      track,
-                                      _playbackOrder.indexWhere(
-                                        (t) => t.id == track.id,
-                                      ),
+                        delegate: SliverChildBuilderDelegate((_, i) {
+                          final track = _visibleTracks[i];
+                          final player = context.watch<PlayerProvider>();
+                          final downloads = context.watch<DownloadProvider>();
+                          final isPlaying =
+                              player.currentTrack?.id == track.id &&
+                              player.isPlaying;
+                          return TrackTile(
+                            track: track,
+                            isSelected: player.currentTrack?.id == track.id,
+                            isPlaying: isPlaying,
+                            // Long press opens multi-select; in selection mode
+                            // a tap toggles instead of playing.
+                            onLongPress: () => _toggleSelection(track),
+                            selectionMode: _selecting,
+                            selected: _selectedIds.contains(track.id),
+                            isDownloaded: downloads.isDownloaded(track.id),
+                            isDownloading:
+                                downloads.states[track.id] ==
+                                DownloadState.downloading,
+                            onDownload: () => _toggleDownload(context, track),
+                            onPlay: _selecting
+                                ? () => _toggleSelection(track)
+                                // The row index is into the *visible* list, so
+                                // the real position in playlist order is
+                                // resolved from the track itself. Otherwise
+                                // tapping row 2 of a sorted list would start
+                                // playback from whichever song happens to sit
+                                // second in the original order.
+                                : () => _playTrack(
+                                    context,
+                                    track,
+                                    _playbackOrder.indexWhere(
+                                      (t) => t.id == track.id,
                                     ),
-                            );
-                          },
-                          childCount: _visibleTracks.length,
-                        ),
+                                  ),
+                          );
+                        }, childCount: _visibleTracks.length),
                       ),
                     SliverToBoxAdapter(child: SizedBox(height: 92)),
                   ],
@@ -1429,6 +1472,35 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       return;
     }
     _playTrack(context, tracks.first, 0);
+  }
+
+  Future<void> _addToLibrary() async {
+    final user = context.read<AuthProvider>().user;
+    if (user == null || _addingToLibrary) return;
+    setState(() => _addingToLibrary = true);
+    try {
+      final added = await context.read<PlaylistProvider>().addPlaylistToLibrary(
+        user.uid,
+        _playlist,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            added
+                ? 'Added "${_playlist.displayName}" to your library'
+                : 'This playlist is already in your library',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not add playlist to library: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _addingToLibrary = false);
+    }
   }
 
   /// Plays the playlist from a random track, but keeps the original order.

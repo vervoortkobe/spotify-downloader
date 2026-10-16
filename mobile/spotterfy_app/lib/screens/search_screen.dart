@@ -31,6 +31,26 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final _searchController = TextEditingController();
   String _query = '';
+  String _rawQuery = '';
+
+  bool _isYoutubeVideoUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    final youtubeHost =
+        host == 'youtu.be' ||
+        host == 'youtube.com' ||
+        host.endsWith('.youtube.com');
+    if (!youtubeHost) return false;
+    final videoId = host == 'youtu.be'
+        ? (uri.pathSegments.isEmpty ? null : uri.pathSegments.first)
+        : (uri.queryParameters['v'] ??
+              ((uri.pathSegments.length > 1 &&
+                      ['shorts', 'embed', 'live'].contains(uri.pathSegments[0]))
+                  ? uri.pathSegments[1]
+                  : null));
+    return videoId != null && videoId.isNotEmpty;
+  }
 
   // Required Spotify URLs for Discover placeholders
   static const _genreUrls = [
@@ -361,7 +381,8 @@ class _SearchScreenState extends State<SearchScreen> {
     super.initState();
     _myUid = context.read<AuthProvider>().user?.uid;
     _searchController.addListener(() {
-      setState(() => _query = _searchController.text.trim().toLowerCase());
+      _rawQuery = _searchController.text.trim();
+      setState(() => _query = _rawQuery.toLowerCase());
       _profileSearchTimer?.cancel();
       _searchPlaylistTimer?.cancel();
       _trackSearchTimer?.cancel();
@@ -393,13 +414,19 @@ class _SearchScreenState extends State<SearchScreen> {
         );
         _trackSearchTimer = Timer(const Duration(milliseconds: 400), () async {
           final wanted = _query;
+          final rawWanted = _rawQuery;
+          final youtubeUrl = _isYoutubeVideoUrl(rawWanted);
           final results = _isOnline
-              ? await ApiService.searchTracks(_query)
+              ? youtubeUrl
+                    ? await ApiService.resolveYoutubeTrack(rawWanted).then(
+                        (track) => track == null ? null : <TrackModel>[track],
+                      )
+                    : await ApiService.searchTracks(rawWanted)
               : null;
           if (!mounted) return;
           // Discard a response for a query the user has already moved on
           // from, otherwise results flash in for the wrong text.
-          if (wanted != _query) return;
+          if (wanted != _query || rawWanted != _rawQuery) return;
           setState(() {
             _trackResults = results ?? const [];
             _searching = false;
@@ -667,6 +694,16 @@ class _SearchScreenState extends State<SearchScreen> {
         );
         return;
       }
+      if (fresh.displayName.trim().isEmpty ||
+          fresh.displayName.trim().toLowerCase() == 'playlist') {
+        final genreIndex = _genreUrls.indexOf(url);
+        final artistIndex = _artistUrls.indexOf(url);
+        fresh.name = genreIndex >= 0 && genreIndex < _genreFallbackNames.length
+            ? _genreFallbackNames[genreIndex]
+            : artistIndex >= 0 && artistIndex < _artistFallbackNames.length
+            ? _artistFallbackNames[artistIndex]
+            : p.name;
+      }
       setState(() {
         final gIdx = _genrePlaylists.indexWhere(
           (e) => e.spotifyUrl.split('?').first == url,
@@ -677,6 +714,7 @@ class _SearchScreenState extends State<SearchScreen> {
         );
         if (aIdx >= 0) _artistPlaylists[aIdx] = fresh;
       });
+      await _persistDiscover();
       if (!context.mounted) return;
       Navigator.push(
         context,

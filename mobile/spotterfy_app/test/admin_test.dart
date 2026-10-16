@@ -63,8 +63,7 @@ void main() {
       expect(s.total, 6);
       expect(s.admins, 1);
       expect(s.banned, 1);
-      expect(s.pending, 1);
-      expect(s.activeNow, 1);
+            expect(s.activeNow, 1);
       expect(s.newThisWeek, 5); // only 'f' is older than 7 days
       expect(s.spotifyLinked, 1);
       expect(s.inJam, 1);

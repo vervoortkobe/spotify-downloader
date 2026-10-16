@@ -5,8 +5,8 @@ import 'package:spotterfy_app/providers/admin_provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
-import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_chrome.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 
 /// Admin tools: user stats, search across every account, and moderation.
 ///
@@ -43,46 +43,46 @@ class _AdminScreenState extends State<AdminScreen> {
 
     return HideAppChrome(
       child: Scaffold(
-        backgroundColor: SpotterfyTheme.pageBackground,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          title: Text(
-            'Admin',
-            style: TextStyle(
-              color: SpotterfyTheme.text,
-              fontWeight: FontWeight.w800,
-            ),
+      backgroundColor: SpotterfyTheme.pageBackground,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          'Admin',
+          style: TextStyle(
+            color: SpotterfyTheme.text,
+            fontWeight: FontWeight.w800,
           ),
-          actions: [
-            IconButton(
-              tooltip: 'Reload',
-              icon: Icon(Icons.refresh, color: SpotterfyTheme.text),
-              onPressed: admin.isLoading ? null : () => admin.refresh(),
-            ),
-          ],
         ),
-        body: admin.isLoading && admin.users.isEmpty
-            ? Center(
-                child: CircularProgressIndicator(color: SpotterfyTheme.primary),
-              )
-            : RefreshIndicator(
-                color: SpotterfyTheme.primary,
-                backgroundColor: SpotterfyTheme.surface,
-                onRefresh: () => admin.refresh(),
-                child: CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(child: _statsGrid(admin.stats)),
-                    SliverToBoxAdapter(child: _searchRow(admin)),
-                    SliverToBoxAdapter(child: _filterChips(admin)),
-                    if (admin.error != null)
-                      SliverToBoxAdapter(child: _errorBanner(admin.error!)),
-                    SliverToBoxAdapter(child: _listHeader(admin)),
-                    ..._userSlivers(admin, myUid),
-                    const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                  ],
-                ),
+        actions: [
+          IconButton(
+            tooltip: 'Reload',
+            icon: Icon(Icons.refresh, color: SpotterfyTheme.text),
+            onPressed: admin.isLoading ? null : () => admin.refresh(),
+          ),
+        ],
+      ),
+      body: admin.isLoading && admin.users.isEmpty
+          ? Center(
+              child: CircularProgressIndicator(color: SpotterfyTheme.primary),
+            )
+          : RefreshIndicator(
+              color: SpotterfyTheme.primary,
+              backgroundColor: SpotterfyTheme.surface,
+              onRefresh: () => admin.refresh(),
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _statsGrid(admin.stats)),
+                  SliverToBoxAdapter(child: _searchRow(admin)),
+                  SliverToBoxAdapter(child: _filterChips(admin)),
+                  if (admin.error != null)
+                    SliverToBoxAdapter(child: _errorBanner(admin.error!)),
+                  SliverToBoxAdapter(child: _listHeader(admin)),
+                  ..._userSlivers(admin, myUid),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                ],
               ),
+            ),
       ),
     );
   }

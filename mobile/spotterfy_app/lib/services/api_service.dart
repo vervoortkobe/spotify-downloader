@@ -268,6 +268,34 @@ class ApiService {
     }
   }
 
+  /// Resolves a pasted YouTube video URL into the same track shape used by
+  /// song search, so it can be played and saved from the search results.
+  static Future<TrackModel?> resolveYoutubeTrack(String url) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/resolve-youtube-url'),
+        headers: {..._headers(), 'Content-Type': 'application/json'},
+        body: jsonEncode({'youtubeUrl': url}),
+      );
+      if (response.statusCode != 200) return null;
+      final body = jsonDecode(response.body);
+      if (body is! Map<String, dynamic>) return null;
+      final videoId = body['videoId'] as String? ?? '';
+      if (videoId.isEmpty) return null;
+      return TrackModel(
+        id: 'yt_$videoId',
+        title: body['title'] as String? ?? '',
+        artists: body['channel'] as String? ?? '',
+        cover: body['thumbnail'] as String? ?? '',
+        durationMs: ((body['duration'] as num?) ?? 0).toInt() * 1000,
+        sourceUrl: 'https://www.youtube.com/watch?v=$videoId',
+      );
+    } catch (e) {
+      debugPrint('YouTube URL resolve failed: $e');
+      return null;
+    }
+  }
+
   /// Streams a track to the caller and reports progress as bytes arrive.
   ///
   /// [onProgress] receives `(received, total)`. [total] is `-1` when the server

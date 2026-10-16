@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
@@ -42,6 +43,8 @@ class PlaylistProvider extends ChangeNotifier {
     // Android Auto browses the library through this provider, so hand it a
     // loader here rather than letting the audio handler touch providers.
     AutoLibraryBridge.instance.bindLibrary(() async {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) await ensureLibraryLoaded(uid);
       return AutoLibrarySnapshot(
         own: List.of(_playlists),
         shared: List.of(_sharedPlaylists),
@@ -79,12 +82,18 @@ class PlaylistProvider extends ChangeNotifier {
   PlaylistModel? _currentPlaylist;
   bool _isLoading = false;
   String? _error;
+  String? _loadedUid;
 
   List<PlaylistModel> get playlists => _playlists;
   List<PlaylistModel> get sharedPlaylists => _sharedPlaylists;
   PlaylistModel? get currentPlaylist => _currentPlaylist;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  Future<void> ensureLibraryLoaded(String uid) async {
+    if (_loadedUid == uid) return;
+    await loadPlaylists(uid);
+  }
 
   Future<void> loadPlaylists(String uid, {bool forceRefresh = false}) async {
     List<PlaylistModel> cached = [];
@@ -150,6 +159,7 @@ class PlaylistProvider extends ChangeNotifier {
     }
     _isLoading = false;
     notifyListeners();
+    _loadedUid = uid;
     // Android Auto caches the browse tree it was handed, so an open car screen
     // would keep showing the pre-refresh playlists without this. `libraryReady`
     // also fires the first-notification hook, which is what lets a car that
@@ -344,6 +354,7 @@ class PlaylistProvider extends ChangeNotifier {
     await _saveCachedPlaylists();
     debugPrint('savePlaylist: cache saved, notifying listeners');
     notifyListeners();
+    AutoLibraryBridge.libraryChanged();
     try {
       debugPrint('savePlaylist: attempting cloud write...');
       await _playlistService.savePlaylist(uid, playlist);
@@ -368,6 +379,7 @@ class PlaylistProvider extends ChangeNotifier {
     _currentPlaylist = playlist;
     await _saveCachedPlaylists();
     notifyListeners();
+    AutoLibraryBridge.libraryChanged();
     try {
       await _playlistService.savePlaylist(uid, playlist);
       await _saveCachedPlaylists();
@@ -376,6 +388,40 @@ class PlaylistProvider extends ChangeNotifier {
       debugPrint('updatePlaylist remote error: $e');
     }
     notifyListeners();
+  }
+
+  bool isInLibrary(PlaylistModel playlist) {
+    final url = playlist.spotifyUrl.split('?').first;
+    return [..._playlists, ..._sharedPlaylists].any(
+      (saved) =>
+          saved.id == playlist.id ||
+          (url.isNotEmpty && saved.spotifyUrl.split('?').first == url),
+    );
+  }
+
+  /// Saves a browsed playlist only after an explicit Add to library action.
+  /// The source object belongs to Discover/community data and must not be
+  /// mutated or written back to its original collection.
+  Future<bool> addPlaylistToLibrary(String uid, PlaylistModel playlist) async {
+    await ensureLibraryLoaded(uid);
+    if (isInLibrary(playlist)) return false;
+
+    final url = playlist.spotifyUrl.split('?').first;
+    final saved = PlaylistModel(
+      id: 'saved_${uid}_${playlist.id}',
+      name: playlist.name,
+      owner: playlist.owner,
+      coverUrl: playlist.coverUrl,
+      tracks: List.of(playlist.tracks),
+      source: playlist.source,
+      spotifyUrl: url,
+      creatorUid: uid,
+      sharedWith: const [],
+      isCustom: playlist.isCustom,
+      isUsersOwn: false,
+    );
+    await savePlaylist(uid, saved);
+    return true;
   }
 
   /// Id of the library playlist that collects individually saved songs.
@@ -452,6 +498,7 @@ class PlaylistProvider extends ChangeNotifier {
     if (_currentPlaylist?.id == playlist.id) _currentPlaylist = null;
     await _saveCachedPlaylists();
     notifyListeners();
+    AutoLibraryBridge.libraryChanged();
 
     if (isOwner) {
       final others = await _playlistService.countOtherHolders(playlist.id);
