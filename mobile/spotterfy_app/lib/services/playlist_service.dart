@@ -418,6 +418,10 @@ class PlaylistService {
     }
     late StreamController<List<PlaylistModel>> out;
     final subs = <StreamSubscription<dynamic>>[];
+    final chunkResults = List<Map<String, PlaylistModel>>.generate(
+      streams.length,
+      (_) => <String, PlaylistModel>{},
+    );
     out = StreamController<List<PlaylistModel>>.broadcast(
       onCancel: () async {
         for (final s in subs) {
@@ -425,9 +429,10 @@ class PlaylistService {
         }
       },
     );
-    for (final c in streams) {
+    for (var i = 0; i < streams.length; i++) {
+      final chunkIndex = i;
       subs.add(
-        c.listen(
+        streams[chunkIndex].listen(
           (snap) {
             if (out.isClosed) return;
             final byUrl = <String, PlaylistModel>{};
@@ -437,9 +442,14 @@ class PlaylistService {
                 byUrl[u] = PlaylistModel.fromJson(d.data(), d.id);
               } catch (_) {}
             }
+            chunkResults[chunkIndex] = byUrl;
+            final merged = <String, PlaylistModel>{};
+            for (final result in chunkResults) {
+              merged.addAll(result);
+            }
             out.add(
               cleanUrls
-                  .map((u) => byUrl[u])
+                  .map((u) => merged[u])
                   .whereType<PlaylistModel>()
                   .toList(),
             );
@@ -478,6 +488,7 @@ class PlaylistService {
   Future<PlaylistModel?> fetchDiscoverPlaylistWithCache(
     String spotifyUrl, {
     required Future<PlaylistModel?> Function() fetcher,
+    void Function(PlaylistModel fresh)? onRefreshed,
   }) async {
     final clean = spotifyUrl.split('?').first;
     // Query by field (covers both legacy hashCode docs and new md5 docs)
@@ -494,15 +505,34 @@ class PlaylistService {
           ? 999
           : DateTime.now().difference(ts.toDate()).inHours;
       if (ageHours < 12) return PlaylistModel.fromJson(data, doc.id);
-      if (ageHours < 48) {
-        fetcher().then((fresh) {
-          if (fresh != null) cacheDiscoverPlaylist(fresh);
-        });
-        return PlaylistModel.fromJson(data, doc.id);
-      }
+      // Stale cache: return immediately, refresh in background
+      final cached = PlaylistModel.fromJson(data, doc.id);
+      fetcher().then((fresh) {
+        if (fresh != null) {
+          cacheDiscoverPlaylist(fresh);
+          onRefreshed?.call(fresh);
+        }
+      });
+      return cached;
     }
-    final fresh = await fetcher();
-    if (fresh != null) await cacheDiscoverPlaylist(fresh);
-    return fresh;
+    // No cache: return an empty playlist immediately so the user can start
+    // playing while scraping happens in the background.
+    final placeholder = PlaylistModel(
+      id: 'discover_${clean.hashCode}',
+      name: 'Loading playlist...',
+      owner: '',
+      coverUrl: '',
+      tracks: const [],
+      source: 'spotify',
+      spotifyUrl: clean,
+      creatorUid: '',
+    );
+    fetcher().then((fresh) {
+      if (fresh != null) {
+        cacheDiscoverPlaylist(fresh);
+        onRefreshed?.call(fresh);
+      }
+    });
+    return placeholder;
   }
 }

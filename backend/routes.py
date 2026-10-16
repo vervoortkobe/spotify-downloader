@@ -117,10 +117,21 @@ def _run_scrape_job(input_url, service, progress_job_id):
             else:
                 metadata = client.get_playlist_metadata(item_id)
                 playlist_name = f"{metadata.name} - {metadata.owner or 'Unknown'}"
+
+                # Set total early from metadata so the frontend can show
+                # meaningful progress from the start, even before all tracks
+                # are fetched.
+                expected_total = metadata.track_count or 0
+                scrape_job_progress[progress_job_id].update({'total': expected_total, 'completed': 0})
+                print(f"[Scrape] Job {progress_job_id} expecting {expected_total} Spotify tracks", flush=True)
+
                 raw_tracks = list(client.iter_playlist_tracks(item_id))
 
-                scrape_job_progress[progress_job_id].update({'total': len(raw_tracks), 'completed': 0})
-                print(f"[Scrape] Job {progress_job_id} scraping {len(raw_tracks)} Spotify tracks", flush=True)
+                # Update total to actual count if different from metadata
+                actual_total = len(raw_tracks)
+                if actual_total != expected_total:
+                    print(f"[Scrape] Job {progress_job_id} metadata said {expected_total}, got {actual_total}", flush=True)
+                    scrape_job_progress[progress_job_id]['total'] = actual_total
 
                 def process_track(track, index, total):
                     print(

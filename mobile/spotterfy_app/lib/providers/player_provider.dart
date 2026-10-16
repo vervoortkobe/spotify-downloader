@@ -524,18 +524,27 @@ class PlayerProvider extends ChangeNotifier {
     TrackModel track, {
     Duration startAt = Duration.zero,
   }) async {
+    // The app can be killed while a song is at its final position. Restoring
+    // that exact playhead leaves just_audio at the completed edge, where a
+    // subsequent play request can be accepted without audible playback. Treat
+    // an expired saved position as a fresh start.
+    final resumeAt = track.durationMs > 0 &&
+            startAt.inMilliseconds >= track.durationMs
+        ? Duration.zero
+        : startAt;
     // Local storage files: play directly from device, no backend
     if (_isLocalPath(track.sourceUrl)) {
       final path = track.sourceUrl.replaceFirst('file://', '');
       try {
         await player
-            .setFilePath(path, initialPosition: startAt)
+            .setFilePath(path, initialPosition: resumeAt)
             .timeout(const Duration(seconds: 30));
         await _playUntilAudibleOn(player);
         return true;
       } catch (e) {
         debugPrint('[Player] local file failed: $e');
-        return false;
+        // A restored queue can outlive a file that was moved or deleted. Keep
+        // going through the stream lookup instead of stranding this track.
       }
     }
 
@@ -546,7 +555,7 @@ class PlayerProvider extends ChangeNotifier {
     if (downloaded != null) {
       try {
         await player
-            .setFilePath(downloaded, initialPosition: startAt)
+            .setFilePath(downloaded, initialPosition: resumeAt)
             .timeout(const Duration(seconds: 30));
         await _playUntilAudibleOn(player);
         return true;
@@ -555,7 +564,7 @@ class PlayerProvider extends ChangeNotifier {
       }
     }
     // Radio live streams (icecast etc) play directly, not via backend proxy
-    final primary = track.sourceUrl.isNotEmpty
+    final primary = track.sourceUrl.isNotEmpty && !_isLocalPath(track.sourceUrl)
         ? (isDirectRadioUrl(track.sourceUrl) || track.id.startsWith('radio_')
               ? track.sourceUrl
               : ApiService.streamTrackUrl(track.sourceUrl))
@@ -576,7 +585,7 @@ class PlayerProvider extends ChangeNotifier {
       await player
           .setAudioSource(
             AudioSource.uri(Uri.parse(url)),
-            initialPosition: startAt,
+            initialPosition: resumeAt,
           )
           .timeout(const Duration(seconds: 30));
       await _playUntilAudibleOn(player);
@@ -587,7 +596,7 @@ class PlayerProvider extends ChangeNotifier {
         await player
             .setAudioSource(
               AudioSource.uri(Uri.parse(fallback)),
-              initialPosition: startAt,
+              initialPosition: resumeAt,
             )
             .timeout(const Duration(seconds: 35));
         await _playUntilAudibleOn(player);

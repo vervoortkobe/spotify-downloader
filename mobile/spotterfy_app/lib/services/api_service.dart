@@ -132,15 +132,26 @@ class ApiService {
       // /api/scrape-progress. Each response carries the real completed/total,
       // which is what makes "song 7 of 24" possible instead of a spinner that
       // knows nothing.
-      var sawCompletion = false;
-      for (int i = 0; i < 240; i++) {
+      //
+      // No timeout: large playlists (2000+ tracks) can take many minutes on the
+      // backend. The notification keeps the user informed while we wait.
+      var i = 0;
+      while (true) {
         await Future.delayed(const Duration(milliseconds: 500));
         final progRes = await http.get(
           Uri.parse('$_baseUrl/scrape-progress/$jobId'),
           headers: _headers(json: false),
         );
         _trackDown(progRes.bodyBytes.length);
-        if (progRes.statusCode != 200) continue;
+        if (progRes.statusCode != 200) {
+          i++;
+          if (i % 20 == 0) {
+            debugPrint(
+              'scrapePlaylist progress poll error: ${progRes.statusCode}',
+            );
+          }
+          continue;
+        }
         final prog = jsonDecode(progRes.body) as Map<String, dynamic>;
         final snapshot = ScrapeProgress(
           completed: (prog['completed'] as num?)?.toInt() ?? 0,
@@ -150,20 +161,14 @@ class ApiService {
         onProgress?.call(snapshot);
         if (snapshot.isComplete) {
           debugPrint('scrapePlaylist job complete');
-          sawCompletion = true;
           break;
         }
         if (snapshot.isError) {
           debugPrint('scrapePlaylist job error: $prog');
           return null;
         }
+        i++;
         if (i % 4 == 0) debugPrint('scrapePlaylist progress $i: $prog');
-      }
-      if (!sawCompletion) {
-        // Two minutes without a terminal state. Fetching the result anyway would
-        // either 404 or, worse, return a half-built playlist.
-        debugPrint('scrapePlaylist timed out waiting for $jobId');
-        return null;
       }
       final resultRes = await http.get(
         Uri.parse('$_baseUrl/scrape-result/$jobId'),

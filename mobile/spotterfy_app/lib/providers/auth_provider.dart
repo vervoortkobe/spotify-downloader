@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,6 +41,8 @@ class AuthProvider extends ChangeNotifier {
   UserModel? _user;
   bool _isLoading = true;
   bool _isSigningIn = false;
+  int _authEventGeneration = 0;
+  StreamSubscription? _authSubscription;
 
   UserModel? get user => _user;
   bool get isLoading => _isLoading;
@@ -85,7 +88,10 @@ class AuthProvider extends ChangeNotifier {
     });
 
     // Listen for Firebase auth changes (overwrites cache with fresh data)
-    _authService.authStateChanges.listen((firebaseUser) async {
+    _authSubscription = _authService.authStateChanges.listen((
+      firebaseUser,
+    ) async {
+      final generation = ++_authEventGeneration;
       try {
         if (firebaseUser != null) {
           UserModel? userData;
@@ -94,6 +100,10 @@ class AuthProvider extends ChangeNotifier {
           } catch (_) {
             debugPrint('Firestore read blocked (rules) - keeping cached user');
           }
+          // Auth events can overlap while the Firestore profile read is in
+          // flight. A slow response for an old account must not undo a later
+          // sign-out or account switch.
+          if (generation != _authEventGeneration) return;
 
           if (userData != null) {
             _user = userData;
@@ -114,35 +124,48 @@ class AuthProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint('Auth state listener error: $e');
       }
-      await _saveCachedUser();
+      if (generation != _authEventGeneration) return;
+      await _saveCachedUser(generation: generation);
+      if (generation != _authEventGeneration) return;
       _isLoading = false;
       notifyListeners();
     });
   }
 
-  Future<void> _saveCachedUser() async {
-    if (_user == null) {
-      await SharedPreferences.getInstance().then(
-        (p) => p.remove('cached_user'),
+  Future<void> _saveCachedUser({int? generation}) async {
+    try {
+      final user = _user;
+      final prefs = await SharedPreferences.getInstance();
+      if (generation != null && generation != _authEventGeneration) return;
+      if (user == null) {
+        await prefs.remove('cached_user');
+        return;
+      }
+      await prefs.setString(
+        'cached_user',
+        jsonEncode({
+          'uid': user.uid,
+          'email': user.email,
+          'displayName': user.displayName,
+          'photoUrl': user.photoUrl,
+          'spotifyProfileUrl': user.spotifyProfileUrl,
+          'isAdmin': user.isAdmin,
+          'isApproved': user.isApproved,
+          'hasCompletedOnboarding': user.hasCompletedOnboarding,
+          'createdAt': user.createdAt.toIso8601String(),
+          'lastSpotifySync': user.lastSpotifySync?.toIso8601String(),
+        }),
       );
-      return;
+    } catch (e) {
+      debugPrint('Failed to save cached user: $e');
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      'cached_user',
-      jsonEncode({
-        'uid': _user!.uid,
-        'email': _user!.email,
-        'displayName': _user!.displayName,
-        'photoUrl': _user!.photoUrl,
-        'spotifyProfileUrl': _user!.spotifyProfileUrl,
-        'isAdmin': _user!.isAdmin,
-        'isApproved': _user!.isApproved,
-        'hasCompletedOnboarding': _user!.hasCompletedOnboarding,
-        'createdAt': _user!.createdAt.toIso8601String(),
-        'lastSpotifySync': _user!.lastSpotifySync?.toIso8601String(),
-      }),
-    );
+  }
+
+  @override
+  void dispose() {
+    _authEventGeneration++;
+    _authSubscription?.cancel();
+    super.dispose();
   }
 
   /// Joins Firebase initialisation instead of assuming it already happened.
@@ -189,6 +212,8 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    // Invalidate any profile read still running for the previous account.
+    _authEventGeneration++;
     await _authService.signOut();
     _user = null;
     await _saveCachedUser();

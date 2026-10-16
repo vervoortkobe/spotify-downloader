@@ -68,6 +68,24 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Android Auto car app. Makes Spotterfy selectable from the "All apps"
+             screen / app-list modes and gives a real car UI for browsing playlists
+             (instead of only the system media host). Requires a CarAppService
+             declared below; audio_service's MediaBrowserService covers the
+             notification/player side separately. -->
+        <service
+            android:name=".SpotterfyCarAppService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback"
+            android:label="Spotterfy"
+            android:icon="@mipmap/ic_launcher">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="androidx.car.app.category.MEDIA" />
+            </intent-filter>
+        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

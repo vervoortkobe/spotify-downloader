@@ -11,7 +11,21 @@ class FirebaseService {
   /// wake the app in a process where the splash has not booted yet, and its
   /// browse tree needs Firestore - without this guard that call would race the
   /// splash and lose, failing the whole tree.
-  static Future<void> initialize() => _init ??= _initOnce();
+  static Future<void> initialize() {
+    final current = _init;
+    if (current != null) return current;
+
+    late final Future<void> attempt;
+    attempt = _initOnce().catchError((Object error, StackTrace stack) {
+      // Keep concurrent callers joined to this attempt, but allow the splash
+      // retry action to try again after a transient Firebase initialization
+      // failure instead of re-awaiting the same failed future forever.
+      if (identical(_init, attempt)) _init = null;
+      Error.throwWithStackTrace(error, stack);
+    });
+    _init = attempt;
+    return attempt;
+  }
 
   static Future<void> _initOnce() async {
     await Firebase.initializeApp();

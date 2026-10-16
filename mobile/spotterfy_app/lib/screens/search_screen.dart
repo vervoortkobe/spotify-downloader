@@ -683,6 +683,20 @@ class _SearchScreenState extends State<SearchScreen> {
       final fresh = await _discoverService.fetchDiscoverPlaylistWithCache(
         url,
         fetcher: () => ApiService.scrapePlaylist(url),
+        onRefreshed: (refreshed) {
+          if (!mounted) return;
+          setState(() {
+            final gIdx = _genrePlaylists.indexWhere(
+              (e) => e.spotifyUrl.split('?').first == url,
+            );
+            if (gIdx >= 0) _genrePlaylists[gIdx] = refreshed;
+            final aIdx = _artistPlaylists.indexWhere(
+              (e) => e.spotifyUrl.split('?').first == url,
+            );
+            if (aIdx >= 0) _artistPlaylists[aIdx] = refreshed;
+          });
+          _persistDiscover();
+        },
       );
       if (!mounted) return;
       setState(() => _fetching.remove(url));

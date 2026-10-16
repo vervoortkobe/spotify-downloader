@@ -46,6 +46,14 @@ kotlin {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Android Auto: render a real car app (browsable library / playlists) instead of
+    // just a media session. Lets the app appear in Android Auto's "All apps" and
+    // shows Spotify-style playlist/track grids.
+    implementation("androidx.car.app:app:1.7.0")
+    implementation("androidx.car.app:app-projected:1.7.0")
+    implementation("androidx.media:media:1.7.0")
+    // Optional: maps/locations if you ever add navigation; not needed for media-only.
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
 }
 
 flutter {

@@ -86,6 +86,7 @@ class DownloadService {
 
   Map<String, DownloadEntry> _entries = {};
   bool _loaded = false;
+  Future<void>? _loading;
   Directory? _rootDir;
 
   /// Cached view of what is downloaded. Safe to call synchronously after
@@ -121,9 +122,13 @@ class DownloadService {
 
   /// Loads the index once, pruning entries whose file has since disappeared so
   /// a manually deleted file doesn't leave a phantom "downloaded" badge.
-  Future<void> ensureLoaded() async {
-    if (_loaded) return;
-    _loaded = true;
+  Future<void> ensureLoaded() {
+    if (_loaded) return Future<void>.value();
+    return _loading ??= _loadIndex();
+  }
+
+  Future<void> _loadIndex() async {
+    var loaded = false;
     try {
       final file = await _indexFile();
       Map<String, dynamic> raw = {};
@@ -157,9 +162,15 @@ class DownloadService {
       }
       _entries = parsed;
       if (pruned || migrated > 0) await _persist();
+      loaded = true;
     } catch (e) {
       debugPrint('[Downloads] index load failed: $e');
       _entries = {};
+    } finally {
+      // A transient storage or permission failure should not permanently turn
+      // every download into "not downloaded" for the rest of this process.
+      _loaded = loaded;
+      _loading = null;
     }
   }
 
@@ -385,6 +396,7 @@ class DownloadService {
   void resetForTest() {
     _entries = {};
     _loaded = false;
+    _loading = null;
     _rootDir = null;
   }
 }
