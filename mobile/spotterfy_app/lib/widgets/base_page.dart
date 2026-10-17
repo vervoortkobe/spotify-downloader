@@ -79,8 +79,8 @@ class BasePageScaffold extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  SpotterfyTheme.background.withValues(alpha: 0.95),
-                  SpotterfyTheme.background.withValues(alpha: 0.8),
+                  SpotterfyTheme.pageGradient.first.withValues(alpha: 0.96),
+                  SpotterfyTheme.pageGradient[1].withValues(alpha: 0.82),
                   SpotterfyTheme.background.withValues(alpha: 0.0),
                 ],
               ),

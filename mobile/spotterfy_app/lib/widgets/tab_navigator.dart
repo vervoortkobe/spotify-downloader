@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 
 /// A separate [Navigator] for each bottom-tab.
 ///
@@ -46,7 +47,7 @@ class TabNavigator extends StatelessWidget {
     return Navigator(
       key: navKey,
       onGenerateRoute: (settings) =>
-          MaterialPageRoute<dynamic>(settings: settings, builder: (_) => root),
+          swipeRoute<dynamic>(root, settings: settings),
     );
   }
 }

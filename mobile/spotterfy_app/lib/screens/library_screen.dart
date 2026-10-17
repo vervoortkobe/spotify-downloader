@@ -427,6 +427,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               curTrack != null && p.tracks.any((t) => t.id == curTrack.id);
           return PlaylistCard(
             playlist: p,
+            showOwner: false,
             isActive: isSource,
             isPlaying: isSource && isPlayingNow,
             onTap: () => Navigator.push(

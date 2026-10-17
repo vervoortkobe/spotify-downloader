@@ -23,7 +23,6 @@ import 'package:spotterfy_app/screens/profile_screen.dart';
 class _PlaylistHeader extends StatelessWidget {
   final PlaylistModel playlist;
   final VoidCallback onPlay;
-  final VoidCallback onShuffle;
   final VoidCallback onAddToLibrary;
   final bool canAddToLibrary;
   final bool isAddingToLibrary;
@@ -39,7 +38,6 @@ class _PlaylistHeader extends StatelessWidget {
   const _PlaylistHeader({
     required this.playlist,
     required this.onPlay,
-    required this.onShuffle,
     required this.onAddToLibrary,
     required this.canAddToLibrary,
     required this.isAddingToLibrary,
@@ -79,102 +77,97 @@ class _PlaylistHeader extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: [
               Color.alphaBlend(
-                SpotterfyTheme.primary.withValues(alpha: 0.11),
+                SpotterfyTheme.primary.withValues(alpha: 0.28),
                 SpotterfyTheme.card,
               ),
-              SpotterfyTheme.surface,
+              Color.alphaBlend(
+                SpotterfyTheme.primary.withValues(alpha: 0.08),
+                SpotterfyTheme.surface,
+              ),
             ],
           ),
           border: Border.all(color: SpotterfyTheme.overlay(0.08)),
         ),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              _artwork(cover),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      // "By <owner>" sits directly underneath, so the title
-                      // drops the " - Owner" suffix the scraper adds.
-                      playlist.displayName,
-                      style: TextStyle(
-                        color: SpotterfyTheme.text,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.4,
-                        height: 1.15,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    // No owner line at all for a playlist with no author - the
-                    // curated Discover shelves. "Created by you" would be a lie
-                    // there, and it was the only thing that used to stand in for
-                    // the missing name.
-                    if (playlist.owner.isNotEmpty || isMine)
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _artwork(cover),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                       Text(
-                        playlist.owner.isEmpty
-                            ? 'Created by you'
-                            : 'By ${playlist.owner}',
+                        // "By <owner>" sits directly underneath, so the title
+                        // drops the " - Owner" suffix the scraper adds.
+                        playlist.displayName,
                         style: TextStyle(
-                          color: SpotterfyTheme.mutedDark,
-                          fontSize: 12,
+                          color: SpotterfyTheme.text,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          height: 1.15,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    const SizedBox(height: 8),
-                    _statRow(tracks.length, totalMs, known, downloaded),
-                  ],
+                      const SizedBox(height: 6),
+                      // No owner line at all for a playlist with no author - the
+                      // curated Discover shelves. "Created by you" would be a lie
+                      // there, and it was the only thing that used to stand in for
+                      // the missing name.
+                      if (playlist.owner.isNotEmpty || isMine)
+                        Text(
+                          playlist.owner.isEmpty
+                              ? 'Created by you'
+                              : 'By ${playlist.owner}',
+                          style: TextStyle(
+                            color: SpotterfyTheme.mutedDark,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      const SizedBox(height: 8),
+                      _statRow(tracks.length, totalMs, known, downloaded),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: _PrimaryButton(
-                  icon: Icons.play_arrow_rounded,
-                  label: 'Play',
-                  onTap: onPlay,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: _SecondaryButton(
-                  icon: Icons.shuffle_rounded,
-                  label: 'Shuffle',
-                  onTap: onShuffle,
-                ),
-              ),
-            ],
-          ),
-          if (canAddToLibrary) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: _SecondaryButton(
-                icon: isAddingToLibrary
-                    ? Icons.hourglass_top_rounded
-                    : Icons.library_add_outlined,
-                label: isAddingToLibrary ? 'Adding to your library…' : 'Add to your library',
-                onTap: isAddingToLibrary ? () {} : onAddToLibrary,
-              ),
+              ],
             ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: _PrimaryButton(
+                    icon: Icons.play_arrow_rounded,
+                    label: 'Play',
+                    onTap: onPlay,
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+            ),
+            if (canAddToLibrary) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: _SecondaryButton(
+                  icon: isAddingToLibrary
+                      ? Icons.hourglass_top_rounded
+                      : Icons.library_add_outlined,
+                  label: isAddingToLibrary ? 'Adding to your library…' : 'Add to your library',
+                  onTap: isAddingToLibrary ? () {} : onAddToLibrary,
+                ),
+              ),
+            ],
           ],
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -285,29 +278,47 @@ class _PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: SpotterfyTheme.primary,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          height: 46,
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: const Color(0xFF06120d), size: 24),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xFF06120d),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                  letterSpacing: 0.1,
-                ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: SpotterfyTheme.primary.withValues(alpha: 0.34),
+              blurRadius: 18,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: SpotterfyTheme.primary,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              height: 46,
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: SpotterfyTheme.onAccent, size: 24),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: SpotterfyTheme.onAccent,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -997,63 +1008,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                actions: [
-                  IconButton(
-                    icon: Icon(Icons.playlist_add_check, color: SpotterfyTheme.text),
-                    tooltip: 'Select all',
-                    onPressed: _selectAll,
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.play_arrow, color: SpotterfyTheme.text),
-                    tooltip: 'Play selection',
-                    onPressed: () => _playSelection(context),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Selection actions',
-                    icon: Icon(Icons.more_horiz, color: SpotterfyTheme.text),
-                    color: SpotterfyTheme.surface,
-                    onSelected: (action) {
-                      switch (action) {
-                        case 'download':
-                          _downloadSelectedOrAll(context, wholeList: false);
-                          break;
-                        case 'queue':
-                          _queueSelection(context);
-                          break;
-                        case 'remove':
-                          _deleteDownloadsOfSelection(context, wholeList: false);
-                          break;
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: 'download',
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.download_rounded),
-                          title: Text('Download selection'),
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'queue',
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.queue_music_rounded),
-                          title: Text('Add selection to queue'),
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'remove',
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.delete_outline_rounded),
-                          title: Text('Remove downloads'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 4),
-                ],
+                actions: const [SizedBox(width: 8)],
               )
             : AppBar(
                 backgroundColor: Colors.transparent,
@@ -1081,74 +1036,60 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         ),
                       ),
                     ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Playlist actions',
-                    icon: _syncing
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: SpotterfyTheme.primary,
+                  if (_playlist.isCustom)
+                    IconButton(
+                      icon: Icon(
+                        Icons.share_outlined,
+                        color: SpotterfyTheme.text,
+                        size: 23,
+                      ),
+                      tooltip: 'Share playlist',
+                      onPressed: () => _sharePlaylist(context),
+                    )
+                  else
+                    IconButton(
+                      icon: _syncing
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: SpotterfyTheme.primary,
+                              ),
+                            )
+                          : Icon(
+                              Icons.sync_rounded,
+                              color: SpotterfyTheme.text,
+                              size: 23,
                             ),
-                          )
-                        : Icon(Icons.more_horiz, color: SpotterfyTheme.text),
-                    color: SpotterfyTheme.surface,
-                    onSelected: (action) {
-                      switch (action) {
-                        case 'sync':
-                          _forceSyncTracks(showFeedback: true);
-                          break;
-                        case 'share':
-                          _sharePlaylist(context);
-                          break;
-                        case 'download':
-                          _downloadSelectedOrAll(context, wholeList: true);
-                          break;
-                        case 'remove':
-                          _deleteDownloadsOfSelection(context, wholeList: true);
-                          break;
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      if (!_playlist.isCustom)
-                        const PopupMenuItem(
-                          value: 'sync',
-                          child: ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(Icons.sync_rounded),
-                            title: Text('Check for updates'),
-                          ),
-                        ),
-                      if (_playlist.isCustom)
-                        const PopupMenuItem(
-                          value: 'share',
-                          child: ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(Icons.share_outlined),
-                            title: Text('Share playlist'),
-                          ),
-                        ),
-                      if (_playlist.tracks.isNotEmpty) ...[
-                        const PopupMenuItem(
-                          value: 'download',
-                          child: ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(Icons.download_rounded),
-                            title: Text('Download playlist'),
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'remove',
-                          child: ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(Icons.delete_outline_rounded),
-                            title: Text('Remove downloaded songs'),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                      tooltip: 'Check for updates',
+                      onPressed: _syncing
+                          ? null
+                          : () => _forceSyncTracks(showFeedback: true),
+                    ),
+                  if (_playlist.tracks.isNotEmpty) ...[
+                    IconButton(
+                      icon: Icon(
+                        Icons.download_rounded,
+                        color: SpotterfyTheme.text,
+                        size: 23,
+                      ),
+                      tooltip: 'Download playlist',
+                      onPressed: () =>
+                          _downloadSelectedOrAll(context, wholeList: true),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.delete_outline_rounded,
+                        color: SpotterfyTheme.text,
+                        size: 23,
+                      ),
+                      tooltip: 'Remove downloaded songs',
+                      onPressed: () =>
+                          _deleteDownloadsOfSelection(context, wholeList: true),
+                    ),
+                  ],
+                  const SizedBox(width: 4),
                 ],
               ),
         body: _playlist.tracks.isEmpty
@@ -1215,11 +1156,58 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 child: CustomScrollView(
                   controller: _scrollController,
                   slivers: [
+                    if (_selecting)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _SquareButton(
+                                  icon: Icons.playlist_add_check_rounded,
+                                  tooltip: 'Select all',
+                                  onPressed: _selectAll,
+                                ),
+                                const SizedBox(width: 8),
+                                _SquareButton(
+                                  icon: Icons.play_arrow_rounded,
+                                  tooltip: 'Play selection',
+                                  onPressed: () => _playSelection(context),
+                                ),
+                                const SizedBox(width: 8),
+                                _SquareButton(
+                                  icon: Icons.download_rounded,
+                                  tooltip: 'Download selection',
+                                  onPressed: () => _downloadSelectedOrAll(
+                                    context,
+                                    wholeList: false,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                _SquareButton(
+                                  icon: Icons.queue_music_rounded,
+                                  tooltip: 'Add selection to queue',
+                                  onPressed: () => _queueSelection(context),
+                                ),
+                                const SizedBox(width: 8),
+                                _SquareButton(
+                                  icon: Icons.delete_outline_rounded,
+                                  tooltip: 'Remove downloads',
+                                  onPressed: () => _deleteDownloadsOfSelection(
+                                    context,
+                                    wholeList: false,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     SliverToBoxAdapter(
                       child: _PlaylistHeader(
                         playlist: _playlist,
                         onPlay: _playAll,
-                        onShuffle: _shuffleAll,
                         isMine: isMine,
                         canAddToLibrary:
                             user != null &&
@@ -1300,6 +1288,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                 downloads.states[track.id] ==
                                 DownloadState.downloading,
                             onDownload: () => _toggleDownload(context, track),
+                            emphasizeActions: true,
                             onPlay: _selecting
                                 ? () => _toggleSelection(track)
                                 // The row index is into the *visible* list, so

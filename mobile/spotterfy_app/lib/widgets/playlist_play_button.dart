@@ -88,10 +88,10 @@ class _PlaylistPlayButtonState extends State<PlaylistPlayButton> {
             // Small press-in, so the button visibly acknowledges the tap
             // instead of only changing colour.
             scale: _held ? 0.9 : 1.0,
-            duration: const Duration(milliseconds: 140),
+            duration: const Duration(milliseconds: 240),
             curve: Curves.easeOut,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
+              duration: const Duration(milliseconds: 240),
               curve: Curves.easeOut,
               width: widget.size,
               height: widget.size,

@@ -639,7 +639,7 @@ class _CoverCarouselState extends State<_CoverCarousel> {
   /// Kept small enough that the neighbours (which are further shrunk by
   /// [_inactiveScale]) still reach the screen edge and stay visible in the
   /// peek strip.
-  static const double _viewportFraction = 0.72;
+  static const double _viewportFraction = 0.8;
 
   /// Gap between a cover and the edges of its page, so neighbouring covers
   /// don't touch.
@@ -681,7 +681,7 @@ class _CoverCarouselState extends State<_CoverCarousel> {
         if (!mounted || !_ctrl.hasClients) return;
         _ctrl.animateToPage(
           _current,
-          duration: const Duration(milliseconds: 350),
+          duration: const Duration(milliseconds: 400),
           curve: Curves.easeInOutCubic,
         );
       });
@@ -708,6 +708,7 @@ class _CoverCarouselState extends State<_CoverCarousel> {
           height: side,
           child: PageView.builder(
             controller: _ctrl,
+            physics: const ClampingScrollPhysics(),
             itemCount: widget.tracks.length,
             onPageChanged: (i) {
               if (i == _current) return;
@@ -771,7 +772,7 @@ class _CarouselPage extends StatelessWidget {
         // 0 while centred, 1 once a full page away.
         final d = (pos - index).abs().clamp(0.0, 1.0);
         // Eased so the shrink settles rather than tracking the finger linearly.
-        final e = Curves.easeOutCubic.transform(d);
+        final e = Curves.easeInOutCubic.transform(d);
         // No vertical offset: every cover stays on the same centre line, so the
         // neighbours line up horizontally with the middle (playing) cover
         // instead of sitting slightly lower than it.

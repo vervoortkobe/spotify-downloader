@@ -65,7 +65,7 @@ void main() {
       );
       SpotterfyTheme.apply(emerald);
       expect(SpotterfyTheme.isAmoled, isFalse);
-      expect(SpotterfyTheme.background, const Color(0xFF191414));
+      expect(SpotterfyTheme.background, const Color(0xFF08100B));
 
       SpotterfyTheme.apply(
         const AppPalette(
@@ -179,6 +179,17 @@ void main() {
       );
       // Restore so later tests see the documented default.
       SpotterfyTheme.apply(SpotterfyTheme.palettes.first);
+    });
+
+    test('the page gradient runs from green-tinted to near-black', () {
+      SpotterfyTheme.apply(SpotterfyTheme.palettes.first);
+      final gradient = SpotterfyTheme.pageGradient;
+
+      expect(gradient.first.g, greaterThan(gradient.first.r));
+      expect(
+        gradient.first.computeLuminance(),
+        greaterThan(gradient.last.computeLuminance()),
+      );
     });
 
     test('pageBackground also follows the accent', () {

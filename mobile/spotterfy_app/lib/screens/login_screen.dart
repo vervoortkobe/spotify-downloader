@@ -4,6 +4,7 @@ import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/main_screen.dart';
 import 'package:spotterfy_app/screens/suspended_screen.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -22,10 +23,7 @@ class LoginScreen extends StatelessWidget {
         final target = auth.needsModeration
             ? const SuspendedScreen()
             : const MainScreen();
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => target),
-        );
+        Navigator.pushReplacement(context, swipeRoute(target));
       });
     }
 
@@ -106,7 +104,7 @@ class LoginScreen extends StatelessWidget {
                                         : const MainScreen();
                                     Navigator.pushReplacement(
                                       context,
-                                      MaterialPageRoute(builder: (_) => target),
+                                      swipeRoute(target),
                                     );
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(

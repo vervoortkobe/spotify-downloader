@@ -18,6 +18,7 @@ class PlaylistCard extends StatelessWidget {
   /// Marks the card as the source of the currently playing track.
   final bool isPlaying;
   final bool isActive;
+  final bool showOwner;
 
   const PlaylistCard({
     super.key,
@@ -30,6 +31,7 @@ class PlaylistCard extends StatelessWidget {
     this.trailing,
     this.isPlaying = false,
     this.isActive = false,
+    this.showOwner = true,
   });
 
   @override
@@ -105,7 +107,7 @@ class PlaylistCard extends StatelessWidget {
                   Text(
                     // `sourceLabel` renders the stored slug as a proper name
                     // (Spotify / YouTube / SoundCloud).
-                    playlist.owner.isNotEmpty
+                    showOwner && playlist.owner.isNotEmpty
                         ? '${playlist.tracks.length} tracks • ${playlist.sourceLabel} • by ${playlist.owner}'
                         : '${playlist.tracks.length} tracks • ${playlist.sourceLabel}',
                     style: TextStyle(

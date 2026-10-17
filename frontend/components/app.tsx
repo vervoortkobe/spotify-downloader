@@ -1750,9 +1750,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                                 />
                               </div>
                             ) : streamingTrackId === track.id && isPlaying ? (
-                              <Square className="h-5 w-5 fill-white text-white" />
+                              <Square className="h-4 w-4 fill-[var(--clr-primary)] text-[var(--clr-primary)] drop-shadow-[0_0_6px_var(--clr-glowRgba)]" />
                             ) : (
-                              <Play className="h-5 w-5 fill-white text-white" />
+                              <Play className="h-4 w-4 fill-[var(--clr-primary)] text-[var(--clr-primary)] drop-shadow-[0_0_6px_var(--clr-glowRgba)]" />
                             )}
                           </button>
                         </div>
@@ -1797,9 +1797,9 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                                 />
                               </div>
                             ) : streamingTrackId === track.id && isPlaying ? (
-                              <Square className="h-5 w-5 fill-white text-white" />
+                              <Square className="h-4 w-4 fill-[var(--clr-primary)] text-[var(--clr-primary)] drop-shadow-[0_0_6px_var(--clr-glowRgba)]" />
                             ) : (
-                              <Play className="h-5 w-5 fill-white text-white" />
+                              <Play className="h-4 w-4 fill-[var(--clr-primary)] text-[var(--clr-primary)] drop-shadow-[0_0_6px_var(--clr-glowRgba)]" />
                             )}
                           </button>
                         </div>
@@ -1946,7 +1946,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                           id={`stream-btn-${selectedTrack.id}`}
                           onClick={() => toggleStream(selectedTrack)}
                           disabled={isLoadingStream && streamingTrackId !== selectedTrack.id}
-                          className={`flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${
+                          className={`flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-300 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 shadow-[0_0_15px_var(--clr-glowRgba)] ${
                             streamingTrackId === selectedTrack.id
                               ? "bg-[var(--clr-primaryBg)]/70 hover:bg-[var(--clr-primaryDark)]/80 border-[var(--clr-primaryDark)] text-[var(--clr-primaryTextLight)]"
                               : "bg-[var(--clr-primaryBgLight)]/20 border-[var(--clr-border)] text-zinc-300 hover:bg-zinc-800/80 hover:text-white"

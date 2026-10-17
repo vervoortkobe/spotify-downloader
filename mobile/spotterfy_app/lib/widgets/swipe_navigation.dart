@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
+const pageTransitionDuration = Duration(milliseconds: 400);
+
 class SwipeBackWrapper extends StatefulWidget {
   final Widget child;
   final bool enabled;
@@ -104,10 +106,10 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
 
 class SlidePageRoute extends PageRouteBuilder {
   final Widget child;
-  SlidePageRoute({required this.child})
+  SlidePageRoute({required this.child, super.settings})
     : super(
-        transitionDuration: const Duration(milliseconds: 240),
-        reverseTransitionDuration: const Duration(milliseconds: 200),
+        transitionDuration: pageTransitionDuration,
+        reverseTransitionDuration: pageTransitionDuration,
         pageBuilder: (_, _, _) => child,
         transitionsBuilder: (_, anim, _, c) {
           final tween = Tween(
@@ -126,43 +128,31 @@ class SlidePageRoute extends PageRouteBuilder {
       );
 }
 
-Route<T> swipeRoute<T>(Widget page) => SlidePageRoute(child: page) as Route<T>;
+Route<T> swipeRoute<T>(Widget page, {RouteSettings? settings}) =>
+    SlidePageRoute(child: page, settings: settings) as Route<T>;
 
-/// Vertical "sheet" route used to open the now-playing screen.
-///
-/// Deliberately matches the motion of the queue's `showModalBottomSheet` so
-/// both feel like the same surface rising: 250ms in / 200ms out on
-/// `Curves.decelerate`, sliding up from the bottom edge with **no** fade.
-///
-/// The route is **opaque**: the page is a solid black full-screen page, and the
-/// only motion is this transition. (It used to be non-opaque so the page below
-/// could show through as the page was dragged down, but that made the page look
-/// see-through and stop halfway as it opened.)
-class VerticalSheetRoute extends PageRouteBuilder {
-  final Widget child;
-
-  VerticalSheetRoute({required this.child})
+class NowPlayingPageRoute extends PageRouteBuilder {
+  NowPlayingPageRoute({required Widget child})
     : super(
-        opaque: true,
-        transitionDuration: const Duration(milliseconds: 280),
-        reverseTransitionDuration: const Duration(milliseconds: 220),
+        transitionDuration: pageTransitionDuration,
+        reverseTransitionDuration: pageTransitionDuration,
         pageBuilder: (_, _, _) => child,
-        transitionsBuilder: (_, anim, _, child) {
+        transitionsBuilder: (_, animation, _, child) {
           final position =
               Tween<Offset>(
                 begin: const Offset(0, 1),
                 end: Offset.zero,
               ).animate(
                 CurvedAnimation(
-                  parent: anim,
+                  parent: animation,
                   curve: Curves.easeOutCubic,
                   reverseCurve: Curves.easeInCubic,
                 ),
               );
           final fade = Tween<double>(
-            begin: 0.85,
-            end: 1.0,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut));
+            begin: 0,
+            end: 1,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
           return SlideTransition(
             position: position,
             child: FadeTransition(opacity: fade, child: child),
@@ -171,7 +161,6 @@ class VerticalSheetRoute extends PageRouteBuilder {
       );
 }
 
-/// Opens the now-playing screen with [VerticalSheetRoute] so it rises out of
-/// the mini player (and drops back into it when dismissed).
+/// Opens Now Playing from the bottom while keeping the shared 240 ms timing.
 Route<T> nowPlayingRoute<T>(Widget page) =>
-    VerticalSheetRoute(child: page) as Route<T>;
+    NowPlayingPageRoute(child: page) as Route<T>;

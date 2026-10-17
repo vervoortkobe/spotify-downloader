@@ -25,7 +25,7 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
     super.initState();
     _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
+      duration: const Duration(milliseconds: 240),
     )..repeat();
   }
 

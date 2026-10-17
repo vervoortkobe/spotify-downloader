@@ -212,7 +212,7 @@ class DownloadProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Byte-level progress callback handed to [ApiService.downloadTrack].
   void _onBytes(int received, int total) {
     final track = _activeTrackId == null ? null : _currentActiveTrack;
-    final label = track?.title ?? 'Download';
+    final label = track == null ? 'Download' : _trackNotificationTitle(track);
     final inBatch = _batchTotal > 0;
     // Repainting the notification on every callback is wasteful; only move the
     // bar when the visible percentage actually changes.
@@ -240,12 +240,17 @@ class DownloadProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (_batchTotal > 0) return;
     unawaited(
       NotificationService().showDownloadProgress(
-        title: track.title,
+        title: _trackNotificationTitle(track),
         subtitle: ok ? 'Saved to your device' : 'Download failed',
         isComplete: ok,
         isError: !ok,
       ),
     );
+  }
+
+  String _trackNotificationTitle(TrackModel track) {
+    final artists = track.artists.trim();
+    return artists.isEmpty ? track.title : '${track.title} - $artists';
   }
 
   /// Downloads a list in order, skipping anything already on disk.
@@ -257,7 +262,9 @@ class DownloadProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Re-check up front: a batch where every file vanished externally should
     // re-download, not be skipped as "already have it".
     await verify();
-    _batchLabel = tracks.length == 1 ? tracks.first.title : 'Playlist';
+    _batchLabel = tracks.length == 1
+        ? _trackNotificationTitle(tracks.first)
+        : 'Playlist';
     _batchTotal = tracks.length;
     _batchDone = 0;
     unawaited(

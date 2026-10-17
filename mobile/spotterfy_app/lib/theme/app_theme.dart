@@ -29,7 +29,7 @@ class SpotterfyTheme {
   // unchanged - they were already just reading these names.
   static Color primary = const Color(0xFF1DB954);
   static Color primaryDark = const Color(0xFF1ED760);
-  static Color background = const Color(0xFF191414);
+  static Color background = const Color(0xFF08100B);
   static Color surface = const Color(0xFF1E1E1E);
   static Color card = const Color(0xFF282828);
   static Color text = const Color(0xFFFFFFFF);
@@ -64,15 +64,17 @@ class SpotterfyTheme {
       Colors.white.withValues(alpha: opacity);
 
   /// 10% accent wash, derived so it follows the accent instead of going stale.
-  static Color get primaryBg =>
-      Color.alphaBlend(primary.withValues(alpha: 0.10), background);
+  static Color get primaryBg => Color.alphaBlend(
+    primary.withValues(alpha: 0.10),
+    const Color(0xFF101010),
+  );
 
   /// Canvas colour behind a page.
   ///
   /// Derived from the accent rather than the fixed green-black it used to be, so
   /// the whole surface picks up the chosen palette instead of only the buttons.
   static Color get pageBackground => Color.alphaBlend(
-    primary.withValues(alpha: 0.05),
+    primary.withValues(alpha: 0.08),
     const Color(0xFF060C08),
   );
 
@@ -81,9 +83,9 @@ class SpotterfyTheme {
   /// Used by the main tab background and the login/onboarding waves, which used
   /// to hardcode a green-tinted ramp that ignored the palette entirely.
   static List<Color> get pageGradient => [
-    Color.alphaBlend(primary.withValues(alpha: 0.11), const Color(0xFF071109)),
-    Color.alphaBlend(primary.withValues(alpha: 0.045), const Color(0xFF060D08)),
-    const Color(0xFF040806),
+    Color.alphaBlend(primary.withValues(alpha: 0.24), const Color(0xFF0B1A10)),
+    Color.alphaBlend(primary.withValues(alpha: 0.09), const Color(0xFF071009)),
+    const Color(0xFF030604),
   ];
 
   /// Accents offered by the theme page. Each is checked for legibility against
@@ -136,7 +138,7 @@ class SpotterfyTheme {
       surface = const Color(0xFF0A0A0A);
       card = const Color(0xFF141414);
     } else {
-      background = const Color(0xFF191414);
+      background = const Color(0xFF08100B);
       surface = const Color(0xFF1E1E1E);
       card = const Color(0xFF282828);
     }

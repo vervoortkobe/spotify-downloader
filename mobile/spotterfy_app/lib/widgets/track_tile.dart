@@ -7,20 +7,21 @@ import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
-ButtonStyle _trackActionStyle({bool active = false}) => IconButton.styleFrom(
-  backgroundColor: active
-      ? SpotterfyTheme.primary.withValues(alpha: 0.13)
-      : SpotterfyTheme.overlay(0.06),
-  padding: EdgeInsets.zero,
-  minimumSize: const Size(34, 34),
-  maximumSize: const Size(34, 34),
-  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-  visualDensity: VisualDensity.compact,
-  shape: RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(10),
-    side: BorderSide(color: SpotterfyTheme.overlay(0.1)),
-  ),
-);
+ButtonStyle _trackActionStyle({bool active = false, double size = 34}) =>
+    IconButton.styleFrom(
+      backgroundColor: active
+          ? SpotterfyTheme.primary.withValues(alpha: 0.13)
+          : SpotterfyTheme.overlay(0.06),
+      padding: EdgeInsets.zero,
+      minimumSize: Size(size, size),
+      maximumSize: Size(size, size),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(size / 3),
+        side: BorderSide(color: SpotterfyTheme.overlay(0.1)),
+      ),
+    );
 
 class TrackTile extends StatelessWidget {
   final TrackModel track;
@@ -52,6 +53,7 @@ class TrackTile extends StatelessWidget {
 
   /// Local file path for embedded cover art (storage tracks with empty [track.cover]).
   final String? coverPath;
+  final bool emphasizeActions;
 
   const TrackTile({
     super.key,
@@ -69,11 +71,14 @@ class TrackTile extends StatelessWidget {
     this.isPlaying = false,
     this.progress = 0,
     this.coverPath,
+    this.emphasizeActions = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final bool active = isPlaying;
+    final actionSize = emphasizeActions ? 38.0 : 34.0;
+    final actionGap = emphasizeActions ? 7.0 : 0.0;
     return Dismissible(
       key: ValueKey('track-${track.id}'),
       direction: DismissDirection.horizontal,
@@ -306,21 +311,26 @@ class TrackTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                if (onDownload != null && progress == 0 && !isDownloading)
+                if (onDownload != null && progress == 0 && !isDownloading) ...[
+                  if (emphasizeActions) SizedBox(width: actionGap),
                   IconButton(
                     icon: Icon(
                       isDownloaded ? Icons.download_done : Icons.download,
                       color: isDownloaded
                           ? SpotterfyTheme.primary
                           : SpotterfyTheme.mutedDark,
-                      size: 20,
+                      size: emphasizeActions ? 23 : 20,
                     ),
                     tooltip: isDownloaded
                         ? 'Downloaded — tap to remove'
                         : 'Download',
                     onPressed: onDownload,
-                    style: _trackActionStyle(active: isDownloaded),
+                    style: _trackActionStyle(
+                      active: isDownloaded,
+                      size: actionSize,
+                    ),
                   ),
+                ],
                 if (isDownloading)
                   Padding(
                     padding: EdgeInsets.only(right: 8),
@@ -333,7 +343,8 @@ class TrackTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                if (onSave != null)
+                if (onSave != null) ...[
+                  if (emphasizeActions) SizedBox(width: actionGap),
                   IconButton(
                     icon: Icon(
                       isSaved
@@ -342,20 +353,22 @@ class TrackTile extends StatelessWidget {
                       color: isSaved
                           ? SpotterfyTheme.primary
                           : SpotterfyTheme.mutedDark,
-                      size: 20,
+                      size: emphasizeActions ? 23 : 20,
                     ),
                     tooltip: isSaved ? 'Saved to library' : 'Save to library',
                     onPressed: onSave,
-                    style: _trackActionStyle(active: isSaved),
+                    style: _trackActionStyle(active: isSaved, size: actionSize),
                   ),
+                ],
                 // Queue button
+                if (emphasizeActions) SizedBox(width: actionGap),
                 IconButton(
                   icon: Icon(
                     Icons.queue_music_rounded,
                     color: isSelected
                         ? SpotterfyTheme.primary
                         : SpotterfyTheme.mutedDark,
-                    size: 20,
+                    size: emphasizeActions ? 23 : 20,
                   ),
                   onPressed: () {
                     HapticFeedback.lightImpact();
@@ -370,30 +383,70 @@ class TrackTile extends StatelessWidget {
                       ),
                     );
                   },
-                  style: _trackActionStyle(active: isSelected),
-                ),
-                if (onPlay != null)
-                  IconButton(
-                    icon: Icon(
-                      active
-                          ? Icons.pause_circle_filled
-                          : Icons.play_circle_filled,
-                      color: active
-                          ? SpotterfyTheme.primary
-                          : isSelected
-                          ? SpotterfyTheme.primary
-                          : SpotterfyTheme.mutedDark,
-                      size: 28,
-                    ),
-                    onPressed: onPlay,
-                    style: IconButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(36, 36),
-                      maximumSize: const Size(36, 36),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                    ),
+                  style: _trackActionStyle(
+                    active: isSelected,
+                    size: actionSize,
                   ),
+                ),
+                if (emphasizeActions) SizedBox(width: actionGap),
+                if (onPlay != null)
+                  emphasizeActions
+                      ? Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: SpotterfyTheme.primary,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: SpotterfyTheme.primary.withValues(
+                                  alpha: 0.5,
+                                ),
+                                blurRadius: 16,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child: IconButton(
+                            icon: Icon(
+                              active
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              color: SpotterfyTheme.onAccent,
+                              size: 25,
+                            ),
+                            tooltip: active ? 'Pause' : 'Play',
+                            onPressed: onPlay,
+                            style: IconButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(38, 38),
+                              maximumSize: const Size(38, 38),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        )
+                      : IconButton(
+                          icon: Icon(
+                            active
+                                ? Icons.pause_circle_filled
+                                : Icons.play_circle_filled,
+                            color: active
+                                ? SpotterfyTheme.primary
+                                : isSelected
+                                ? SpotterfyTheme.primary
+                                : SpotterfyTheme.mutedDark,
+                            size: 28,
+                          ),
+                          onPressed: onPlay,
+                          style: IconButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(36, 36),
+                            maximumSize: const Size(36, 36),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
               ],
             ),
           ),

@@ -48,17 +48,27 @@ class HideAppChrome extends StatefulWidget {
 }
 
 class _HideAppChromeState extends State<HideAppChrome> {
+  bool _registered = false;
+
   @override
   void initState() {
     super.initState();
-    // `this` is the State, which is a valid identity for the set and outlives
-    // rebuilds of the child.
-    AppChrome.instance.hideMiniPlayer(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Register after the current build so the ValueListenableBuilder in
+      // MainScreen is not notified while SettingsScreen is mounting.
+      AppChrome.instance.hideMiniPlayer(this);
+      _registered = true;
+    });
   }
 
   @override
   void dispose() {
-    AppChrome.instance.showMiniPlayer(this);
+    if (_registered) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        AppChrome.instance.showMiniPlayer(this);
+      });
+    }
     super.dispose();
   }
 

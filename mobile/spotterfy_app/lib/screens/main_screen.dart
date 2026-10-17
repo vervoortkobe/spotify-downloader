@@ -12,6 +12,7 @@ import 'library_screen.dart';
 import 'yt_search_screen.dart';
 import 'jam_screen.dart';
 import 'package:spotterfy_app/widgets/app_chrome.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -33,14 +34,14 @@ class _MainScreenState extends State<MainScreen>
 
   late final AnimationController _tabCtrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 360),
+    duration: pageTransitionDuration,
     // Start settled, otherwise the first frame would draw the initial tab
     // part-way through the enter transition (40% opacity, offset).
     value: 1.0,
   );
   late final Animation<double> _tabAnim = CurvedAnimation(
     parent: _tabCtrl,
-    curve: Curves.easeOutCubic,
+    curve: Curves.easeInOutCubic,
   );
 
   @override

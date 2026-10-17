@@ -495,20 +495,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 26, 20, 24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            SpotterfyTheme.primary.withValues(alpha: 0.16),
-            SpotterfyTheme.surface.withValues(alpha: 0.6),
+            SpotterfyTheme.primary.withValues(alpha: 0.3),
+            Color.alphaBlend(
+              SpotterfyTheme.primary.withValues(alpha: 0.08),
+              SpotterfyTheme.surface,
+            ),
+            SpotterfyTheme.surface,
           ],
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: SpotterfyTheme.primary.withValues(alpha: 0.22),
+          color: SpotterfyTheme.primary.withValues(alpha: 0.32),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: SpotterfyTheme.primary.withValues(alpha: 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -516,14 +527,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // A profile reads as a portrait, and the centred stack keeps long
           // names from colliding with the edge on a narrow screen.
           Container(
-            width: 96,
-            height: 96,
+            width: 104,
+            height: 104,
             decoration: BoxDecoration(
               color: SpotterfyTheme.surface,
               shape: BoxShape.circle,
               border: Border.all(
                 color: SpotterfyTheme.primary.withValues(alpha: 0.45),
-                width: 2.5,
+                width: 3,
               ),
               image: photoUrl.isNotEmpty
                   ? DecorationImage(
@@ -534,7 +545,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               boxShadow: [
                 BoxShadow(
                   color: SpotterfyTheme.primary.withValues(alpha: 0.22),
-                  blurRadius: 18,
+                  blurRadius: 22,
+                  spreadRadius: 1,
                 ),
               ],
             ),
@@ -563,6 +575,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
             ),
           ],
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: SpotterfyTheme.primary.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: SpotterfyTheme.primary.withValues(alpha: 0.22),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.graphic_eq_rounded,
+                  color: SpotterfyTheme.primary,
+                  size: 15,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'MUSIC PROFILE',
+                  style: TextStyle(
+                    color: SpotterfyTheme.primary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -629,7 +672,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
         color: SpotterfyTheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: SpotterfyTheme.overlay(0.08)),
       ),
       child: Column(
         children: [
@@ -675,23 +719,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: SpotterfyTheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            SpotterfyTheme.primary.withValues(alpha: 0.1),
+            SpotterfyTheme.surface,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: SpotterfyTheme.primary.withValues(alpha: 0.16),
+        ),
       ),
       child: Column(
         children: [
           Text(
             value,
             style: TextStyle(
-              color: SpotterfyTheme.text,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+              color: SpotterfyTheme.primary,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          SizedBox(height: 4),
+          const SizedBox(height: 5),
           Text(
             label,
-            style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+            style: TextStyle(
+              color: SpotterfyTheme.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
