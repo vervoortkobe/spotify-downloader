@@ -8,7 +8,6 @@ import 'package:spotterfy_app/screens/player_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/main.dart';
-import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 
 class MiniPlayer extends StatelessWidget {
@@ -45,140 +44,128 @@ class MiniPlayer extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-      child: Dismissible(
-        key: ValueKey('mini-${track.id}'),
-        direction: DismissDirection.horizontal,
-        dismissThresholds: const {
-          DismissDirection.startToEnd: 0.5,
-          DismissDirection.endToStart: 0.5,
-        },
-      // Swipe right -> previous, swipe left -> next. Returning false snaps the
-      // card back so the mini player never leaves the footer.
-      confirmDismiss: (dir) async {
-        HapticFeedback.lightImpact();
-        if (dir == DismissDirection.startToEnd) {
-          await player.previous();
-        } else {
-          await player.next();
-        }
-        return false;
-      },
-      background: _SwipeRevealBackground(
-        alignment: Alignment.centerLeft,
-        icon: Icons.skip_previous_rounded,
-        label: 'Previous',
-      ),
-      secondaryBackground: _SwipeRevealBackground(
-        alignment: Alignment.centerRight,
-        icon: Icons.skip_next_rounded,
-        label: 'Next',
-      ),
-        child: GestureDetector(
-        onTap: _openPlayer,
-        onVerticalDragEnd: (details) {
-          if ((details.primaryVelocity ?? 0) < -500) {
-            HapticFeedback.mediumImpact();
-            _openPlayer();
+      child: _MiniSwipeShell(
+        dismissKey: ValueKey('mini-${track.id}'),
+        // Swipe right -> previous, swipe left -> next. Returning false snaps the
+        // card back so the mini player never leaves the footer.
+        confirmDismiss: (dir) async {
+          HapticFeedback.lightImpact();
+          if (dir == DismissDirection.startToEnd) {
+            await player.previous();
+          } else {
+            await player.next();
           }
+          return false;
         },
-        // No onDoubleTap here on purpose. A double-tap recogniser shares the
-        // gesture arena with the play/pause button's own tap and deliberately
-        // holds it open for the ~300ms double-tap timeout, so every press had a
-        // visible lag before it registered. Play/pause is a button right there,
-        // so the gesture was redundant as well as slow.
-        child: Container(
-          decoration: BoxDecoration(
-          color: const Color(0xFF121212),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // One row so the text, progress and time share a single baseline
-              // instead of the time squeezing the title on narrow screens.
-              // Padding is symmetric: an earlier "drag handle" strip sat above
-              // the cover with nothing below it to match, which made the card
-              // look top-heavy. It was also misleading - this card only
-              // swipes horizontally, and swipes *up* to open the player.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-                child: Row(
-                  children: [
-                    Hero(
-                      tag: 'mini-cover-${track.id}',
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          width: _coverSize,
-                          height: _coverSize,
-                          color: SpotterfyTheme.surface,
-                          child: _MiniCover(track: track),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            track.title,
-                            style: TextStyle(
-                              color: SpotterfyTheme.text,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              height: 1.15,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            track.artists,
-                            style: TextStyle(
-                              color: SpotterfyTheme.muted,
-                              fontSize: 12,
-                              height: 1.2,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 7),
-                          _MiniProgressRow(durationMs: durMs),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Roomier tap targets with real spacing so they are easy to
-                    // hit without crowding each other. Play/pause is the only
-                    // filled control, so it still reads as the primary one.
-                    _MiniPlayPauseButton(player: player),
-                    if (showQueueButton && player.queue.length > 1) ...[
-                      const SizedBox(width: 6),
-                      // Same translucent chip as the queue button on the
-                      // now-playing page (_CircleControlButton), so the two read
-                      // as one control rather than two different ones.
-                      _MiniIconButton(
-                        icon: Icons.queue_music_rounded,
-                        tooltip: 'Queue',
-                        size: 40,
-                        iconSize: 19,
-                        background: SpotterfyTheme.overlay(0.12),
-                        borderColor: SpotterfyTheme.overlay(0.2),
-                        foreground: SpotterfyTheme.text,
-                        onPressed: () {
-                          HapticFeedback.lightImpact();
-                          showQueueSheet(context, player);
-                        },
-                      ),
-                    ],
-                  ],
-                ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: GestureDetector(
+            onTap: _openPlayer,
+            onVerticalDragEnd: (details) {
+              if ((details.primaryVelocity ?? 0) < -500) {
+                HapticFeedback.mediumImpact();
+                _openPlayer();
+              }
+            },
+            // No onDoubleTap here on purpose. A double-tap recogniser shares the
+            // gesture arena with the play/pause button's own tap and deliberately
+            // holds it open for the ~300ms double-tap timeout, so every press had a
+            // visible lag before it registered. Play/pause is a button right there,
+            // so the gesture was redundant as well as slow.
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF121212),
+                borderRadius: BorderRadius.circular(20),
               ),
-            ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // One row so the text, progress and time share a single baseline
+                  // instead of the time squeezing the title on narrow screens.
+                  // Padding is symmetric: an earlier "drag handle" strip sat above
+                  // the cover with nothing below it to match, which made the card
+                  // look top-heavy. It was also misleading - this card only
+                  // swipes horizontally, and swipes *up* to open the player.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                    child: Row(
+                      children: [
+                        Hero(
+                          tag: 'mini-cover-${track.id}',
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Container(
+                              width: _coverSize,
+                              height: _coverSize,
+                              color: SpotterfyTheme.surface,
+                              child: _MiniCover(track: track),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                track.title,
+                                style: TextStyle(
+                                  color: SpotterfyTheme.text,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.15,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                track.artists,
+                                style: TextStyle(
+                                  color: SpotterfyTheme.muted,
+                                  fontSize: 12,
+                                  height: 1.2,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              _MiniProgressRow(durationMs: durMs),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Roomier tap targets with real spacing so they are easy to
+                        // hit without crowding each other. Play/pause is the only
+                        // filled control, so it still reads as the primary one.
+                        _MiniPlayPauseButton(player: player),
+                        if (showQueueButton && player.queue.length > 1) ...[
+                          const SizedBox(width: 6),
+                          // Same translucent chip as the queue button on the
+                          // now-playing page (_CircleControlButton), so the two read
+                          // as one control rather than two different ones.
+                          _MiniIconButton(
+                            icon: Icons.queue_music_rounded,
+                            tooltip: 'Queue',
+                            size: 40,
+                            iconSize: 19,
+                            background: SpotterfyTheme.overlay(0.12),
+                            borderColor: SpotterfyTheme.overlay(0.2),
+                            foreground: SpotterfyTheme.text,
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              showQueueSheet(context, player);
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -190,6 +177,84 @@ class MiniPlayer extends StatelessWidget {
   }
 }
 
+/// Wraps the card in a Dismissible but draws the prev/next reveal layer
+/// itself. Dismissible's own `background` is clipped to the rectangle the
+/// card has uncovered, so the card's rounded corners would show the screen
+/// behind. This layer sits under the card unclipped, so it shows through
+/// the corners.
+class _MiniSwipeShell extends StatefulWidget {
+  final Key dismissKey;
+  final Future<bool?> Function(DismissDirection) confirmDismiss;
+  final Widget child;
+
+  const _MiniSwipeShell({
+    required this.dismissKey,
+    required this.confirmDismiss,
+    required this.child,
+  });
+
+  @override
+  State<_MiniSwipeShell> createState() => _MiniSwipeShellState();
+}
+
+class _MiniSwipeShellState extends State<_MiniSwipeShell> {
+  DismissDirection _dir = DismissDirection.startToEnd;
+  // The reveal layer has a visible green rim, so it is only shown while the
+  // card is actually displaced. At rest it stays hidden and the card's
+  // anti-aliased corners can't leak a green hairline.
+  bool _active = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final toRight = _dir == DismissDirection.startToEnd;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Opacity(
+              opacity: _active ? 1 : 0,
+              child: _SwipeRevealBackground(
+                alignment: toRight
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight,
+                icon: toRight
+                    ? Icons.skip_previous_rounded
+                    : Icons.skip_next_rounded,
+                label: toRight ? 'Previous' : 'Next',
+              ),
+            ),
+          ),
+          Dismissible(
+            key: widget.dismissKey,
+            direction: DismissDirection.horizontal,
+            dismissThresholds: const {
+              DismissDirection.startToEnd: 0.5,
+              DismissDirection.endToStart: 0.5,
+            },
+            confirmDismiss: widget.confirmDismiss,
+            onUpdate: (details) {
+              final dir = details.direction;
+              final active = details.progress > 0;
+              final dirChanged =
+                  dir != _dir &&
+                  (dir == DismissDirection.startToEnd ||
+                      dir == DismissDirection.endToStart);
+              if (dirChanged || active != _active) {
+                setState(() {
+                  if (dirChanged) _dir = dir;
+                  _active = active;
+                });
+              }
+            },
+            child: widget.child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Progress bar plus elapsed/total time.
 ///
 /// Split out of [MiniPlayer] and driven by `PlayerProvider`'s position and
@@ -197,6 +262,10 @@ class MiniPlayer extends StatelessWidget {
 /// notifier ticks ~5x/second; subscribing the whole mini player to it meant the
 /// cover image, two text lines and two buttons were rebuilt on every tick, on
 /// every screen in the app. Only this row now repaints that often.
+/// Elapsed/total time sitting directly above the progress bar.
+///
+/// Driven by the position and buffered notifiers rather than `context.watch`,
+/// so only this widget repaints on each position tick.
 class _MiniProgressRow extends StatelessWidget {
   final int durationMs;
 
@@ -212,71 +281,79 @@ class _MiniProgressRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final player = context.read<PlayerProvider>();
     final durMs = durationMs;
-    return Row(
-      children: [
-        Expanded(
-          child: ValueListenableBuilder<Duration>(
-            valueListenable: player.positionNotifier,
-            builder: (context, pos, _) {
-              return ValueListenableBuilder<Duration>(
-                valueListenable: player.bufferedNotifier,
-                builder: (context, buffered, _) {
-                  final progress = durMs > 0 ? pos.inMilliseconds / durMs : 0.0;
-                  final bufferedFrac = durMs > 0
-                      ? buffered.inMilliseconds / durMs
-                      : 0.0;
-                  return _MiniProgressBar(
-                    progress: progress.clamp(0.0, 1.0),
-                    buffered: bufferedFrac.clamp(0.0, 1.0),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-        const SizedBox(width: 8),
-        ValueListenableBuilder<Duration>(
-          valueListenable: player.positionNotifier,
-          builder: (context, pos, _) => Text(
-            '${_fmtDuration(pos.inMilliseconds)} / ${_fmtDuration(durMs)}',
-            style: TextStyle(
-              color: SpotterfyTheme.muted,
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              fontFeatures: [FontFeature.tabularFigures()],
-            ),
-          ),
-        ),
-      ],
+    final timeStyle = TextStyle(
+      color: SpotterfyTheme.muted,
+      fontSize: 10,
+      height: 1.2,
+      fontWeight: FontWeight.w500,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
+    return ValueListenableBuilder<Duration>(
+      valueListenable: player.positionNotifier,
+      builder: (context, pos, _) {
+        return ValueListenableBuilder<Duration>(
+          valueListenable: player.bufferedNotifier,
+          builder: (context, buffered, _) {
+            final progress = durMs > 0 ? pos.inMilliseconds / durMs : 0.0;
+            final bufferedFrac = durMs > 0
+                ? buffered.inMilliseconds / durMs
+                : 0.0;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(_fmtDuration(pos.inMilliseconds), style: timeStyle),
+                    Text(_fmtDuration(durMs), style: timeStyle),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                _MiniProgressBar(
+                  progress: progress.clamp(0.0, 1.0),
+                  buffered: bufferedFrac.clamp(0.0, 1.0),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
 
-/// Thin buffered/progress bar used inside the mini player's text column.
+/// Buffered/progress bar used inside the mini player's text column.
 class _MiniProgressBar extends StatelessWidget {
   final double progress;
   final double buffered;
 
   const _MiniProgressBar({required this.progress, required this.buffered});
 
+  static const double _height = 5;
+
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(99),
       child: SizedBox(
-        height: 3,
+        height: _height,
         child: Stack(
           children: [
             Container(color: SpotterfyTheme.muted.withValues(alpha: 0.22)),
             FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: buffered.clamp(0.0, 1.0),
-              child: Container(color: SpotterfyTheme.overlay(0.28), height: 3),
+              child: Container(
+                color: SpotterfyTheme.overlay(0.28),
+                height: _height,
+              ),
             ),
             FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: progress.clamp(0.0, 1.0),
-              child: Container(color: SpotterfyTheme.primary, height: 3),
+              child: Container(color: SpotterfyTheme.primary, height: _height),
             ),
           ],
         ),
@@ -407,6 +484,7 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
 }
 
 /// Revealed underneath the mini player while dragging it sideways.
+/// Revealed underneath the mini player while dragging it sideways.
 class _SwipeRevealBackground extends StatelessWidget {
   final Alignment alignment;
   final IconData icon;
@@ -419,49 +497,44 @@ class _SwipeRevealBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: DecoratedBox(
-        // Paint every pixel behind the moving card. The side gutters blend into
-        // the app canvas instead of exposing live page content while swiping.
-        decoration: BoxDecoration(gradient: AppBackground.gradient),
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF121212),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          alignment: alignment,
-          // Match the card inset so the action panel sits directly under it.
-          padding: const EdgeInsets.symmetric(horizontal: 22),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (alignment == Alignment.centerRight) ...[
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: SpotterfyTheme.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Icon(icon, color: SpotterfyTheme.primary, size: 24),
-              if (alignment == Alignment.centerLeft) ...[
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: SpotterfyTheme.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+    // Lighter than the card (0xFF121212) so the card's rounded corners read
+    // against it, with a green rim. The rim follows the same 20px radius as
+    // the card, so it traces the revealed area cleanly.
+    return Container(
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F1F1F),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: SpotterfyTheme.primary, width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (alignment == Alignment.centerRight) ...[
+            Text(
+              label,
+              style: TextStyle(
+                color: SpotterfyTheme.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Icon(icon, color: SpotterfyTheme.primary, size: 24),
+          if (alignment == Alignment.centerLeft) ...[
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: SpotterfyTheme.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

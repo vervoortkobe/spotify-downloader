@@ -122,64 +122,76 @@ class _AppBottomNavState extends State<AppBottomNav> {
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         ),
         child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF121212),
-            border: Border(
-              top: BorderSide(
-                color: Colors.white.withValues(alpha: 0.08),
-                width: 0.5,
+          color: Colors.black,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF121212),
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+              child: NavigationBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.18),
+                selectedIndex: widget.currentIndex.clamp(0, 3),
+                // Reselecting the tab you are already on pops that tab back to
+                // its root, so a pushed sub-page is never a dead end.
+                onDestinationSelected: (i) {
+                  if (i == widget.currentIndex) {
+                    widget.onReselect?.call(i);
+                  } else {
+                    widget.onSelect(i);
+                  }
+                },
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                destinations: [
+                  NavigationDestination(
+                    icon: Icon(
+                      Icons.explore_outlined,
+                      color: SpotterfyTheme.text,
+                    ),
+                    selectedIcon: Icon(
+                      Icons.explore,
+                      color: SpotterfyTheme.text,
+                    ),
+                    label: 'Discover',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.search, color: SpotterfyTheme.text),
+                    selectedIcon: Icon(
+                      Icons.search,
+                      color: SpotterfyTheme.text,
+                    ),
+                    label: 'Search',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(
+                      Icons.library_music_outlined,
+                      color: SpotterfyTheme.text,
+                    ),
+                    selectedIcon: Icon(
+                      Icons.library_music,
+                      color: SpotterfyTheme.text,
+                    ),
+                    label: 'Library',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(
+                      Icons.forum_outlined,
+                      color: SpotterfyTheme.text,
+                    ),
+                    selectedIcon: Icon(Icons.forum, color: SpotterfyTheme.text),
+                    label: 'Chat',
+                  ),
+                ],
               ),
             ),
-          ),
-          child: NavigationBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.15),
-            selectedIndex: widget.currentIndex.clamp(0, 3),
-              // Reselecting the tab you are already on pops that tab back to
-              // its root, so a pushed sub-page is never a dead end.
-            onDestinationSelected: (i) {
-              if (i == widget.currentIndex) {
-                widget.onReselect?.call(i);
-              } else {
-                widget.onSelect(i);
-              }
-            },
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            destinations: [
-                NavigationDestination(
-                  icon: Icon(
-                    Icons.explore_outlined,
-                    color: SpotterfyTheme.text,
-                  ),
-                  selectedIcon: Icon(
-                    Icons.explore,
-                    color: SpotterfyTheme.text,
-                  ),
-                  label: 'Discover',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.search, color: SpotterfyTheme.text),
-                  selectedIcon: Icon(Icons.search, color: SpotterfyTheme.text),
-                  label: 'Search',
-                ),
-                NavigationDestination(
-                  icon: Icon(
-                    Icons.library_music_outlined,
-                    color: SpotterfyTheme.text,
-                  ),
-                  selectedIcon: Icon(
-                    Icons.library_music,
-                    color: SpotterfyTheme.text,
-                  ),
-                  label: 'Library',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.forum_outlined, color: SpotterfyTheme.text),
-                  selectedIcon: Icon(Icons.forum, color: SpotterfyTheme.text),
-                  label: 'Chat',
-                ),
-            ],
           ),
         ),
       ),
