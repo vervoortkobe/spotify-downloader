@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/social_provider.dart';
 import 'package:spotterfy_app/providers/jam_provider.dart';
+import 'package:spotterfy_app/providers/playlist_provider.dart';
+import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
 import 'package:spotterfy_app/screens/suspended_screen.dart';
 import 'package:spotterfy_app/screens/onboarding_screen.dart';
@@ -389,9 +391,11 @@ class _AuthGateState extends State<_AuthGate> {
       // Deferred: syncUid calls notifyListeners, which must not happen during
       // build.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
+        if (!mounted || context.read<AuthProvider>().user?.uid != uid) return;
         context.read<SocialProvider>().syncUid(uid);
         context.read<JamProvider>().syncUid(uid);
+        context.read<PlaylistProvider>().syncUid(uid);
+        unawaited(context.read<PlayerProvider>().syncUid(uid));
       });
     }
     return _targetFor(auth);
@@ -407,6 +411,6 @@ class _AuthGateState extends State<_AuthGate> {
     // Settings, because routing admins *into* the panel meant they could not use
     // the app at all - and it made "view this user's profile" from the panel a
     // dead end with no way back.
-    return const MainScreen();
+    return MainScreen(key: ValueKey('main-${auth.user!.uid}'));
   }
 }

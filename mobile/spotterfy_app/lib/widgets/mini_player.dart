@@ -303,12 +303,12 @@ class _MiniProgressRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    '${_fmtDuration(pos.inMilliseconds)} - ${_fmtDuration(durMs)}',
-                    style: timeStyle,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(_fmtDuration(pos.inMilliseconds), style: timeStyle),
+                    Text(_fmtDuration(durMs), style: timeStyle),
+                  ],
                 ),
                 const SizedBox(height: 2),
                 _MiniProgressBar(

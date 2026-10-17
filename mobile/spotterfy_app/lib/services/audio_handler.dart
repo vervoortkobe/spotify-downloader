@@ -214,12 +214,17 @@ class SpotterfyAudioHandler extends BaseAudioHandler
 
   void setQueue(List<TrackModel> tracks, {int startIndex = 0}) {
     _tracks = List.from(tracks);
-    _index = startIndex.clamp(0, _tracks.length - 1);
+    _index = _tracks.isEmpty ? -1 : startIndex.clamp(0, _tracks.length - 1);
     queue.add(_tracks.map(_toMediaItem).toList());
     if (_tracks.isNotEmpty) {
       mediaItem.add(
         _toMediaItem(_tracks[_index]).copyWith(duration: _duration),
       );
+    } else {
+      mediaItem.add(null);
+      _position = Duration.zero;
+      _buffered = Duration.zero;
+      _duration = Duration.zero;
     }
     AutoLibraryBridge.instance.updatePlaybackState(
       _tracks,
@@ -235,6 +240,19 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     // and reading that for a few hundred queued files before publishing the
     // current one left the cover blank for seconds.
     _publishCurrentArt();
+  }
+
+  void clearSession() {
+    _tracks = [];
+    _index = -1;
+    _position = Duration.zero;
+    _buffered = Duration.zero;
+    _duration = Duration.zero;
+    _isPlaying = false;
+    queue.add(const []);
+    mediaItem.add(null);
+    AutoLibraryBridge.instance.updatePlaybackState(_tracks, null);
+    _markDirty(force: true);
   }
 
   /// Publishes the now-playing item again, this time with artwork resolved.

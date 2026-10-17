@@ -83,34 +83,70 @@ class PlaylistProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   String? _loadedUid;
+  String? _activeUid;
+  String? _loadingUid;
+  int _loadGeneration = 0;
 
   List<PlaylistModel> get playlists => _playlists;
   List<PlaylistModel> get sharedPlaylists => _sharedPlaylists;
   PlaylistModel? get currentPlaylist => _currentPlaylist;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  String? get activeUid => _activeUid;
+
+  void syncUid(String? uid) {
+    if (_activeUid == uid) return;
+    _activeUid = uid;
+    _loadedUid = null;
+    _loadingUid = null;
+    _loadGeneration++;
+    _playlists = [];
+    _sharedPlaylists = [];
+    _currentPlaylist = null;
+    _isLoading = false;
+    _error = null;
+    notifyListeners();
+    AutoLibraryBridge.libraryChanged();
+    if (uid != null) unawaited(loadPlaylists(uid));
+  }
 
   Future<void> ensureLibraryLoaded(String uid) async {
-    if (_loadedUid == uid) return;
+    if (_loadedUid == uid || _loadingUid == uid) return;
     await loadPlaylists(uid);
   }
 
   Future<void> loadPlaylists(String uid, {bool forceRefresh = false}) async {
+    if (!forceRefresh && _loadingUid == uid) return;
+    if (_activeUid != uid) {
+      _activeUid = uid;
+      _loadedUid = null;
+      _loadingUid = null;
+      _loadGeneration++;
+      _playlists = [];
+      _sharedPlaylists = [];
+      _currentPlaylist = null;
+    }
+    final generation = _loadGeneration;
+    _loadingUid = uid;
+    _isLoading = true;
+    notifyListeners();
     List<PlaylistModel> cached = [];
     if (!forceRefresh) {
       try {
-        await _loadCachedPlaylists();
-        cached = _playlists;
-        if (_playlists.isNotEmpty) {
-          notifyListeners(); // Show cache immediately
-        }
-      } catch (_) {}
+        cached = await _loadCachedPlaylists(uid);
+      } catch (e) {
+        debugPrint('loading cached playlists failed: $e');
+      }
+      if (generation != _loadGeneration) return;
+      _playlists = cached;
+      if (_playlists.isNotEmpty) notifyListeners(); // Show cache immediately
     }
 
-    _isLoading = cached.isEmpty;
-    notifyListeners();
+    var remoteLoaded = false;
     try {
       final remotePlaylists = await _playlistService.getUserPlaylists(uid);
+      if (generation != _loadGeneration) return;
+      remoteLoaded = true;
       // Merge: prefer remote, but keep locally-cached playlists that are
       // missing remotely (created offline, sync failed, or deleted in console).
       final merged = <PlaylistModel>[...remotePlaylists];
@@ -128,6 +164,7 @@ class PlaylistProvider extends ChangeNotifier {
       // cloud, so a console-deleted playlist is restored from the device cache.
       // Runs on every load (app start, pull-to-refresh). Best-effort per item.
       for (final m in missingRemote) {
+        if (generation != _loadGeneration) return;
         try {
           if (m.tracks.isEmpty) {
             final fileTracks = await _playlistService.loadCachedTracks(
@@ -151,15 +188,20 @@ class PlaylistProvider extends ChangeNotifier {
         debugPrint('getSharedPlaylists failed (non-fatal): $e');
         _sharedPlaylists = [];
       }
-      await _saveCachedPlaylists();
+      if (generation != _loadGeneration) return;
+      await _saveCachedPlaylists(uid);
     } catch (e) {
+      if (generation != _loadGeneration) return;
       if (_playlists.isEmpty) {
         _error = 'Failed to load playlists';
       }
     }
     _isLoading = false;
+    if (generation == _loadGeneration && _loadingUid == uid) {
+      _loadingUid = null;
+    }
     notifyListeners();
-    _loadedUid = uid;
+    _loadedUid = remoteLoaded ? uid : null;
     // Android Auto caches the browse tree it was handed, so an open car screen
     // would keep showing the pre-refresh playlists without this. `libraryReady`
     // also fires the first-notification hook, which is what lets a car that
@@ -173,22 +215,25 @@ class PlaylistProvider extends ChangeNotifier {
     AutoLibraryBridge.libraryChanged();
   }
 
-  Future<void> _saveCachedPlaylists() async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _saveCachedPlaylists([String? uid]) async {
+    final cacheUid = uid ?? _activeUid;
+    if (cacheUid == null) return;
     final data = _playlists.map((p) => p.toCache()).toList();
     // Encode on background isolate - large track arrays can be MBs
     final encoded = await compute(_encodePlaylistsIsolate, data);
-    await prefs.setString('cached_playlists_v3', encoded);
+    if (_activeUid != cacheUid) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (_activeUid != cacheUid) return;
+    await prefs.setString('cached_playlists_v3_$cacheUid', encoded);
   }
 
-  Future<void> _loadCachedPlaylists() async {
+  Future<List<PlaylistModel>> _loadCachedPlaylists(String uid) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('cached_playlists');
-    await prefs.remove('cached_playlists_v2');
-    final cached = prefs.getString('cached_playlists_v3');
-    if (cached == null) return;
+    final cached = prefs.getString('cached_playlists_v3_$uid');
+    if (cached == null) return [];
     // Decode + map off UI thread
-    _playlists = await compute(_parsePlaylistsIsolate, cached);
+    final playlists = await compute(_parsePlaylistsIsolate, cached);
+    return playlists.where((playlist) => playlist.creatorUid == uid).toList();
   }
 
   bool hasPlaylistWithUrl(String spotifyUrl) {

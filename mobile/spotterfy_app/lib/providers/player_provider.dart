@@ -39,10 +39,14 @@ class PlayerProvider extends ChangeNotifier {
   /// it so the queue/track are on disk-backed state before they are published
   /// to the media session.
   Future<void>? _stateLoadFuture;
+  String? _syncedUid;
+  int _uidSyncGeneration = 0;
+  int _accountPlaybackGeneration = 0;
   Duration _duration = Duration.zero;
   Duration _buffered = Duration.zero;
 
   TrackModel? get currentTrack => _currentTrack;
+  bool isSyncedTo(String uid) => _syncedUid == uid;
   List<TrackModel> get queue => _queue;
   List<TrackModel> get recentlyPlayed => List.unmodifiable(_recentlyPlayed);
   int get currentIndex => _currentIndex;
@@ -71,6 +75,69 @@ class PlayerProvider extends ChangeNotifier {
   bool get hasQueue => _queue.isNotEmpty;
   bool get hasNext => _queue.isNotEmpty && _currentIndex < _queue.length - 1;
   bool get hasPrevious => _queue.isNotEmpty && _currentIndex > 0;
+
+  Future<void> syncUid(String? uid) async {
+    final generation = ++_uidSyncGeneration;
+    await _stateLoadFuture;
+    if (generation != _uidSyncGeneration || _syncedUid == uid) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (generation != _uidSyncGeneration) return;
+    final hasRestoredState = _queue.isNotEmpty || _recentlyPlayed.isNotEmpty;
+    final savedUid = prefs.getString('player_state_uid');
+    final accountChanged =
+        (_syncedUid != null && _syncedUid != uid) ||
+        (uid == null && hasRestoredState) ||
+        (hasRestoredState && savedUid != uid);
+
+    if (accountChanged) {
+      await _clearAccountPlayback(prefs);
+      if (generation != _uidSyncGeneration) return;
+    }
+    _syncedUid = uid;
+    if (uid == null) {
+      await prefs.remove('player_state_uid');
+    } else if (_queue.isNotEmpty) {
+      await prefs.setString('player_state_uid', uid);
+    }
+    notifyListeners();
+  }
+
+  Future<void> _clearAccountPlayback(SharedPreferences prefs) async {
+    _accountPlaybackGeneration++;
+    _radioDriftTimer?.cancel();
+    _radioDriftTimer = null;
+    await _cancelCrossfade();
+    await _player.stop();
+    final activePlay = _activePlay;
+    if (activePlay != null) await activePlay;
+    await _player.stop();
+    _queue = [];
+    _currentIndex = -1;
+    _currentTrack = null;
+    _recentlyPlayed = [];
+    _isPlaying = false;
+    _starting = false;
+    _pauseRequested = false;
+    _pendingToggles = 0;
+    _completed = false;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _buffered = Duration.zero;
+    _radioMaxListened = Duration.zero;
+    positionNotifier.value = Duration.zero;
+    bufferedNotifier.value = Duration.zero;
+    durationNotifier.value = Duration.zero;
+    audioHandler?.clearSession();
+    audioHandler?.stop();
+    await prefs.remove('player_queue');
+    await prefs.remove('player_current_index');
+    await prefs.remove('player_was_playing');
+    await prefs.remove('player_position_ms');
+    await prefs.remove('player_recently_played');
+    await prefs.remove('player_state_uid');
+    notifyListeners();
+  }
 
   bool _isRadioUrl(String url) {
     final u = url.toLowerCase();
@@ -470,7 +537,9 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _playTrack(TrackModel track, {List<TrackModel>? queue}) async {
+    final generation = _accountPlaybackGeneration;
     await _cancelCrossfade();
+    if (generation != _accountPlaybackGeneration) return;
     if (queue != null) {
       _queue = List.from(queue);
       _currentIndex = queue.indexWhere((e) => e.id == track.id);
@@ -505,6 +574,7 @@ class PlayerProvider extends ChangeNotifier {
     _handleRadioDrift();
     notifyListeners();
     await ensureAudioHandler();
+    if (generation != _accountPlaybackGeneration) return;
     _bindHandler();
     final h = audioHandler;
     if (h != null) {
@@ -520,6 +590,10 @@ class PlayerProvider extends ChangeNotifier {
       debugPrint('[Player] audioHandler is null — notification will not show');
     }
     final loaded = await _loadInto(_player, track);
+    if (generation != _accountPlaybackGeneration) {
+      await _player.stop();
+      return;
+    }
     if (!loaded) {
       // Every source failed: don't leave the UI showing a track that isn't
       // audible. `_onTrackStarted` is skipped so `_isPlaying` stays false.
@@ -547,8 +621,8 @@ class PlayerProvider extends ChangeNotifier {
     // that exact playhead leaves just_audio at the completed edge, where a
     // subsequent play request can be accepted without audible playback. Treat
     // an expired saved position as a fresh start.
-    final resumeAt = track.durationMs > 0 &&
-            startAt.inMilliseconds >= track.durationMs
+    final resumeAt =
+        track.durationMs > 0 && startAt.inMilliseconds >= track.durationMs
         ? Duration.zero
         : startAt;
     // Local storage files: play directly from device, no backend
@@ -1198,7 +1272,10 @@ class PlayerProvider extends ChangeNotifier {
       if (recentJson != null) {
         final recentData = jsonDecode(recentJson) as List<dynamic>;
         _recentlyPlayed = recentData
-            .map((data) => TrackModel.fromJson(Map<String, dynamic>.from(data as Map)))
+            .map(
+              (data) =>
+                  TrackModel.fromJson(Map<String, dynamic>.from(data as Map)),
+            )
             .toList();
       }
       final queueJson = prefs.getString('player_queue');
@@ -1245,11 +1322,14 @@ class PlayerProvider extends ChangeNotifier {
         await prefs.setInt('player_current_index', _currentIndex);
         await prefs.setBool('player_was_playing', _isPlaying);
         await prefs.setInt('player_position_ms', _position.inMilliseconds);
+        final uid = _syncedUid;
+        if (uid != null) await prefs.setString('player_state_uid', uid);
       } else {
         await prefs.remove('player_queue');
         await prefs.remove('player_current_index');
         await prefs.remove('player_was_playing');
         await prefs.remove('player_position_ms');
+        await prefs.remove('player_state_uid');
       }
     } catch (e) {
       debugPrint('[Player] Failed to save state: $e');

@@ -212,8 +212,9 @@ class _LibraryScreenState extends State<LibraryScreen>
     if (!mounted) return;
     final auth = context.read<AuthProvider>();
     final prov = context.read<PlaylistProvider>();
-    if (auth.user != null && prov.playlists.isEmpty && !prov.isLoading) {
-      await prov.loadPlaylists(auth.user!.uid);
+    final uid = auth.user?.uid;
+    if (uid != null) {
+      await prov.ensureLibraryLoaded(uid);
     }
   }
 
@@ -234,6 +235,7 @@ class _LibraryScreenState extends State<LibraryScreen>
 
   @override
   Widget build(BuildContext context) {
+    final uid = context.watch<AuthProvider>().user?.uid;
     return BasePageScaffold(
       searchController: _searchController,
       searchHint: 'Search playlists or storage',
@@ -282,7 +284,10 @@ class _LibraryScreenState extends State<LibraryScreen>
               controller: _tabController,
               physics: const ClampingScrollPhysics(),
               children: [
-                _playlistsTab(context.watch<PlaylistProvider>()),
+                _playlistsTab(
+                  context.watch<PlaylistProvider>(),
+                  expectedUid: uid,
+                ),
                 _storageTab(),
               ],
             ),
@@ -324,7 +329,12 @@ class _LibraryScreenState extends State<LibraryScreen>
     return out;
   }
 
-  Widget _playlistsTab(PlaylistProvider prov) {
+  Widget _playlistsTab(PlaylistProvider prov, {required String? expectedUid}) {
+    if (expectedUid == null || prov.activeUid != expectedUid) {
+      return Center(
+        child: CircularProgressIndicator(color: SpotterfyTheme.primary),
+      );
+    }
     // "My library" is both what you created and what was shared with you, so
     // both lists are shown here. Ownership is what decides what deleting does.
     var list = [...prov.playlists, ...prov.sharedPlaylists];

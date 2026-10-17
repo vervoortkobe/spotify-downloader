@@ -79,19 +79,17 @@ class _MainScreenState extends State<MainScreen>
   /// claim the same ones - "Duplicate GlobalKeys detected in widget
   /// tree". Instance keys die with the screen, so each screen mints its
   /// own and no two live elements ever share a key.
-  late final List<GlobalKey<NavigatorState>> _tabKeys =
-      List.generate(_tabs.length, (_) => GlobalKey<NavigatorState>());
+  late final List<GlobalKey<NavigatorState>> _tabKeys = List.generate(
+    _tabs.length,
+    (_) => GlobalKey<NavigatorState>(),
+  );
 
   // Keep each Navigator widget instance stable while the transition animates.
   // Recreating it in every animation frame rebuilt heavy tab roots such as
   // Discover and made the slide stutter on lower-powered phones.
   late final List<Widget> _tabNavigators = List.generate(
     _tabs.length,
-    (i) => TabNavigator(
-      tabIndex: i,
-      navKey: _tabKeys[i],
-      root: _tabs[i],
-    ),
+    (i) => TabNavigator(tabIndex: i, navKey: _tabKeys[i], root: _tabs[i]),
   );
 
   /// Nav destination tapped while that tab is already showing.
@@ -107,7 +105,9 @@ class _MainScreenState extends State<MainScreen>
     if (i == _currentIndex || i < 0 || i >= _tabs.length) return;
     // Navbar navigation returns the current tab to its root. This avoids
     // restoring a nested Settings/Profile page when the user comes back.
-    tabNavController.navigatorOf(_currentIndex)?.popUntil((route) => route.isFirst);
+    tabNavController
+        .navigatorOf(_currentIndex)
+        ?.popUntil((route) => route.isFirst);
     setState(() {
       _slideDir = i > _currentIndex ? 1 : -1;
       _leavingIndex = _currentIndex;
@@ -275,7 +275,11 @@ class _MainMiniPlayerWrapper extends StatelessWidget {
         if (!AppChrome.instance.miniPlayerVisible) {
           return const SizedBox.shrink();
         }
+        final uid = context.watch<AuthProvider>().user?.uid;
         final player = context.watch<PlayerProvider>();
+        if (uid == null || !player.isSyncedTo(uid)) {
+          return const SizedBox.shrink();
+        }
         if (player.currentTrack == null) return const SizedBox.shrink();
         return const SafeArea(top: false, child: MiniPlayer());
       },
