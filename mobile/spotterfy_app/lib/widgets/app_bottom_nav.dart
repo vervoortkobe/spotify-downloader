@@ -117,33 +117,45 @@ class _AppBottomNavState extends State<AppBottomNav> {
       onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
       onHorizontalDragEnd: _handleSwipe,
       child: NavigationBarTheme(
-        data: NavigationBarThemeData(height: 80),
-        // Rounded top corners so the bar reads as a floating card like the
-        // mini player above it, instead of a hard strip welded to the edge.
-        child: ColoredBox(
-          // The clipped corner pixels show the page canvas, not Scaffold's
-          // theme/default background leaking through behind the navbar.
-          color: SpotterfyTheme.background,
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: NavigationBar(
-              backgroundColor: const Color(0xFF121212),
-              indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.15),
-              selectedIndex: widget.currentIndex.clamp(0, 3),
-              // Reselecting the tab you are already on pops that tab back to its
-              // root, so a pushed sub-page is never a dead end.
-              onDestinationSelected: (i) {
-                if (i == widget.currentIndex) {
-                  widget.onReselect?.call(i);
-                } else {
-                  widget.onSelect(i);
-                }
-              },
-              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-              destinations: [
+        data: NavigationBarThemeData(
+          height: 64,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF121212),
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withValues(alpha: 0.08),
+                width: 0.5,
+              ),
+            ),
+          ),
+          child: NavigationBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.15),
+            selectedIndex: widget.currentIndex.clamp(0, 3),
+              // Reselecting the tab you are already on pops that tab back to
+              // its root, so a pushed sub-page is never a dead end.
+            onDestinationSelected: (i) {
+              if (i == widget.currentIndex) {
+                widget.onReselect?.call(i);
+              } else {
+                widget.onSelect(i);
+              }
+            },
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            destinations: [
                 NavigationDestination(
-                  icon: Icon(Icons.explore_outlined, color: SpotterfyTheme.text),
-                  selectedIcon: Icon(Icons.explore, color: SpotterfyTheme.text),
+                  icon: Icon(
+                    Icons.explore_outlined,
+                    color: SpotterfyTheme.text,
+                  ),
+                  selectedIcon: Icon(
+                    Icons.explore,
+                    color: SpotterfyTheme.text,
+                  ),
                   label: 'Discover',
                 ),
                 NavigationDestination(
@@ -167,8 +179,7 @@ class _AppBottomNavState extends State<AppBottomNav> {
                   selectedIcon: Icon(Icons.forum, color: SpotterfyTheme.text),
                   label: 'Chat',
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ),

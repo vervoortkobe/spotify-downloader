@@ -33,14 +33,14 @@ class _MainScreenState extends State<MainScreen>
 
   late final AnimationController _tabCtrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 480),
+    duration: const Duration(milliseconds: 360),
     // Start settled, otherwise the first frame would draw the initial tab
     // part-way through the enter transition (40% opacity, offset).
     value: 1.0,
   );
   late final Animation<double> _tabAnim = CurvedAnimation(
     parent: _tabCtrl,
-    curve: Curves.easeInOutCubic,
+    curve: Curves.easeOutCubic,
   );
 
   @override
@@ -81,6 +81,18 @@ class _MainScreenState extends State<MainScreen>
   /// own and no two live elements ever share a key.
   late final List<GlobalKey<NavigatorState>> _tabKeys =
       List.generate(_tabs.length, (_) => GlobalKey<NavigatorState>());
+
+  // Keep each Navigator widget instance stable while the transition animates.
+  // Recreating it in every animation frame rebuilt heavy tab roots such as
+  // Discover and made the slide stutter on lower-powered phones.
+  late final List<Widget> _tabNavigators = List.generate(
+    _tabs.length,
+    (i) => TabNavigator(
+      tabIndex: i,
+      navKey: _tabKeys[i],
+      root: _tabs[i],
+    ),
+  );
 
   /// Nav destination tapped while that tab is already showing.
   ///
@@ -149,6 +161,7 @@ class _MainScreenState extends State<MainScreen>
             AnimatedBuilder(
               animation: _tabAnim,
               builder: (context, _) {
+                final viewportWidth = MediaQuery.sizeOf(context).width;
                 // Every tab is kept mounted in a plain Stack. Deliberately NOT an
                 // IndexedStack/KeyedSubtree keyed on the current index: re-keying
                 // it on every switch would dispose all four tab subtrees, taking
@@ -161,18 +174,14 @@ class _MainScreenState extends State<MainScreen>
                     // Paint the outgoing tab first so the incoming page glides
                     // over it consistently in either navigation direction.
                     if (_leavingIndex != _currentIndex)
-                      _tabLayer(_leavingIndex),
-                    _tabLayer(_currentIndex),
+                      _tabLayer(_leavingIndex, viewportWidth),
+                    _tabLayer(_currentIndex, viewportWidth),
                     for (var i = 0; i < _tabs.length; i++)
                       if (i != _leavingIndex && i != _currentIndex)
                         Offstage(
                           child: TickerMode(
                             enabled: false,
-                            child: TabNavigator(
-                              tabIndex: i,
-                              navKey: _tabKeys[i],
-                              root: _tabs[i],
-                            ),
+                            child: _tabNavigators[i],
                           ),
                         ),
                   ],
@@ -224,12 +233,8 @@ class _MainScreenState extends State<MainScreen>
 
   /// Draws one tab, animating it in when it is the target of the current switch
   /// and out when it is the tab being left behind.
-  Widget _tabLayer(int i) {
-    final tab = TabNavigator(
-      tabIndex: i,
-      navKey: _tabKeys[i],
-      root: _tabs[i],
-    );
+  Widget _tabLayer(int i, double viewportWidth) {
+    final tab = _tabNavigators[i];
     final entering = i == _currentIndex;
     final leaving = i == _leavingIndex;
 
@@ -238,38 +243,21 @@ class _MainScreenState extends State<MainScreen>
     }
 
     final t = _tabAnim.value;
-    final double opacity;
     final double dx;
-    final double dy;
-    final double scale;
     if (entering) {
-      opacity = t;
-      dx = _slideDir * 0.22 * (1 - t);
-      dy = 24 * (1 - t);
-      scale = 0.93 + 0.07 * t;
+      dx = _slideDir * viewportWidth * 0.14 * (1 - t);
     } else {
-      opacity = 1.0 - t;
-      dx = -_slideDir * 0.12 * t;
-      dy = -12 * t;
-      scale = 1.0 - 0.035 * t;
+      dx = -_slideDir * viewportWidth * 0.06 * t;
     }
 
     return IgnorePointer(
       // The incoming tab shouldn't take taps while it's still sliding in.
       ignoring: !entering || t < 1,
-      child: Opacity(
-        opacity: opacity.clamp(0.0, 1.0),
-        child: Transform.translate(
-          offset: Offset(dx, dy),
-          child: Transform.rotate(
-            angle: entering ? _slideDir * 0.035 * (1 - t) : -_slideDir * 0.02 * t,
-            child: Transform.scale(
-              scale: scale,
-              // Clip so the sliding tab doesn't paint over its neighbour.
-              child: ClipRect(child: tab),
-            ),
-          ),
-        ),
+      child: Transform.translate(
+        offset: Offset(dx, 0),
+        // Clip and cache each tab as a layer so Discover's long scroll view is
+        // composited during the slide instead of repainted on every tick.
+        child: RepaintBoundary(child: ClipRect(child: tab)),
       ),
     );
   }

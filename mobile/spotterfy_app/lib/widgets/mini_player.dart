@@ -8,6 +8,8 @@ import 'package:spotterfy_app/screens/player_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/main.dart';
+import 'package:spotterfy_app/widgets/app_background.dart';
+import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key, this.showQueueButton = true});
@@ -41,13 +43,15 @@ class MiniPlayer extends StatelessWidget {
     // Queue position lives on the now-playing screen; the mini player keeps
     // only title / artist / progress / controls so it stays readable.
 
-    return Dismissible(
-      key: ValueKey('mini-${track.id}'),
-      direction: DismissDirection.horizontal,
-      dismissThresholds: const {
-        DismissDirection.startToEnd: 0.4,
-        DismissDirection.endToStart: 0.4,
-      },
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      child: Dismissible(
+        key: ValueKey('mini-${track.id}'),
+        direction: DismissDirection.horizontal,
+        dismissThresholds: const {
+          DismissDirection.startToEnd: 0.5,
+          DismissDirection.endToStart: 0.5,
+        },
       // Swipe right -> previous, swipe left -> next. Returning false snaps the
       // card back so the mini player never leaves the footer.
       confirmDismiss: (dir) async {
@@ -63,15 +67,13 @@ class MiniPlayer extends StatelessWidget {
         alignment: Alignment.centerLeft,
         icon: Icons.skip_previous_rounded,
         label: 'Previous',
-        isMatchingSize: true,
       ),
       secondaryBackground: _SwipeRevealBackground(
         alignment: Alignment.centerRight,
         icon: Icons.skip_next_rounded,
         label: 'Next',
-        isMatchingSize: true,
       ),
-      child: GestureDetector(
+        child: GestureDetector(
         onTap: _openPlayer,
         onVerticalDragEnd: (details) {
           if ((details.primaryVelocity ?? 0) < -500) {
@@ -85,17 +87,9 @@ class MiniPlayer extends StatelessWidget {
         // visible lag before it registered. Play/pause is a button right there,
         // so the gesture was redundant as well as slow.
         child: Container(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
           decoration: BoxDecoration(
-            color: SpotterfyTheme.card,
+          color: const Color(0xFF121212),
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.45),
-                blurRadius: 22,
-                offset: const Offset(0, -4),
-              ),
-            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -184,6 +178,7 @@ class MiniPlayer extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -306,16 +301,11 @@ class _MiniPlayPauseButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Selector<PlayerProvider, bool>(
       selector: (_, p) => p.isPlaying,
-      builder: (context, isPlaying, _) => _MiniIconButton(
-        icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-        tooltip: isPlaying ? 'Pause' : 'Play',
-        // 40/22 to match PlaylistPlayButton's default size exactly. The halo is
-        // gone too: it made the transport read as a glowing blob next to the
-        // flat chips everywhere else.
+      builder: (context, isPlaying, _) => PlaylistPlayButton(
         size: 40,
-        iconSize: 22,
-        background: SpotterfyTheme.primary,
-        foreground: Colors.black,
+        isPlaying: isPlaying,
+        isActive: isPlaying,
+        tooltip: isPlaying ? 'Pause' : 'Play',
         onPressed: () {
           HapticFeedback.lightImpact();
           player.togglePlayPause();
@@ -421,88 +411,57 @@ class _SwipeRevealBackground extends StatelessWidget {
   final Alignment alignment;
   final IconData icon;
   final String label;
-  final bool isMatchingSize;
-
   const _SwipeRevealBackground({
     required this.alignment,
     required this.icon,
     required this.label,
-    this.isMatchingSize = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (isMatchingSize) {
-      return Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-        decoration: BoxDecoration(
-          color: SpotterfyTheme.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: SpotterfyTheme.primary.withValues(alpha: 0.32),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: DecoratedBox(
+        // Paint every pixel behind the moving card. The side gutters blend into
+        // the app canvas instead of exposing live page content while swiping.
+        decoration: BoxDecoration(gradient: AppBackground.gradient),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF121212),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          alignment: alignment,
+          // Match the card inset so the action panel sits directly under it.
+          padding: const EdgeInsets.symmetric(horizontal: 22),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (alignment == Alignment.centerRight) ...[
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: SpotterfyTheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Icon(icon, color: SpotterfyTheme.primary, size: 24),
+              if (alignment == Alignment.centerLeft) ...[
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: SpotterfyTheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        alignment: alignment,
-        // Exactly the size of the mini player — no extra padding that would
-        // Match the card's inset and rounded shape so an action panel shows
-        // underneath as the mini player moves aside.
-        padding: const EdgeInsets.symmetric(horizontal: 22),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (alignment == Alignment.centerRight) ...[
-              Text(
-                label,
-                style: TextStyle(
-                  color: SpotterfyTheme.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            Icon(icon, color: SpotterfyTheme.primary, size: 24),
-            if (alignment == Alignment.centerLeft) ...[
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: SpotterfyTheme.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-      decoration: BoxDecoration(
-        color: SpotterfyTheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: SpotterfyTheme.primary.withValues(alpha: 0.25),
-        ),
-      ),
-      alignment: alignment,
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: SpotterfyTheme.primary, size: 22),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: SpotterfyTheme.primary,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
       ),
     );
   }
