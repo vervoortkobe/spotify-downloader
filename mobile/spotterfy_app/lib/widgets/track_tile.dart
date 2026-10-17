@@ -7,6 +7,21 @@ import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
+ButtonStyle _trackActionStyle({bool active = false}) => IconButton.styleFrom(
+  backgroundColor: active
+      ? SpotterfyTheme.primary.withValues(alpha: 0.13)
+      : SpotterfyTheme.overlay(0.06),
+  padding: EdgeInsets.zero,
+  minimumSize: const Size(34, 34),
+  maximumSize: const Size(34, 34),
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  visualDensity: VisualDensity.compact,
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(10),
+    side: BorderSide(color: SpotterfyTheme.overlay(0.1)),
+  ),
+);
+
 class TrackTile extends StatelessWidget {
   final TrackModel track;
   final VoidCallback? onPlay;
@@ -304,8 +319,7 @@ class TrackTile extends StatelessWidget {
                         ? 'Downloaded — tap to remove'
                         : 'Download',
                     onPressed: onDownload,
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(),
+                    style: _trackActionStyle(active: isDownloaded),
                   ),
                 if (isDownloading)
                   Padding(
@@ -332,13 +346,12 @@ class TrackTile extends StatelessWidget {
                     ),
                     tooltip: isSaved ? 'Saved to library' : 'Save to library',
                     onPressed: onSave,
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(),
+                    style: _trackActionStyle(active: isSaved),
                   ),
                 // Queue button
                 IconButton(
                   icon: Icon(
-                    Icons.queue_music,
+                    Icons.queue_music_rounded,
                     color: isSelected
                         ? SpotterfyTheme.primary
                         : SpotterfyTheme.mutedDark,
@@ -357,8 +370,7 @@ class TrackTile extends StatelessWidget {
                       ),
                     );
                   },
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(),
+                  style: _trackActionStyle(active: isSelected),
                 ),
                 if (onPlay != null)
                   IconButton(
@@ -374,8 +386,13 @@ class TrackTile extends StatelessWidget {
                       size: 28,
                     ),
                     onPressed: onPlay,
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(),
+                    style: IconButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(36, 36),
+                      maximumSize: const Size(36, 36),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ),
               ],
             ),

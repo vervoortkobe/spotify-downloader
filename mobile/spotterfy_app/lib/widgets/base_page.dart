@@ -165,13 +165,13 @@ class BasePageScaffold extends StatelessWidget {
                               icon: Icon(
                                 Icons.clear,
                                 color: SpotterfyTheme.muted,
-                                size: 16,
+                                size: 19,
                               ),
                               onPressed: () {
                                 searchController!.clear();
                                 onSearchChanged?.call('');
-                                onSearchSubmitted?.call('');
                               },
+                              tooltip: 'Clear search',
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             )

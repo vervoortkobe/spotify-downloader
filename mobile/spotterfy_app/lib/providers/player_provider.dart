@@ -22,6 +22,7 @@ class PlayerProvider extends ChangeNotifier {
   late AudioPlayer _player;
   TrackModel? _currentTrack;
   List<TrackModel> _queue = [];
+  List<TrackModel> _recentlyPlayed = [];
   int _currentIndex = -1;
   bool _isPlaying = false;
   bool _completed = false;
@@ -43,6 +44,7 @@ class PlayerProvider extends ChangeNotifier {
 
   TrackModel? get currentTrack => _currentTrack;
   List<TrackModel> get queue => _queue;
+  List<TrackModel> get recentlyPlayed => List.unmodifiable(_recentlyPlayed);
   int get currentIndex => _currentIndex;
   bool get isPlaying => _isPlaying;
 
@@ -450,7 +452,24 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> play(TrackModel track, {List<TrackModel>? queue}) async {
+  Future<void> play(TrackModel track, {List<TrackModel>? queue}) {
+    // A tap can arrive more than once while YouTube resolves the stream URL.
+    // Reuse the in-flight load instead of issuing concurrent setAudioSource
+    // calls, which can reset one another and leave the user tapping repeatedly.
+    final active = _activePlay;
+    if (active != null) return active;
+    _starting = true;
+    final operation = _playTrack(track, queue: queue);
+    _activePlay = operation;
+    return operation.whenComplete(() {
+      if (identical(_activePlay, operation)) {
+        _activePlay = null;
+        _starting = false;
+      }
+    });
+  }
+
+  Future<void> _playTrack(TrackModel track, {List<TrackModel>? queue}) async {
     await _cancelCrossfade();
     if (queue != null) {
       _queue = List.from(queue);
@@ -720,6 +739,15 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
     _isPlaying = true;
+    final startedTrack = _currentTrack;
+    if (startedTrack != null) {
+      _recentlyPlayed.removeWhere((track) => track.id == startedTrack.id);
+      _recentlyPlayed.insert(0, startedTrack);
+      if (_recentlyPlayed.length > 30) {
+        _recentlyPlayed = _recentlyPlayed.take(30).toList();
+      }
+      unawaited(_saveRecentlyPlayed());
+    }
     notifyListeners();
     // Get the following track resolving on the server while this one plays.
     _prefetchNextSource();
@@ -787,6 +815,7 @@ class PlayerProvider extends ChangeNotifier {
   /// player reports `playing == false`, so this flag is what lets a pause tap be
   /// understood as "stop the thing that is about to start".
   bool _starting = false;
+  Future<void>? _activePlay;
 
   /// The user pressed pause before the track finished loading.
   bool _pauseRequested = false;
@@ -1165,6 +1194,13 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _loadPlayerState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final recentJson = prefs.getString('player_recently_played');
+      if (recentJson != null) {
+        final recentData = jsonDecode(recentJson) as List<dynamic>;
+        _recentlyPlayed = recentData
+            .map((data) => TrackModel.fromJson(Map<String, dynamic>.from(data as Map)))
+            .toList();
+      }
       final queueJson = prefs.getString('player_queue');
       final currentIndex = prefs.getInt('player_current_index') ?? -1;
       final positionMs = prefs.getInt('player_position_ms') ?? 0;
@@ -1182,8 +1218,21 @@ class PlayerProvider extends ChangeNotifier {
           notifyListeners();
         }
       }
+      notifyListeners();
     } catch (e) {
       debugPrint('[Player] Failed to load state: $e');
+    }
+  }
+
+  Future<void> _saveRecentlyPlayed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'player_recently_played',
+        jsonEncode(_recentlyPlayed.map((track) => track.toJson()).toList()),
+      );
+    } catch (e) {
+      debugPrint('[Player] Failed to save recent plays: $e');
     }
   }
 

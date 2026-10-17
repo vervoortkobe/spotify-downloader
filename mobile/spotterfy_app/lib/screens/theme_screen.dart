@@ -23,7 +23,7 @@ class ThemeScreen extends StatelessWidget {
           animation: controller,
           builder: (context, _) => ListView(
             // Clears the nav bar drawn under this page by MainScreen.
-            padding: const EdgeInsets.only(bottom: 100),
+            padding: const EdgeInsets.only(bottom: 160),
             children: [
               _SectionLabel('Accent colour'),
               Padding(

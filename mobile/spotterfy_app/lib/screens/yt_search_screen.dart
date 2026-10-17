@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
-import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
@@ -21,55 +21,31 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
   List<TrackModel> _results = [];
   bool _loading = false;
   String? _error;
+  List<String> _history = [];
+  bool _searchSubmitted = false;
+  int _requestSequence = 0;
+  static const _historyKey = 'youtube_search_history_v1';
 
-  // Pool of distinct YouTube thumbnails so fallback covers are varied,
-  // not always the same Rickroll image.
-  static const _ytThumbIds = [
-    'dQw4w9WgXcQ', // Rick Astley
-    '9bZkp7q19f0', // PSY
-    'kJQP7kiw5Fk', // Despacito
-    'OPf0YbXqDmQ', // Uptown Funk
-    'fRh_vgS2dFE', // Sorting
-    'JGwWNGJdvx8', // Shape of You
-    'hT_nvWreIhg', // Counting Stars
-    'CevxZvSJLk8', // Roar
-  ];
-
-  String _thumbFor(String seed, int index) {
-    // Deterministic but varied: rotate through pool based on hash + index.
-    final id = _ytThumbIds[(seed.hashCode + index).abs() % _ytThumbIds.length];
-    return 'https://i.ytimg.com/vi/$id/hqdefault.jpg';
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _history = prefs.getStringList(_historyKey) ?? []);
+    });
   }
 
-  List<TrackModel> _fallbackResults(String query) {
-    final q = query.trim();
-    if (q.isEmpty) return [];
-    // Generate 6 distinct options so user has choices instead of a single row.
-    final variants = [
-      q,
-      '$q (Acoustic)',
-      '$q - Live',
-      '$q - Remix',
-      '$q - Cover',
-      '$q • Radio Edit',
-    ];
-    final artists = [
-      'YouTube',
-      'YouTube Mix',
-      'YouTube • Live',
-      'YouTube • Remix',
-      'YouTube • Cover',
-      'YouTube',
-    ];
-    return List.generate(6, (i) {
-      return TrackModel(
-        id: '${q.hashCode}_$i',
-        title: variants[i],
-        artists: artists[i],
-        cover: _thumbFor(q, i),
-        sourceUrl: 'ytsearch:$q:${variants[i]} audio',
-      );
-    });
+  bool _isYoutubeUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    return uri != null && (uri.host == 'youtu.be' || uri.host.endsWith('youtube.com'));
+  }
+
+  Future<void> _saveSearch(String query) async {
+    if (_isYoutubeUrl(query)) return;
+    final normalized = query.trim();
+    _history = [normalized, ..._history.where((item) => item.toLowerCase() != normalized.toLowerCase())].take(12).toList();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_historyKey, _history);
+    if (mounted) setState(() {});
   }
 
   Future<void> _searchYT(String query) async {
@@ -78,129 +54,55 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
       setState(() => _results = []);
       return;
     }
+    final request = ++_requestSequence;
     setState(() {
       _loading = true;
       _error = null;
-      _results = _fallbackResults(q);
+      _results = [];
+      _searchSubmitted = true;
     });
     try {
-      try {
-        final url =
-            'https://www.youtube.com/results?search_query=${Uri.encodeComponent(q)}';
-        final p = await ApiService.scrapePlaylist(url, service: 'youtube');
-        if (p != null && p.tracks.isNotEmpty) {
-          // Ensure even server results have non-empty varied covers (fix legacy single-cover bug).
-          final fixed = p.tracks.take(20).toList();
-          for (int i = 0; i < fixed.length; i++) {
-            final t = fixed[i];
-            if (t.cover.isEmpty ||
-                t.cover.contains('dQw4w9WgXcQ') && fixed.length == 1) {
-              fixed[i] = TrackModel(
-                id: t.id,
-                title: t.title,
-                artists: t.artists,
-                album: t.album,
-                cover: _thumbFor(t.title.isNotEmpty ? t.title : q, i),
-                releaseDate: t.releaseDate,
-                sourceUrl: t.sourceUrl,
-                durationMs: t.durationMs,
-              );
+      if (_isYoutubeUrl(q)) {
+        final track = await ApiService.resolveYoutubeTrack(q);
+        if (mounted && request == _requestSequence && _controller.text.trim() == q) {
+          setState(() {
+            if (track != null) {
+              _results = [track];
+            } else {
+              _error = 'Could not load that YouTube video.';
+            }
+          });
+          if (track != null) {
+            context.read<PlayerProvider>().prefetchTrack(track);
+          }
+        }
+      } else {
+        final tracks = await ApiService.searchTracks(q);
+        if (mounted && request == _requestSequence && _controller.text.trim() == q) {
+          setState(() {
+            if (tracks != null) {
+              _results = tracks.take(20).toList();
+            } else {
+              _error = 'Could not load YouTube results. Try again.';
+            }
+          });
+          if (tracks != null) {
+            for (final track in tracks.take(4)) {
+              context.read<PlayerProvider>().prefetchTrack(track);
             }
           }
-          if (mounted) setState(() => _results = fixed);
         }
-        // if scrape returned nothing, keep varied fallback already shown
-      } catch (e) {
-        // keep fallback, surface non-fatal error silently
-        debugPrint('yt scrape fallback kept: $e');
+        if (request == _requestSequence) await _saveSearch(q);
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _requestSequence) setState(() => _loading = false);
     }
   }
 
-  List<TrackModel> _playlistSuggestions(PlaylistProvider prov) {
-    // Flatten all tracks from user's playlists, dedupe by id, take up to 12.
-    final seen = <String>{};
-    final out = <TrackModel>[];
-    for (final pl in prov.playlists) {
-      for (final t in pl.tracks) {
-        if (seen.add(t.id)) {
-          // Fix any legacy Rickroll covers that were cached with single cover.
-          final needsFix = t.cover.isEmpty || t.cover.contains('dQw4w9WgXcQ');
-          if (needsFix) {
-            out.add(
-              TrackModel(
-                id: t.id,
-                title: t.title,
-                artists: t.artists,
-                album: t.album,
-                cover: _thumbFor(t.title, out.length),
-                releaseDate: t.releaseDate,
-                sourceUrl: t.sourceUrl,
-                durationMs: t.durationMs,
-              ),
-            );
-          } else {
-            out.add(t);
-          }
-        }
-        if (out.length >= 12) break;
-      }
-      if (out.length >= 12) break;
-    }
-    if (out.length < 6) {
-      // Not enough playlist tracks – fill with curated examples with varied covers.
-      final curated = [
-        TrackModel(
-          id: 'curated_1',
-          title: 'Blinding Lights',
-          artists: 'The Weeknd',
-          cover: _thumbFor('Blinding Lights', 0),
-          sourceUrl: 'ytsearch:Blinding Lights audio',
-        ),
-        TrackModel(
-          id: 'curated_2',
-          title: 'As It Was',
-          artists: 'Harry Styles',
-          cover: _thumbFor('As It Was', 1),
-          sourceUrl: 'ytsearch:As It Was audio',
-        ),
-        TrackModel(
-          id: 'curated_3',
-          title: 'Levitating',
-          artists: 'Dua Lipa',
-          cover: _thumbFor('Levitating', 2),
-          sourceUrl: 'ytsearch:Levitating audio',
-        ),
-        TrackModel(
-          id: 'curated_4',
-          title: 'About Damn Time',
-          artists: 'Lizzo',
-          cover: _thumbFor('About Damn Time', 3),
-          sourceUrl: 'ytsearch:About Damn Time audio',
-        ),
-        TrackModel(
-          id: 'curated_5',
-          title: 'Heat Waves',
-          artists: 'Glass Animals',
-          cover: _thumbFor('Heat Waves', 4),
-          sourceUrl: 'ytsearch:Heat Waves audio',
-        ),
-        TrackModel(
-          id: 'curated_6',
-          title: 'Stay',
-          artists: 'The Kid LAROI & Justin Bieber',
-          cover: _thumbFor('Stay', 5),
-          sourceUrl: 'ytsearch:Stay audio',
-        ),
-      ];
-      for (final c in curated) {
-        if (out.length >= 12) break;
-        if (seen.add(c.id)) out.add(c);
-      }
-    }
-    return out;
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -211,7 +113,11 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
       searchHint: 'Search songs on YouTube',
       query: _controller.text.trim().toLowerCase(),
       onSearchChanged: (v) => setState(() {
-        if (v.trim().isEmpty) _results = [];
+        _requestSequence++;
+        _searchSubmitted = false;
+        _loading = false;
+        _error = null;
+        _results = [];
       }),
       onSearchSubmitted: _searchYT,
       body: Column(
@@ -232,13 +138,14 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
           Expanded(
             child: _results.isEmpty && !_loading
                 ? hasQuery
-                      ? NoResultsView(
-                          query: _controller.text,
-                          message:
-                              'No YouTube results. Try a different search.',
-                          actionLabel: 'Clear search',
-                          onAction: _controller.clear,
-                        )
+                      ? _searchSubmitted
+                            ? NoResultsView(
+                                query: _controller.text,
+                                message: 'No YouTube results. Try a different search.',
+                                actionLabel: 'Clear search',
+                                onAction: _controller.clear,
+                              )
+                            : _searchHistoryView()
                       : _suggestionsView()
                 : ListView.builder(
                     padding: const EdgeInsets.only(bottom: 100),
@@ -267,17 +174,17 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
   }
 
   Widget _suggestionsView() {
-    final prov = context.watch<PlaylistProvider>();
-    final suggestions = _playlistSuggestions(prov);
-    if (suggestions.isEmpty) {
+    final player = context.watch<PlayerProvider>();
+    final recentTracks = player.recentlyPlayed;
+    if (recentTracks.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search, size: 56, color: SpotterfyTheme.muted),
+            Icon(Icons.music_note, size: 56, color: SpotterfyTheme.muted),
             const SizedBox(height: 12),
             Text(
-              'Look for songs on YouTube',
+              'No recently played songs',
               style: TextStyle(
                 color: SpotterfyTheme.text,
                 fontWeight: FontWeight.w600,
@@ -285,16 +192,39 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              'Try "Lo-fi beats" or "Acoustic covers"',
-              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Results will play instantly',
-              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11),
-            ),
+            Text('Songs you play will appear here.',
+                style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
           ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 100),
+      itemCount: recentTracks.length,
+      itemBuilder: (context, index) {
+        final track = recentTracks[index];
+        final isPlaying = player.currentTrack?.id == track.id && player.isPlaying;
+        return TrackTile(
+          track: track,
+          isSelected: player.currentTrack?.id == track.id,
+          isPlaying: isPlaying,
+          onPlay: () => context.read<PlayerProvider>().play(track),
+        );
+      },
+    );
+  }
+
+  Widget _searchHistoryView() {
+    final query = _controller.text.trim().toLowerCase();
+    final matches = _history
+        .where((term) => term.toLowerCase().contains(query))
+        .toList();
+    if (matches.isEmpty) {
+      return Center(
+        child: Text(
+          'Search YouTube for “${_controller.text.trim()}”',
+          style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+          textAlign: TextAlign.center,
         ),
       );
     }
@@ -302,34 +232,15 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
       padding: const EdgeInsets.only(bottom: 100),
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            'Based on your playlists',
-            style: TextStyle(
-              color: SpotterfyTheme.muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
-            ),
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+          child: Text('Search history', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
         ),
-        ...suggestions.asMap().entries.map((e) {
-          final i = e.key;
-          final t = e.value;
-          final player = context.watch<PlayerProvider>();
-          final isPlaying = player.currentTrack?.id == t.id && player.isPlaying;
-          return TrackTile(
-            track: t,
-            isSelected: player.currentTrack?.id == t.id,
-            isPlaying: isPlaying,
-            onPlay: () {
-              final p = context.read<PlayerProvider>();
-              // play from suggestions queue so next/prev work
-              p.setQueue(suggestions, startIndex: i);
-              p.play(t, queue: suggestions);
-            },
-          );
-        }),
+        for (final term in matches)
+          ListTile(
+            leading: Icon(Icons.history, color: SpotterfyTheme.muted),
+            title: Text(term, style: TextStyle(color: SpotterfyTheme.text)),
+            onTap: () { _controller.text = term; _searchYT(term); },
+          ),
       ],
     );
   }

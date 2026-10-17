@@ -18,10 +18,8 @@ import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
 
-/// App-bar button identifying who owns a shared playlist. Shows the owner's
-/// Playlist summary: artwork, name, and the stats worth knowing before hitting
-/// play - song count, total running time, source, and how many tracks are
-/// already downloaded for offline listening.
+/// Playlist overview: artwork, title, owner, source, running time, and play
+/// actions in one place before the track list begins.
 class _PlaylistHeader extends StatelessWidget {
   final PlaylistModel playlist;
   final VoidCallback onPlay;
@@ -63,14 +61,33 @@ class _PlaylistHeader extends StatelessWidget {
     // low on playlists whose durations haven't been fetched yet.
     final known = tracks.where((t) => t.durationMs > 0).length;
     final totalMs = tracks.fold<int>(0, (sum, t) => sum + t.durationMs);
-    final cover = tracks.isNotEmpty ? tracks.first.cover : '';
+    final cover = playlist.coverUrl.isNotEmpty
+        ? playlist.coverUrl
+        : (tracks.isNotEmpty ? tracks.first.cover : '');
     final downloaded = context.select<DownloadProvider, int>(
       (d) => tracks.where((t) => d.isDownloaded(t.id)).length,
     );
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.alphaBlend(
+                SpotterfyTheme.primary.withValues(alpha: 0.11),
+                SpotterfyTheme.card,
+              ),
+              SpotterfyTheme.surface,
+            ],
+          ),
+          border: Border.all(color: SpotterfyTheme.overlay(0.08)),
+        ),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -89,7 +106,7 @@ class _PlaylistHeader extends StatelessWidget {
                       playlist.displayName,
                       style: TextStyle(
                         color: SpotterfyTheme.text,
-                        fontSize: 22,
+                        fontSize: 21,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.4,
                         height: 1.15,
@@ -151,12 +168,13 @@ class _PlaylistHeader extends StatelessWidget {
                 icon: isAddingToLibrary
                     ? Icons.hourglass_top_rounded
                     : Icons.library_add_outlined,
-                label: isAddingToLibrary ? 'Adding...' : 'Add to library',
+                label: isAddingToLibrary ? 'Adding to your library…' : 'Add to your library',
                 onTap: isAddingToLibrary ? () {} : onAddToLibrary,
               ),
             ),
           ],
         ],
+      ),
       ),
     );
   }
@@ -312,7 +330,7 @@ class _SecondaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: SpotterfyTheme.overlay(0.06),
+      color: SpotterfyTheme.overlay(0.07),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -322,7 +340,7 @@ class _SecondaryButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: SpotterfyTheme.overlay(0.12)),
+            border: Border.all(color: SpotterfyTheme.overlay(0.16)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -625,7 +643,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     try {
       await _maybeSyncTracks();
       if (!mounted || _playlist.tracks.isEmpty) return;
-      context.read<PlayerProvider>().prefetchTrack(_playlist.tracks.first);
+      final player = context.read<PlayerProvider>();
+      for (final track in _playlist.tracks.take(4)) {
+        player.prefetchTrack(track);
+      }
     } catch (e) {
       debugPrint('[Playlist] could not prepare first track: $e');
     }
@@ -978,10 +999,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 ),
                 actions: [
                   IconButton(
-                    icon: Icon(
-                      Icons.playlist_add_check,
-                      color: SpotterfyTheme.text,
-                    ),
+                    icon: Icon(Icons.playlist_add_check, color: SpotterfyTheme.text),
                     tooltip: 'Select all',
                     onPressed: _selectAll,
                   ),
@@ -990,28 +1008,49 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     tooltip: 'Play selection',
                     onPressed: () => _playSelection(context),
                   ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.download_outlined,
-                      color: SpotterfyTheme.text,
-                    ),
-                    tooltip: 'Download selection',
-                    onPressed: () =>
-                        _downloadSelectedOrAll(context, wholeList: false),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.queue_music, color: SpotterfyTheme.text),
-                    tooltip: 'Add selection to queue',
-                    onPressed: () => _queueSelection(context),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.delete_outline,
-                      color: SpotterfyTheme.text,
-                    ),
-                    tooltip: 'Delete downloads of selection',
-                    onPressed: () =>
-                        _deleteDownloadsOfSelection(context, wholeList: false),
+                  PopupMenuButton<String>(
+                    tooltip: 'Selection actions',
+                    icon: Icon(Icons.more_horiz, color: SpotterfyTheme.text),
+                    color: SpotterfyTheme.surface,
+                    onSelected: (action) {
+                      switch (action) {
+                        case 'download':
+                          _downloadSelectedOrAll(context, wholeList: false);
+                          break;
+                        case 'queue':
+                          _queueSelection(context);
+                          break;
+                        case 'remove':
+                          _deleteDownloadsOfSelection(context, wholeList: false);
+                          break;
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'download',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.download_rounded),
+                          title: Text('Download selection'),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'queue',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.queue_music_rounded),
+                          title: Text('Add selection to queue'),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'remove',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.delete_outline_rounded),
+                          title: Text('Remove downloads'),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(width: 4),
                 ],
@@ -1019,10 +1058,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             : AppBar(
                 backgroundColor: Colors.transparent,
                 elevation: 0,
-                title: Text(
-                  _playlist.displayName,
-                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 18),
-                ),
+                title: _playlist.tracks.isEmpty
+                    ? Text(
+                        _playlist.displayName,
+                        style: TextStyle(color: SpotterfyTheme.text, fontSize: 18),
+                      )
+                    : null,
                 actions: [
                   // Profile button for a playlist someone else created, so you can see
                   // who owns it and browse everything else they have shared.
@@ -1040,50 +1081,74 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         ),
                       ),
                     ),
-                  if (!_playlist.isCustom)
-                    IconButton(
-                      icon: _syncing
-                          ? SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: SpotterfyTheme.primary,
-                              ),
-                            )
-                          : Icon(Icons.sync, color: SpotterfyTheme.mutedDark),
-                      tooltip: 'Check for updates',
-                      onPressed: _syncing
-                          ? null
-                          : () => _forceSyncTracks(showFeedback: true),
-                    ),
-                  if (_playlist.isCustom)
-                    IconButton(
-                      icon: Icon(Icons.share, color: SpotterfyTheme.mutedDark),
-                      onPressed: () => _sharePlaylist(context),
-                    ),
-                  // Whole-playlist download / delete, for when you don't want to
-                  // pick songs one by one.
-                  if (_playlist.tracks.isNotEmpty) ...[
-                    IconButton(
-                      icon: Icon(
-                        Icons.download_outlined,
-                        color: SpotterfyTheme.mutedDark,
-                      ),
-                      tooltip: 'Download whole playlist',
-                      onPressed: () =>
-                          _downloadSelectedOrAll(context, wholeList: true),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.download_done,
-                        color: SpotterfyTheme.mutedDark,
-                      ),
-                      tooltip: 'Delete downloaded songs',
-                      onPressed: () =>
-                          _deleteDownloadsOfSelection(context, wholeList: true),
-                    ),
-                  ],
+                  PopupMenuButton<String>(
+                    tooltip: 'Playlist actions',
+                    icon: _syncing
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: SpotterfyTheme.primary,
+                            ),
+                          )
+                        : Icon(Icons.more_horiz, color: SpotterfyTheme.text),
+                    color: SpotterfyTheme.surface,
+                    onSelected: (action) {
+                      switch (action) {
+                        case 'sync':
+                          _forceSyncTracks(showFeedback: true);
+                          break;
+                        case 'share':
+                          _sharePlaylist(context);
+                          break;
+                        case 'download':
+                          _downloadSelectedOrAll(context, wholeList: true);
+                          break;
+                        case 'remove':
+                          _deleteDownloadsOfSelection(context, wholeList: true);
+                          break;
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      if (!_playlist.isCustom)
+                        const PopupMenuItem(
+                          value: 'sync',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.sync_rounded),
+                            title: Text('Check for updates'),
+                          ),
+                        ),
+                      if (_playlist.isCustom)
+                        const PopupMenuItem(
+                          value: 'share',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.share_outlined),
+                            title: Text('Share playlist'),
+                          ),
+                        ),
+                      if (_playlist.tracks.isNotEmpty) ...[
+                        const PopupMenuItem(
+                          value: 'download',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.download_rounded),
+                            title: Text('Download playlist'),
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'remove',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.delete_outline_rounded),
+                            title: Text('Remove downloaded songs'),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
         body: _playlist.tracks.isEmpty

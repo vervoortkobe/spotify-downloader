@@ -28,6 +28,51 @@ void showJamSessionSheet(BuildContext context) {
 class JamSessionSheet extends StatelessWidget {
   const JamSessionSheet({super.key});
 
+  Future<void> _playTrack(
+    BuildContext context,
+    JamProvider jam,
+    PlayerProvider player,
+    int index,
+  ) async {
+    final session = jam.currentSession;
+    if (session == null || index < 0 || index >= session.tracks.length) return;
+    final track = session.tracks[index];
+    await player.play(track, queue: session.tracks);
+    await jam.updatePlayback(
+      isPlaying: player.isPlaying,
+      positionMs: player.position.inMilliseconds,
+      trackIndex: index,
+    );
+  }
+
+  Future<void> _toggleJam(
+    BuildContext context,
+    JamProvider jam,
+    PlayerProvider player,
+  ) async {
+    final session = jam.currentSession;
+    if (session == null) return;
+    final playingThisJam = player.currentTrack != null &&
+        session.tracks.any((t) => t.id == player.currentTrack!.id);
+    if (playingThisJam && player.isPlaying) {
+      await player.pause();
+      await jam.updatePlayback(
+        isPlaying: false,
+        positionMs: player.position.inMilliseconds,
+      );
+      return;
+    }
+    if (playingThisJam) {
+      await player.resume();
+      await jam.updatePlayback(
+        isPlaying: player.isPlaying,
+        positionMs: player.position.inMilliseconds,
+      );
+      return;
+    }
+    await _playTrack(context, jam, player, session.currentTrackIndex);
+  }
+
   @override
   Widget build(BuildContext context) {
     final jam = context.watch<JamProvider>();
@@ -175,7 +220,7 @@ class JamSessionSheet extends StatelessWidget {
                               fontSize: 12,
                             ),
                           ),
-                          onTap: () => player.play(t, queue: session.tracks),
+                          onTap: () => _playTrack(context, jam, player, i),
                         );
                       },
                     ),
@@ -185,7 +230,7 @@ class JamSessionSheet extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => player.togglePlayPause(),
+                    onPressed: () => _toggleJam(context, jam, player),
                     icon: Icon(
                       playingThisJam && player.isPlaying
                           ? Icons.pause
@@ -204,7 +249,12 @@ class JamSessionSheet extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => player.next(),
+                    onPressed: () => _playTrack(
+                      context,
+                      jam,
+                      player,
+                      session.currentTrackIndex + 1,
+                    ),
                     icon: const Icon(Icons.skip_next, size: 18),
                     label: const Text('Next'),
                     style: OutlinedButton.styleFrom(

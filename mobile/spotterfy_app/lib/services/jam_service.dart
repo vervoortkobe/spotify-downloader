@@ -81,11 +81,8 @@ class JamService {
     return _firestore.collection('jam_sessions').doc(sessionId).snapshots();
   }
 
-  Stream<QuerySnapshot> getActiveSessions() {
-    return _firestore
-        .collection('jam_sessions')
-        .where('isPlaying', isEqualTo: true)
-        .snapshots();
+  Stream<QuerySnapshot<Map<String, dynamic>>> getActiveSessions() {
+    return _firestore.collection('jam_sessions').snapshots();
   }
 
   void dispose() {

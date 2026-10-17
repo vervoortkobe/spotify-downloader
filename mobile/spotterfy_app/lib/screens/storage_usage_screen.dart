@@ -203,7 +203,7 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
           ),
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 160),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

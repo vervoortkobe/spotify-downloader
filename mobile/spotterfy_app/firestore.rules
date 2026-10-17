@@ -22,11 +22,27 @@ service cloud.firestore {
       }
 
       // ---- Friendships ----
-      // Only the owner can read/write their own friend list, so a friendship is
-      // established by each side accepting (the app writes both sides in one
-      // batch, each under its own uid).
+      // Each side can read its own list. Acceptance writes both friendship
+      // records; the counterpart write is allowed only while an incoming
+      // request is pending.
       match /friends/{friendId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && (
+          (request.auth.uid == userId &&
+            exists(/databases/$(database)/documents/users/$(userId)/friendRequests/$(friendId)) &&
+            get(/databases/$(database)/documents/users/$(userId)/friendRequests/$(friendId)).data.status == 'pending' &&
+            get(/databases/$(database)/documents/users/$(userId)/friendRequests/$(friendId)).data.direction == 'incoming') ||
+          (request.auth.uid == friendId &&
+            exists(/databases/$(database)/documents/users/$(friendId)/friendRequests/$(userId)) &&
+            get(/databases/$(database)/documents/users/$(friendId)/friendRequests/$(userId)).data.status == 'pending' &&
+            get(/databases/$(database)/documents/users/$(friendId)/friendRequests/$(userId)).data.direction == 'incoming')
+        );
+        allow update: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && (
+          request.auth.uid == userId ||
+          (request.auth.uid == friendId &&
+            exists(/databases/$(database)/documents/users/$(friendId)/friends/$(userId)))
+        );
       }
 
       // ---- Friend requests ----
@@ -36,8 +52,22 @@ service cloud.firestore {
       // a request in someone else's name.
       match /friendRequests/{otherId} {
         allow read: if request.auth != null && request.auth.uid == userId;
-        allow create: if request.auth != null && request.auth.uid == userId;
-        allow update, delete: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && (
+          request.auth.uid == userId ||
+          (request.auth.uid == otherId && request.resource.data.direction == 'incoming' &&
+            request.resource.data.status == 'pending')
+        );
+        allow update: if request.auth != null && (
+          request.auth.uid == userId ||
+          (request.auth.uid == otherId &&
+            exists(/databases/$(database)/documents/users/$(otherId)/friendRequests/$(userId)) &&
+            get(/databases/$(database)/documents/users/$(otherId)/friendRequests/$(userId)).data.status == 'pending')
+        );
+        allow delete: if request.auth != null && (
+          request.auth.uid == userId ||
+          (request.auth.uid == otherId &&
+            exists(/databases/$(database)/documents/users/$(otherId)/friends/$(userId)))
+        );
       }
 
       // ---- Notifications ----
@@ -113,7 +143,30 @@ service cloud.firestore {
 
     // ---- Jam sessions ----
     match /jam_sessions/{sessionId} {
-      allow read, create, update: if request.auth != null;
+      // Signed-in users can browse public jams; queue/playback writes remain
+      // limited to members (with a narrow self-join operation below).
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.createdBy == request.auth.uid
+        && request.auth.uid in request.resource.data.participants;
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.createdBy == resource.data.createdBy
+        && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'isPlaying', 'currentPositionMs', 'currentTrackIndex'
+          ]) ||
+          (request.auth.uid == resource.data.createdBy &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'participants', 'isPlaying', 'ended', 'endedAt', 'endedBy'
+            ])) ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants']) &&
+            request.resource.data.participants == resource.data.participants.removeAll([request.auth.uid])) ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants']) &&
+            request.auth.uid in request.resource.data.participants &&
+            request.resource.data.participants.size() == resource.data.participants.size() + 1 &&
+            request.resource.data.participants.hasAll(resource.data.participants))
+        );
       allow delete: if false;
     }
   }

@@ -15,7 +15,6 @@ import 'package:spotterfy_app/screens/playlist_detail_screen.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/api_service.dart';
-import 'package:spotterfy_app/services/firebase_service.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
 import 'package:spotterfy_app/widgets/no_results_view.dart';
@@ -32,25 +31,6 @@ class _SearchScreenState extends State<SearchScreen> {
   final _searchController = TextEditingController();
   String _query = '';
   String _rawQuery = '';
-
-  bool _isYoutubeVideoUrl(String value) {
-    final uri = Uri.tryParse(value.trim());
-    if (uri == null) return false;
-    final host = uri.host.toLowerCase();
-    final youtubeHost =
-        host == 'youtu.be' ||
-        host == 'youtube.com' ||
-        host.endsWith('.youtube.com');
-    if (!youtubeHost) return false;
-    final videoId = host == 'youtu.be'
-        ? (uri.pathSegments.isEmpty ? null : uri.pathSegments.first)
-        : (uri.queryParameters['v'] ??
-              ((uri.pathSegments.length > 1 &&
-                      ['shorts', 'embed', 'live'].contains(uri.pathSegments[0]))
-                  ? uri.pathSegments[1]
-                  : null));
-    return videoId != null && videoId.isNotEmpty;
-  }
 
   // Required Spotify URLs for Discover placeholders
   static const _genreUrls = [
@@ -227,9 +207,7 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _communityReloadQueued = false;
   String? _communityError;
   bool _refetching = false;
-  Timer? _profileSearchTimer;
   Timer? _searchPlaylistTimer;
-  Timer? _trackSearchTimer;
   String? _myUid;
 
   /// Song results for the current query.
@@ -382,60 +360,41 @@ class _SearchScreenState extends State<SearchScreen> {
     _myUid = context.read<AuthProvider>().user?.uid;
     _searchController.addListener(() {
       _rawQuery = _searchController.text.trim();
-      setState(() => _query = _rawQuery.toLowerCase());
-      _profileSearchTimer?.cancel();
+      setState(() {
+        _query = _rawQuery.toLowerCase();
+        _searchPlaylistResults = [];
+      });
       _searchPlaylistTimer?.cancel();
-      _trackSearchTimer?.cancel();
       if (_query.length >= 2) {
         // Mark as searching immediately so the "nothing found" panel is
         // suppressed while the debounced lookups are still pending.
         setState(() => _searching = true);
-        _profileSearchTimer = Timer(
-          const Duration(milliseconds: 400),
-          () async {
-            final results = await FirebaseService.searchUsers(
-              _query,
-              excludeUid: _myUid,
-            );
-            if (!mounted) return;
-            setState(() => _profiles = results);
-          },
-        );
         _searchPlaylistTimer = Timer(
           const Duration(milliseconds: 400),
           () async {
-            final results = await _discoverService.searchOtherUsersPlaylists(
-              _query,
-              excludeUid: _myUid,
-            );
-            if (!mounted) return;
-            setState(() => _searchPlaylistResults = results);
+            final wanted = _query;
+            try {
+              final results = await _discoverService.searchOtherUsersPlaylists(
+                wanted,
+                excludeUid: _myUid,
+              );
+              if (!mounted || wanted != _query) return;
+              setState(() {
+                _searchPlaylistResults = results;
+                _searching = false;
+              });
+            } catch (e) {
+              debugPrint('Discover community search failed: $e');
+              if (!mounted || wanted != _query) return;
+              setState(() {
+                _searchPlaylistResults = [];
+                _searching = false;
+              });
+            }
           },
         );
-        _trackSearchTimer = Timer(const Duration(milliseconds: 400), () async {
-          final wanted = _query;
-          final rawWanted = _rawQuery;
-          final youtubeUrl = _isYoutubeVideoUrl(rawWanted);
-          final results = _isOnline
-              ? youtubeUrl
-                    ? await ApiService.resolveYoutubeTrack(rawWanted).then(
-                        (track) => track == null ? null : <TrackModel>[track],
-                      )
-                    : await ApiService.searchTracks(rawWanted)
-              : null;
-          if (!mounted) return;
-          // Discard a response for a query the user has already moved on
-          // from, otherwise results flash in for the wrong text.
-          if (wanted != _query || rawWanted != _rawQuery) return;
-          setState(() {
-            _trackResults = results ?? const [];
-            _searching = false;
-          });
-        });
       } else {
-        _profiles = [];
         _searchPlaylistResults = [];
-        _trackResults = [];
         _searching = false;
       }
     });
@@ -743,7 +702,6 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void dispose() {
     _connSub?.cancel();
-    _profileSearchTimer?.cancel();
     _searchPlaylistTimer?.cancel();
     _searchController.dispose();
     super.dispose();
@@ -771,7 +729,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return BasePageScaffold(
       searchController: _searchController,
-      searchHint: 'Search the community',
+      searchHint: 'Search genres, artists, radio, playlists',
       query: _query,
       // Same "Check for updates" refetch icon button the Library playlist
       // detail screen uses (Icons.sync + spinner while working).
@@ -796,7 +754,7 @@ class _SearchScreenState extends State<SearchScreen> {
           ? NoResultsView(
               query: _query,
               message:
-                  'No playlists or profiles include "$_query".\nCheck the spelling or try a different search.',
+                  'No genres, artists, radio stations, or community playlists include "$_query".\nTry a different search.',
               onAction: () => _searchController.clear(),
               actionLabel: 'Clear search',
             )
@@ -806,6 +764,12 @@ class _SearchScreenState extends State<SearchScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_searching && _query.isNotEmpty)
+                    LinearProgressIndicator(
+                      minHeight: 2,
+                      color: SpotterfyTheme.primary,
+                      backgroundColor: SpotterfyTheme.surface,
+                    ),
                   _section(
                     context,
                     'Top Genres',
@@ -823,10 +787,8 @@ class _SearchScreenState extends State<SearchScreen> {
                     clickableTitle: _query.isEmpty,
                   ),
                   _radioSection(context, _query),
-                  _songsSection(context, _query),
                   if (_searchPlaylistResults.isNotEmpty && _query.isNotEmpty)
                     _searchResultsSection(),
-                  if (_profiles.isNotEmpty) _profilesSection(),
                   _otherUsersSection(context, _query),
                 ],
               ),
@@ -841,8 +803,6 @@ class _SearchScreenState extends State<SearchScreen> {
   bool get _showNoResults {
     if (_query.isEmpty) return false;
     if (_searching) return false;
-    if (_trackResults.isNotEmpty) return false;
-    if (_profiles.isNotEmpty) return false;
     if (_searchPlaylistResults.isNotEmpty) return false;
     bool nameHit(List<PlaylistModel> list) =>
         list.any((p) => p.name.toLowerCase().contains(_query));

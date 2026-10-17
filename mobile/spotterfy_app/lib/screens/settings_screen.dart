@@ -32,7 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: 'Settings',
       body: SingleChildScrollView(
         // Leave a little room after the final settings row when scrolling.
-        padding: const EdgeInsets.only(bottom: 24),
+        padding: const EdgeInsets.only(bottom: 160),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
           child: Column(

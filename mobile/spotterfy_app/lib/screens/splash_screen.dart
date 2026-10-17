@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/social_provider.dart';
+import 'package:spotterfy_app/providers/jam_provider.dart';
 import 'package:spotterfy_app/screens/login_screen.dart';
 import 'package:spotterfy_app/screens/suspended_screen.dart';
 import 'package:spotterfy_app/screens/onboarding_screen.dart';
@@ -136,11 +137,10 @@ class _SplashScreenState extends State<SplashScreen>
     // permission prompt must not hold up the rest of boot.
     unawaited(NotificationService().initialize());
     if (!mounted) return;
-    // Hold the bar short of full while auth resolves, so reaching 100% always
-    // coincides with actually leaving this screen.
+    // Firebase boot is complete. Fill the bar as the auth gate takes over.
     setState(() {
       _phase = _Phase.ready;
-      _progress = 0.72;
+      _progress = 1.0;
     });
   }
 
@@ -391,6 +391,7 @@ class _AuthGateState extends State<_AuthGate> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         context.read<SocialProvider>().syncUid(uid);
+        context.read<JamProvider>().syncUid(uid);
       });
     }
     return _targetFor(auth);

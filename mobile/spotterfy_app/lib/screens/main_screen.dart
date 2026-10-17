@@ -33,14 +33,14 @@ class _MainScreenState extends State<MainScreen>
 
   late final AnimationController _tabCtrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 200),
+    duration: const Duration(milliseconds: 480),
     // Start settled, otherwise the first frame would draw the initial tab
     // part-way through the enter transition (40% opacity, offset).
     value: 1.0,
   );
   late final Animation<double> _tabAnim = CurvedAnimation(
     parent: _tabCtrl,
-    curve: Curves.easeOutCubic,
+    curve: Curves.easeInOutCubic,
   );
 
   @override
@@ -93,6 +93,9 @@ class _MainScreenState extends State<MainScreen>
 
   void _goToTab(int i) {
     if (i == _currentIndex || i < 0 || i >= _tabs.length) return;
+    // Navbar navigation returns the current tab to its root. This avoids
+    // restoring a nested Settings/Profile page when the user comes back.
+    tabNavController.navigatorOf(_currentIndex)?.popUntil((route) => route.isFirst);
     setState(() {
       _slideDir = i > _currentIndex ? 1 : -1;
       _leavingIndex = _currentIndex;
@@ -155,7 +158,23 @@ class _MainScreenState extends State<MainScreen>
                 return Stack(
                   fit: StackFit.expand,
                   children: [
-                    for (var i = 0; i < _tabs.length; i++) _tabLayer(i),
+                    // Paint the outgoing tab first so the incoming page glides
+                    // over it consistently in either navigation direction.
+                    if (_leavingIndex != _currentIndex)
+                      _tabLayer(_leavingIndex),
+                    _tabLayer(_currentIndex),
+                    for (var i = 0; i < _tabs.length; i++)
+                      if (i != _leavingIndex && i != _currentIndex)
+                        Offstage(
+                          child: TickerMode(
+                            enabled: false,
+                            child: TabNavigator(
+                              tabIndex: i,
+                              navKey: _tabKeys[i],
+                              root: _tabs[i],
+                            ),
+                          ),
+                        ),
                   ],
                 );
               },
@@ -221,15 +240,18 @@ class _MainScreenState extends State<MainScreen>
     final t = _tabAnim.value;
     final double opacity;
     final double dx;
+    final double dy;
     final double scale;
     if (entering) {
-      opacity = 0.4 + 0.6 * t;
+      opacity = t;
       dx = _slideDir * 0.22 * (1 - t);
-      scale = 0.985 + 0.015 * t;
+      dy = 24 * (1 - t);
+      scale = 0.93 + 0.07 * t;
     } else {
       opacity = 1.0 - t;
-      dx = -_slideDir * 0.22 * t;
-      scale = 1.0 - 0.015 * t;
+      dx = -_slideDir * 0.12 * t;
+      dy = -12 * t;
+      scale = 1.0 - 0.035 * t;
     }
 
     return IgnorePointer(
@@ -238,11 +260,14 @@ class _MainScreenState extends State<MainScreen>
       child: Opacity(
         opacity: opacity.clamp(0.0, 1.0),
         child: Transform.translate(
-          offset: Offset(dx, 0),
-          child: Transform.scale(
-            scale: scale,
-            // Clip so the sliding tab doesn't paint over its neighbour.
-            child: ClipRect(child: tab),
+          offset: Offset(dx, dy),
+          child: Transform.rotate(
+            angle: entering ? _slideDir * 0.035 * (1 - t) : -_slideDir * 0.02 * t,
+            child: Transform.scale(
+              scale: scale,
+              // Clip so the sliding tab doesn't paint over its neighbour.
+              child: ClipRect(child: tab),
+            ),
           ),
         ),
       ),

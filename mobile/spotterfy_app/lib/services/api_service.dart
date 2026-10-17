@@ -289,9 +289,13 @@ class ApiService {
       if (videoId.isEmpty) return null;
       return TrackModel(
         id: 'yt_$videoId',
-        title: body['title'] as String? ?? '',
+        title: (body['title'] as String?)?.trim().isNotEmpty == true
+            ? (body['title'] as String).trim()
+            : 'YouTube video $videoId',
         artists: body['channel'] as String? ?? '',
-        cover: body['thumbnail'] as String? ?? '',
+        cover: (body['thumbnail'] as String?)?.trim().isNotEmpty == true
+            ? (body['thumbnail'] as String).trim()
+            : 'https://i.ytimg.com/vi/$videoId/hqdefault.jpg',
         durationMs: ((body['duration'] as num?) ?? 0).toInt() * 1000,
         sourceUrl: 'https://www.youtube.com/watch?v=$videoId',
       );

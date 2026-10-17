@@ -61,13 +61,13 @@ class MiniPlayer extends StatelessWidget {
       },
       background: _SwipeRevealBackground(
         alignment: Alignment.centerLeft,
-        icon: Icons.skip_previous,
+        icon: Icons.skip_previous_rounded,
         label: 'Previous',
         isMatchingSize: true,
       ),
       secondaryBackground: _SwipeRevealBackground(
         alignment: Alignment.centerRight,
-        icon: Icons.skip_next,
+        icon: Icons.skip_next_rounded,
         label: 'Next',
         isMatchingSize: true,
       ),
@@ -434,18 +434,35 @@ class _SwipeRevealBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isMatchingSize) {
       return Container(
-        color: Colors.transparent,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+        decoration: BoxDecoration(
+          color: SpotterfyTheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: SpotterfyTheme.primary.withValues(alpha: 0.32),
+          ),
+        ),
         alignment: alignment,
         // Exactly the size of the mini player — no extra padding that would
-        // make the swipe area (and the invisible background box) larger than
-        // the card itself. Inset the content slightly so the swipe glyph sits
-        // neatly inside the card edge.
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: SpotterfyTheme.primary, size: 22),
+        // Match the card's inset and rounded shape so an action panel shows
+        // underneath as the mini player moves aside.
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (alignment == Alignment.centerRight) ...[
+              Text(
+                label,
+                style: TextStyle(
+                  color: SpotterfyTheme.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Icon(icon, color: SpotterfyTheme.primary, size: 24),
+            if (alignment == Alignment.centerLeft) ...[
               const SizedBox(width: 8),
               Text(
                 label,
@@ -456,7 +473,7 @@ class _SwipeRevealBackground extends StatelessWidget {
                 ),
               ),
             ],
-          ),
+          ],
         ),
       );
     }

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
+import 'package:spotterfy_app/providers/download_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/queue_sheet.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -297,7 +298,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             ),
           ),
           // Layered last so the buttons win hit-testing over the content.
-          _pageChrome(player, isRadio),
+          _pageChrome(player, isRadio, track),
         ],
       ),
     );
@@ -308,7 +309,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// Returned as a full-size [Stack] with [Positioned] children so it can be
   /// layered over the page content (and therefore take taps) without consuming
   /// any vertical space in the layout.
-  Widget _pageChrome(PlayerProvider player, bool isRadio) {
+  Widget _pageChrome(PlayerProvider player, bool isRadio, TrackModel track) {
     return SizedBox.expand(
       child: Stack(
         children: [
@@ -330,14 +331,19 @@ class _PlayerScreenState extends State<PlayerScreen>
             Positioned(
               top: MediaQuery.paddingOf(context).top + 20,
               right: 10,
-              child: _CircleControlButton(
-                icon: Icons.queue_music_rounded,
-                tooltip: 'Queue',
-                // No size overrides: the shared defaults (48 circle / 26 glyph)
-                // are exactly what the previous/next buttons use, so all three
-                // stay visually identical. Overriding them here is what made
-                // the queue icon look a different size.
-                onTap: () => showQueueSheet(context, player),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _TrackDownloadButton(track: track),
+                  const SizedBox(width: 8),
+                  _CircleControlButton(
+                    icon: Icons.queue_music_rounded,
+                    tooltip: 'Queue',
+                    diameter: 42,
+                    glyph: 22,
+                    onTap: () => showQueueSheet(context, player),
+                  ),
+                ],
               ),
             ),
         ],
@@ -771,22 +777,21 @@ class _CarouselPage extends StatelessWidget {
 
 /// Circular transport control used for previous / next / queue.
 ///
-/// The dimensions are fixed constants rather than parameters: the queue button
-/// used to override them and ended up a different size from the skip buttons,
-/// and per-call overrides are exactly what let that drift back in.
+/// Previous/next keep the standard transport size; the queue control can opt
+/// into a slightly smaller size to make room for the download action.
 class _CircleControlButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final String tooltip;
-
-  /// Every circular control on the page shares these, so they always match.
-  static const double _diameter = 48;
-  static const double _glyph = 26;
+  final double diameter;
+  final double glyph;
 
   const _CircleControlButton({
     required this.icon,
     required this.onTap,
     this.tooltip = '',
+    this.diameter = 48,
+    this.glyph = 26,
   });
 
   @override
@@ -802,9 +807,87 @@ class _CircleControlButton extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: SizedBox(
-            width: _diameter,
-            height: _diameter,
-            child: Icon(icon, color: SpotterfyTheme.text, size: _glyph),
+            width: diameter,
+            height: diameter,
+            child: Icon(icon, color: SpotterfyTheme.text, size: glyph),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Download state for the currently playing track, kept beside the queue
+/// control so offline playback is one tap away from Now Playing.
+class _TrackDownloadButton extends StatelessWidget {
+  final TrackModel track;
+
+  const _TrackDownloadButton({required this.track});
+
+  @override
+  Widget build(BuildContext context) {
+    final downloads = context.watch<DownloadProvider>();
+    final downloading =
+        downloads.activeTrackId == track.id && downloads.isBusy;
+    final downloaded = downloads.isDownloaded(track.id);
+    return Tooltip(
+      message: downloading
+          ? 'Downloading'
+          : downloaded
+          ? 'Downloaded · tap to remove'
+          : 'Download for offline listening',
+      child: Material(
+        color: SpotterfyTheme.overlay(0.12),
+        shape: CircleBorder(
+          side: BorderSide(color: SpotterfyTheme.overlay(0.2)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: downloading
+              ? null
+              : () async {
+                  HapticFeedback.lightImpact();
+                  final messenger = ScaffoldMessenger.of(context);
+                  final ok = downloaded
+                      ? await downloads.remove(track.id).then((_) => true)
+                      : await downloads.download(track);
+                  if (!context.mounted) return;
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        downloaded
+                            ? 'Removed download of "${track.title}"'
+                            : ok
+                            ? 'Downloaded "${track.title}"'
+                            : (downloads.lastError ?? 'Download failed'),
+                      ),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+          child: SizedBox(
+            width: 42,
+            height: 42,
+            child: Center(
+              child: downloading
+                  ? SizedBox(
+                      width: 17,
+                      height: 17,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: SpotterfyTheme.primary,
+                      ),
+                    )
+                  : Icon(
+                      downloaded
+                          ? Icons.download_done_rounded
+                          : Icons.download_rounded,
+                      color: downloaded
+                          ? SpotterfyTheme.primary
+                          : SpotterfyTheme.text,
+                      size: 21,
+                    ),
+            ),
           ),
         ),
       ),

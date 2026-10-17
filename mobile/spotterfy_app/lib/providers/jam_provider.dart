@@ -13,6 +13,7 @@ class JamProvider extends ChangeNotifier {
   List<JamSessionModel> _activeSessions = [];
   StreamSubscription? _sessionSub;
   StreamSubscription? _activeSub;
+  String? _uid;
 
   JamSessionModel? get currentSession => _currentSession;
   List<JamSessionModel> get activeSessions => _activeSessions;
@@ -32,10 +33,25 @@ class JamProvider extends ChangeNotifier {
   /// Stored as full track JSON so the queue can be played without a second fetch.
   List<TrackModel> get currentQueue => _currentSession?.tracks ?? const [];
 
-  JamProvider() {
+  JamProvider();
+
+  void syncUid(String? uid) {
+    if (_uid == uid) return;
+    _uid = uid;
+    _activeSub?.cancel();
+    _activeSub = null;
+    _activeSessions = [];
+    if (uid == null) {
+      _sessionSub?.cancel();
+      _sessionSub = null;
+      _currentSession = null;
+      notifyListeners();
+      return;
+    }
     _activeSub = _jamService.getActiveSessions().listen(
       (snap) {
         _activeSessions = snap.docs
+            .where((d) => d.data()['ended'] != true)
             .map(
               (d) => JamSessionModel(
                 id: d.id,
@@ -57,6 +73,7 @@ class JamProvider extends ChangeNotifier {
       // into an unhandled async exception.
       onError: _onListenError,
     );
+    notifyListeners();
   }
 
   void _onListenError(Object error, StackTrace stack) {
@@ -86,7 +103,12 @@ class JamProvider extends ChangeNotifier {
 
   Future<void> joinSession(String uid, String sessionId) async {
     if (_currentSession != null) throw StateError('already in a jam');
-    await _jamService.joinJamSession(uid, sessionId);
+    final alreadyParticipant = _activeSessions.any(
+      (session) => session.id == sessionId && session.participants.contains(uid),
+    );
+    if (!alreadyParticipant) {
+      await _jamService.joinJamSession(uid, sessionId);
+    }
     _subscribe(sessionId);
   }
 
@@ -101,6 +123,13 @@ class JamProvider extends ChangeNotifier {
         return;
       }
       final data = snap.data() ?? const {};
+      if (data['ended'] == true) {
+        _sessionSub?.cancel();
+        _sessionSub = null;
+        _currentSession = null;
+        notifyListeners();
+        return;
+      }
       final raw = (data['tracks'] as List<dynamic>? ?? const []);
       _currentSession = JamSessionModel(
         id: snap.id,
