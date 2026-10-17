@@ -1,11 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:spotterfy_app/models/feedback_model.dart';
 import 'package:spotterfy_app/models/user_model.dart';
 
-/// Reads and moderates user accounts for the admin panel.
+/// Reads and moderates user accounts and feedback for the admin panel.
 ///
 /// Firestore rules already allow an admin to update or delete any
-/// `users/{userId}` document, so moderation goes straight to Firestore - there
-/// is no backend endpoint to add or redeploy for any of this.
+/// `users/{userId}` document and manage `feedback`, so moderation goes straight
+/// to Firestore - there is no backend endpoint to add or redeploy for any of this.
 class AdminService {
   final FirebaseFirestore _firestore;
 
@@ -84,4 +85,32 @@ class AdminService {
   Future<void> deleteUser(String uid) async {
     await _firestore.collection('users').doc(uid).delete();
   }
+
+  /// Retrieves all feedback submissions, newest first.
+  Future<List<FeedbackModel>> getAllFeedback() async {
+    final snap = await _firestore.collection('feedback').get();
+    final out = <FeedbackModel>[];
+    for (final doc in snap.docs) {
+      try {
+        out.add(FeedbackModel.fromFirestore(doc.data(), doc.id));
+      } catch (_) {
+        continue;
+      }
+    }
+    out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return out;
+  }
+
+  /// Marks feedback as read or unread.
+  Future<void> markFeedbackRead(String feedbackId, bool isRead) async {
+    await _firestore.collection('feedback').doc(feedbackId).update({
+      'isRead': isRead,
+    });
+  }
+
+  /// Deletes a feedback item from Firestore.
+  Future<void> deleteFeedback(String feedbackId) async {
+    await _firestore.collection('feedback').doc(feedbackId).delete();
+  }
 }
+

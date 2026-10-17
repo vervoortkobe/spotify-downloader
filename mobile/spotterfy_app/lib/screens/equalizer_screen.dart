@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/equalizer_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
-import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/widgets/app_background.dart';
+import 'package:spotterfy_app/widgets/app_chrome.dart';
 
 class EqualizerScreen extends StatelessWidget {
   const EqualizerScreen({super.key});
@@ -16,23 +17,11 @@ class EqualizerScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final eq = context.watch<EqualizerProvider>();
-    return SwipeBackWrapper(
-      child: Scaffold(
-        backgroundColor: SpotterfyTheme.background,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          title: Text(
-            'Equalizer',
-            style: TextStyle(
-              color: SpotterfyTheme.text,
-              fontWeight: FontWeight.bold,
-              fontSize: 22,
-            ),
-          ),
-        ),
+    return HideAppChrome(
+      child: AppGradientScaffold(
+        title: 'Equalizer',
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 160),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

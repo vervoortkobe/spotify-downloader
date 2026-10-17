@@ -45,18 +45,9 @@ class PlaylistCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          // Subtle top-to-bottom lift so the row reads as a raised surface
-          // instead of a flat block of grey.
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: active
-                ? [
-                    SpotterfyTheme.primary.withValues(alpha: 0.16),
-                    SpotterfyTheme.card,
-                  ]
-                : [SpotterfyTheme.card, SpotterfyTheme.surface],
-          ),
+          color: active
+              ? SpotterfyTheme.primary.withValues(alpha: 0.12)
+              : SpotterfyTheme.card,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: active

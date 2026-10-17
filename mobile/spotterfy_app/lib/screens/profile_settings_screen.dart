@@ -25,8 +25,8 @@ class ProfileSettingsScreen extends StatelessWidget {
       child: AppGradientScaffold(
         title: 'Profile',
         body: SingleChildScrollView(
-          // Clears the mini player drawn over this page by MainScreen.
-          padding: const EdgeInsets.only(bottom: 140),
+          // Leave a little room after the final row when scrolling.
+          padding: const EdgeInsets.only(bottom: 32),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Column(

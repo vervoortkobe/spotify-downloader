@@ -29,6 +29,7 @@ routes = Blueprint("routes", __name__)
 # string for its Settings row so the two can be compared server-side.
 APP_VERSION = "1.0.0"
 APP_VERSION_LABEL = "Beta"
+APP_DOWNLOAD_URL = "https://github.com/vervoortkobe/spotify-downloader/releases"
 
 
 @routes.after_request
@@ -273,6 +274,7 @@ def app_version():
         "version": APP_VERSION,
         "label": APP_VERSION_LABEL,
         "notes": "Bug fixes and performance improvements.",
+        "url": APP_DOWNLOAD_URL,
     })
 
 

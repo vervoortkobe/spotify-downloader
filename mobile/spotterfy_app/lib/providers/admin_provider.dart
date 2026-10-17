@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:spotterfy_app/models/feedback_model.dart';
 import 'package:spotterfy_app/models/user_model.dart';
 import 'package:spotterfy_app/services/admin_service.dart';
 
@@ -24,6 +25,16 @@ enum AdminSort {
   final String label;
 }
 
+/// Filter for feedback items.
+enum FeedbackFilter {
+  all('All'),
+  unread('Unread'),
+  read('Read');
+
+  const FeedbackFilter(this.label);
+  final String label;
+}
+
 /// Aggregate counts for the stats grid.
 class AdminStats {
   final int total;
@@ -45,12 +56,8 @@ class AdminStats {
   });
 }
 
-/// Powers the admin panel: the user list, derived stats, search/filter/sort and
-/// the moderation writes.
-///
-/// Every action updates the in-memory list optimistically after the write
-/// resolves, so the panel reflects a ban immediately instead of needing a
-/// refetch that would also drop the current search and filter.
+/// Powers the admin panel: the user list, derived stats, search/filter/sort,
+/// moderation writes, and reading/managing user feedback.
 class AdminProvider extends ChangeNotifier {
   final AdminService _service;
 
@@ -66,6 +73,14 @@ class AdminProvider extends ChangeNotifier {
   /// action sheet can block a double-tap from firing twice.
   String? _busyUid;
 
+  // --- Feedback state ---
+  List<FeedbackModel> _feedbacks = [];
+  bool _isLoadingFeedback = false;
+  String? _feedbackError;
+  String _feedbackQuery = '';
+  FeedbackFilter _feedbackFilter = FeedbackFilter.all;
+  String? _busyFeedbackId;
+
   AdminProvider([AdminService? service]) : _service = service ?? AdminService();
 
   List<UserModel> get users => _users;
@@ -75,6 +90,16 @@ class AdminProvider extends ChangeNotifier {
   AdminFilter get filter => _filter;
   AdminSort get sort => _sort;
   String? get busyUid => _busyUid;
+
+  // --- Feedback getters ---
+  List<FeedbackModel> get feedbacks => _feedbacks;
+  bool get isLoadingFeedback => _isLoadingFeedback;
+  String? get feedbackError => _feedbackError;
+  String get feedbackQuery => _feedbackQuery;
+  FeedbackFilter get feedbackFilter => _feedbackFilter;
+  String? get busyFeedbackId => _busyFeedbackId;
+  int get unreadFeedbackCount => _feedbacks.where((f) => !f.isRead).length;
+  int get readFeedbackCount => _feedbacks.where((f) => f.isRead).length;
 
   int get totalCount => _users.length;
 
@@ -157,6 +182,44 @@ class AdminProvider extends ChangeNotifier {
     }
   }
 
+  /// Filtered feedback list based on current query and unread status filter.
+  List<FeedbackModel> get visibleFeedbacks {
+    final q = _feedbackQuery.trim().toLowerCase();
+    var list = _feedbacks.where((f) {
+      switch (_feedbackFilter) {
+        case FeedbackFilter.all:
+          return true;
+        case FeedbackFilter.unread:
+          return !f.isRead;
+        case FeedbackFilter.read:
+          return f.isRead;
+      }
+    }).toList();
+
+    if (q.isNotEmpty) {
+      list = list.where((f) {
+        return f.message.toLowerCase().contains(q) ||
+            f.userName.toLowerCase().contains(q) ||
+            f.userEmail.toLowerCase().contains(q) ||
+            f.userId.toLowerCase().contains(q);
+      }).toList();
+    }
+
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  int feedbackCountFor(FeedbackFilter f) {
+    switch (f) {
+      case FeedbackFilter.all:
+        return _feedbacks.length;
+      case FeedbackFilter.unread:
+        return unreadFeedbackCount;
+      case FeedbackFilter.read:
+        return readFeedbackCount;
+    }
+  }
+
   void search(String value) {
     _query = value;
     notifyListeners();
@@ -171,6 +234,17 @@ class AdminProvider extends ChangeNotifier {
   void setSort(AdminSort value) {
     if (_sort == value) return;
     _sort = value;
+    notifyListeners();
+  }
+
+  void searchFeedback(String value) {
+    _feedbackQuery = value;
+    notifyListeners();
+  }
+
+  void setFeedbackFilter(FeedbackFilter value) {
+    if (_feedbackFilter == value) return;
+    _feedbackFilter = value;
     notifyListeners();
   }
 
@@ -195,7 +269,26 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> refresh() => loadUsers();
+  Future<void> loadFeedback() async {
+    _isLoadingFeedback = true;
+    _feedbackError = null;
+    notifyListeners();
+    try {
+      _feedbacks = await _service.getAllFeedback();
+    } catch (e) {
+      _feedbackError = '$e';
+      debugPrint('[Admin] loadFeedback failed: $e');
+    }
+    _isLoadingFeedback = false;
+    notifyListeners();
+  }
+
+  Future<void> refresh() async {
+    await Future.wait([
+      loadUsers(),
+      loadFeedback(),
+    ]);
+  }
 
   /// Suspends [uid] and mirrors the change locally.
   Future<void> banUser(String uid, String reason) => _mutate(uid, (u) {
@@ -228,6 +321,45 @@ class AdminProvider extends ChangeNotifier {
     () => _service.setDisplayName(uid, name),
   );
 
+  /// Toggles read status on a feedback item with optimistic UI update.
+  Future<void> markFeedbackRead(String feedbackId, bool isRead) async {
+    final idx = _feedbacks.indexWhere((f) => f.id == feedbackId);
+    if (idx < 0) return;
+    final prev = _feedbacks[idx].isRead;
+    _feedbacks[idx].isRead = isRead;
+    _busyFeedbackId = feedbackId;
+    notifyListeners();
+    try {
+      await _service.markFeedbackRead(feedbackId, isRead);
+    } catch (e) {
+      debugPrint('[Admin] markFeedbackRead failed: $e');
+      if (idx < _feedbacks.length) {
+        _feedbacks[idx].isRead = prev;
+      }
+      _feedbackError = 'Failed to update feedback: $e';
+    }
+    _busyFeedbackId = null;
+    notifyListeners();
+  }
+
+  /// Deletes a feedback item with optimistic UI update.
+  Future<void> deleteFeedback(String feedbackId) async {
+    final idx = _feedbacks.indexWhere((f) => f.id == feedbackId);
+    if (idx < 0) return;
+    final removed = _feedbacks.removeAt(idx);
+    _busyFeedbackId = feedbackId;
+    notifyListeners();
+    try {
+      await _service.deleteFeedback(feedbackId);
+    } catch (e) {
+      debugPrint('[Admin] deleteFeedback failed: $e');
+      _feedbacks.insert(idx, removed);
+      _feedbackError = 'Failed to delete feedback: $e';
+    }
+    _busyFeedbackId = null;
+    notifyListeners();
+  }
+
   /// Applies [local] to the cached copy, runs [write], and reverts on failure so
   /// the panel never claims a moderation action that did not stick.
   Future<void> _mutate(
@@ -251,3 +383,4 @@ class AdminProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
+

@@ -222,6 +222,9 @@ class ApiService {
   static const String appVersion = '1.0.0';
   static const String appVersionLabel = 'Beta';
 
+  /// Download URL, fetched from /api/app-version at check time.
+  static String? appDownloadUrl;
+
   /// Latest published version, for the "Check for updates" action.
   ///
   /// Returns null when the check could not be made (offline, server error), so
@@ -235,15 +238,35 @@ class ApiService {
       if (response.statusCode != 200) return null;
       final body = jsonDecode(response.body);
       if (body is! Map) return null;
+      appDownloadUrl = (body['url'] as String? ?? '');
       return {
         'version': (body['version'] as String?) ?? '',
         'label': (body['label'] as String?) ?? '',
         'notes': (body['notes'] as String?) ?? '',
+        'url': (body['url'] as String? ?? ''),
       };
     } catch (e) {
       debugPrint('checkForUpdates failed: $e');
       return null;
     }
+  }
+
+  /// Dotted-version comparison, so 1.0.10 correctly beats 1.0.9.
+  static bool isNewerVersion(String remote, String local) {
+    List<int> parse(String v) => v
+        .split(RegExp(r'[^0-9]+'))
+        .where((p) => p.isNotEmpty)
+        .map((p) => int.tryParse(p) ?? 0)
+        .toList();
+    final a = parse(remote);
+    final b = parse(local);
+    final len = a.length > b.length ? a.length : b.length;
+    for (var i = 0; i < len; i++) {
+      final x = i < a.length ? a[i] : 0;
+      final y = i < b.length ? b[i] : 0;
+      if (x != y) return x > y;
+    }
+    return false;
   }
 
   /// Song lookup. Returns real results (title, artist, artwork, length) so the

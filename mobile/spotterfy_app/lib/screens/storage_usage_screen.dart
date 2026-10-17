@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/services/network_stats_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
-import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/widgets/app_background.dart';
+import 'package:spotterfy_app/widgets/app_chrome.dart';
 
 // Follows the accent, so these cannot be const any more.
 final _playlistColor = SpotterfyTheme.primary;
@@ -40,7 +42,6 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
   int _playlistCache = 0;
   int _images = 0;
   int _other = 0;
-  List<StorageSnapshot> _history = [];
 
   @override
   void initState() {
@@ -129,7 +130,6 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
       _playlistCache = playlistCache;
       _images = images;
       _other = other;
-      _history = history;
       _loading = false;
     });
   }
@@ -187,23 +187,11 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
   @override
   Widget build(BuildContext context) {
     final total = _playlistCache + _images + _other;
-    return SwipeBackWrapper(
-      child: Scaffold(
-        backgroundColor: SpotterfyTheme.background,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          title: Text(
-            'Storage usage',
-            style: TextStyle(
-              color: SpotterfyTheme.text,
-              fontWeight: FontWeight.bold,
-              fontSize: 22,
-            ),
-          ),
-        ),
+    return HideAppChrome(
+      child: AppGradientScaffold(
+        title: 'Storage Usage',
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 160),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -271,71 +259,60 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
                         ],
                       ),
               ),
-              const SizedBox(height: 20),
-              Text(
-                'History',
-                style: TextStyle(
-                  color: SpotterfyTheme.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _card(
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        _legendDot(_playlistColor, 'Playlists'),
-                        const SizedBox(width: 16),
-                        _legendDot(_imageColor, 'Images'),
-                        const SizedBox(width: 16),
-                        _legendDot(_otherColor, 'Other'),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (_history.length < 2)
-                      Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                          child: Text(
-                            'Not enough history yet — check back later',
-                            style: TextStyle(
-                              color: SpotterfyTheme.muted,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      SizedBox(
-                        height: 190,
-                        child: _StorageGraph(history: _history),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: (_loading || _resetting) ? null : _resetCache,
-                  icon: _resetting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.cleaning_services_outlined, size: 18),
-                  label: Text(_resetting ? 'Clearing…' : 'Reset cache'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    onTap: (_loading || _resetting) ? null : _resetCache,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF1ED760).withValues(alpha: 0.12),
+                            Color(0xFF1ED760).withValues(alpha: 0.04),
+                          ],
+                        ),
+                        border: Border.all(
+                          color: Color(0xFF1ED760).withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _resetting
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFF1ED760),
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.logout_rounded,
+                                  size: 20,
+                                  color: Color(0xFF1ED760),
+                                ),
+                          const SizedBox(width: 10),
+                          Text(
+                            _resetting ? 'Clearing cache…' : 'Reset cache',
+                            style: TextStyle(
+                              color: Color(0xFF1ED760),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),
@@ -406,131 +383,4 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
       ],
     );
   }
-
-  Widget _legendDot(Color color, String label) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      ),
-      const SizedBox(width: 6),
-      Text(label, style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
-    ],
-  );
-}
-
-class _StorageGraph extends StatelessWidget {
-  final List<StorageSnapshot> history;
-  const _StorageGraph({required this.history});
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _StorageGraphPainter(history: history),
-      child: Container(),
-    );
-  }
-}
-
-class _StorageGraphPainter extends CustomPainter {
-  final List<StorageSnapshot> history;
-  _StorageGraphPainter({required this.history});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const labelH = 20.0;
-    const topPad = 18.0;
-    final chartH = size.height - labelH;
-    final maxV = history
-        .fold<int>(1, (m, s) => s.total > m ? s.total : m)
-        .toDouble();
-    final n = history.length;
-    final stepX = n > 1 ? size.width / (n - 1) : 0.0;
-
-    final gridPaint = Paint()
-      ..color = SpotterfyTheme.card
-      ..strokeWidth = 1;
-    for (var i = 0; i <= 3; i++) {
-      final y = topPad + (chartH - topPad) * i / 3;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-
-    Offset pt(int i, int v) {
-      final x = n > 1 ? stepX * i : size.width / 2;
-      final y = chartH - (maxV > 0 ? (v / maxV) * (chartH - topPad - 4) : 0);
-      return Offset(x, y);
-    }
-
-    void line(List<Offset> pts, Color color, double width) {
-      if (pts.isEmpty) return;
-      final paint = Paint()
-        ..color = color
-        ..strokeWidth = width
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
-      if (pts.length == 1) {
-        canvas.drawCircle(pts.first, width / 2, paint);
-        return;
-      }
-      final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-      for (var i = 1; i < pts.length; i++) {
-        path.lineTo(pts[i].dx, pts[i].dy);
-      }
-      canvas.drawPath(path, paint);
-    }
-
-    line([for (var i = 0; i < n; i++) pt(i, history[i].other)], _otherColor, 2);
-    line(
-      [for (var i = 0; i < n; i++) pt(i, history[i].images)],
-      _imageColor,
-      2,
-    );
-    line(
-      [for (var i = 0; i < n; i++) pt(i, history[i].playlistCache)],
-      _playlistColor,
-      2.5,
-    );
-
-    for (var i = 0; i < n; i++) {
-      canvas.drawCircle(
-        pt(i, history[i].total),
-        3,
-        Paint()..color = SpotterfyTheme.text,
-      );
-    }
-
-    // Date labels: first, middle, last
-    final labelStyle = TextStyle(color: SpotterfyTheme.muted, fontSize: 10);
-    void label(int i, double align) {
-      final d = DateTime.fromMillisecondsSinceEpoch(history[i].at);
-      final text = '${d.day}/${d.month}';
-      final tp = TextPainter(
-        text: TextSpan(text: text, style: labelStyle),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      final x = (n > 1 ? stepX * i : size.width / 2) - tp.width * align;
-      tp.paint(canvas, Offset(x.clamp(0.0, size.width - tp.width), chartH + 4));
-    }
-
-    if (n > 0) {
-      label(0, 0);
-      if (n > 2) label(n ~/ 2, 0.5);
-      if (n > 1) label(n - 1, 1);
-    }
-
-    final maxLabel = TextPainter(
-      text: TextSpan(
-        text: NetworkStatsService.formatBytes(maxV.toInt()),
-        style: labelStyle,
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    maxLabel.paint(canvas, Offset(size.width - maxLabel.width, 0));
-  }
-
-  @override
-  bool shouldRepaint(covariant _StorageGraphPainter old) =>
-      old.history != history;
 }

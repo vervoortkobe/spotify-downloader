@@ -1,14 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/app_chrome.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/screens/about_screen.dart';
 import 'package:spotterfy_app/screens/data_usage_screen.dart';
 import 'package:spotterfy_app/screens/equalizer_screen.dart';
+import 'package:spotterfy_app/screens/feedback_screen.dart';
+import 'package:spotterfy_app/screens/licenses_screen.dart';
+import 'package:spotterfy_app/screens/privacy_policy_screen.dart';
 import 'package:spotterfy_app/screens/profile_settings_screen.dart';
 import 'package:spotterfy_app/screens/storage_usage_screen.dart';
 import 'package:spotterfy_app/screens/theme_screen.dart';
+import 'package:spotterfy_app/screens/terms_of_service_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playback_settings_controller.dart';
@@ -32,7 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: 'Settings',
       body: SingleChildScrollView(
         // Leave a little room after the final settings row when scrolling.
-        padding: const EdgeInsets.only(bottom: 160),
+        padding: const EdgeInsets.only(bottom: 32),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
           child: Column(
@@ -101,11 +109,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _settingsItem(
                 Icons.info_outline,
                 'About Spotterfy',
-                onTap: () {},
+                onTap: () =>
+                    Navigator.push(context, swipeRoute(const AboutScreen())),
               ),
-              _settingsItem(Icons.privacy_tip, 'Privacy Policy', onTap: () {}),
-              _settingsItem(Icons.feedback, 'Send Feedback', onTap: () {}),
-              const SizedBox(height: 20),
+              _settingsItem(
+                Icons.privacy_tip,
+                'Privacy Policy',
+                onTap: () => Navigator.push(
+                  context,
+                  swipeRoute(const PrivacyPolicyScreen()),
+                ),
+              ),
+              _settingsItem(
+                Icons.description,
+                'Terms of Service',
+                onTap: () => Navigator.push(
+                  context,
+                  swipeRoute(const TermsOfServiceScreen()),
+                ),
+              ),
+              _settingsItem(
+                Icons.article_outlined,
+                'Licenses',
+                onTap: () =>
+                    Navigator.push(context, swipeRoute(const LicensesScreen())),
+              ),
+              _settingsItem(
+                Icons.feedback,
+                'Send Feedback',
+                onTap: () =>
+                    Navigator.push(context, swipeRoute(const FeedbackScreen())),
+              ),
+              const SizedBox(height: 16),
+              _settingsItem(
+                Icons.code,
+                'GitHub',
+                subtitle: 'Open source on GitHub',
+                onTap: () => _launchUrl('https://github.com/vervoortkobe/spotify-downloader'),
+              ),
 
               // Kept last with a small scroll inset for comfortable scrolling.
               _versionRow(context),
@@ -195,12 +236,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       return;
     }
-    if (_isNewer(remote, ApiService.appVersion)) {
+    if (ApiService.isNewerVersion(remote, ApiService.appVersion)) {
       final label = latest['label'] ?? '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'Update available: ${label.isEmpty ? '' : '$label '}$remote',
+          ),
+          action: SnackBarAction(
+            label: 'Download',
+            onPressed: () {
+              final url = latest['url'] ?? '';
+              if (url.isNotEmpty) {
+                unawaited(launchUrl(Uri.parse(url)));
+              }
+            },
           ),
         ),
       );
@@ -211,22 +261,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ).showSnackBar(const SnackBar(content: Text('Spotterfy is up to date')));
   }
 
-  /// Dotted-version comparison, so 1.0.10 correctly beats 1.0.9.
-  static bool _isNewer(String remote, String local) {
-    List<int> parse(String v) => v
-        .split(RegExp(r'[^0-9]+'))
-        .where((p) => p.isNotEmpty)
-        .map((p) => int.tryParse(p) ?? 0)
-        .toList();
-    final a = parse(remote);
-    final b = parse(local);
-    final len = a.length > b.length ? a.length : b.length;
-    for (var i = 0; i < len; i++) {
-      final x = i < a.length ? a[i] : 0;
-      final y = i < b.length ? b[i] : 0;
-      if (x != y) return x > y;
+  /// Opens a URL in the device browser.
+  void _launchUrl(String urlString) {
+    if (urlString.isNotEmpty) {
+      unawaited(launchUrl(Uri.parse(urlString)));
     }
-    return false;
   }
 
   /// Crossfade length between songs, in seconds (0 = off).

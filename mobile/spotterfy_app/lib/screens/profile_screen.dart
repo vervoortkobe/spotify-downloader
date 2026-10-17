@@ -4,7 +4,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
-import 'package:spotterfy_app/providers/status_provider.dart';
 import 'package:spotterfy_app/providers/jam_provider.dart';
 import 'package:spotterfy_app/providers/social_provider.dart';
 import 'package:spotterfy_app/services/network_stats_service.dart';
@@ -129,7 +128,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 photoUrl: user?.photoUrl ?? '',
               ),
               const SizedBox(height: 24),
-              _sectionTitle('Your Stats'),
               Row(
                 children: [
                   Expanded(child: _statItem('Playlists', '${own.length}')),
@@ -142,9 +140,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              _sectionTitle('Connection'),
-              _connectionTile(context),
               const SizedBox(height: 24),
               _sectionTitle(
                 'Your Playlists',
@@ -495,31 +490,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 26, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            SpotterfyTheme.primary.withValues(alpha: 0.3),
-            Color.alphaBlend(
-              SpotterfyTheme.primary.withValues(alpha: 0.08),
-              SpotterfyTheme.surface,
-            ),
-            SpotterfyTheme.surface,
-          ],
-        ),
+        color: SpotterfyTheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: SpotterfyTheme.primary.withValues(alpha: 0.32),
+          color: SpotterfyTheme.overlay(0.08),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: SpotterfyTheme.primary.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Column(
         children: [
@@ -527,14 +504,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // A profile reads as a portrait, and the centred stack keeps long
           // names from colliding with the edge on a narrow screen.
           Container(
-            width: 104,
-            height: 104,
+            width: 80,
+            height: 80,
             decoration: BoxDecoration(
               color: SpotterfyTheme.surface,
               shape: BoxShape.circle,
               border: Border.all(
                 color: SpotterfyTheme.primary.withValues(alpha: 0.45),
-                width: 3,
+                width: 2,
               ),
               image: photoUrl.isNotEmpty
                   ? DecorationImage(
@@ -551,7 +528,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
             child: photoUrl.isEmpty
-                ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 44)
+                ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 34)
                 : null,
           ),
           const SizedBox(height: 14),
@@ -576,36 +553,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
           const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: SpotterfyTheme.primary.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: SpotterfyTheme.primary.withValues(alpha: 0.22),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.graphic_eq_rounded,
-                  color: SpotterfyTheme.primary,
-                  size: 15,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'MUSIC PROFILE',
-                  style: TextStyle(
-                    color: SpotterfyTheme.primary,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -655,81 +602,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '$total';
   }
 
-  Widget _connectionTile(BuildContext context) {
-    final net = context.watch<NetworkStatsService>();
-    final warp = context.watch<StatusProvider>().warpConnected;
-    final connTitle = !net.online
-        ? 'Internet — Offline'
-        : (net.isCellular ? 'Internet — Mobile data' : 'Internet — Wi-Fi');
-    final connIcon = !net.online
-        ? Icons.signal_wifi_off
-        : (net.isCellular ? Icons.signal_cellular_alt : Icons.wifi);
-    final connColor = !net.online ? Colors.red : SpotterfyTheme.primary;
-    final warpTitle = warp == null
-        ? 'WARP — Checking…'
-        : (warp ? 'WARP — Connected' : 'WARP — Off');
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: BoxDecoration(
-        color: SpotterfyTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: SpotterfyTheme.overlay(0.08)),
-      ),
-      child: Column(
-        children: [
-          _connectionRow(icon: connIcon, title: connTitle, color: connColor),
-          Divider(color: SpotterfyTheme.card, height: 12),
-          _connectionRow(
-            icon: warp == true ? Icons.shield : Icons.shield_outlined,
-            title: warpTitle,
-            color: warp == true ? SpotterfyTheme.primary : SpotterfyTheme.muted,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _connectionRow({
-    required IconData icon,
-    required String title,
-    required Color color,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                color: SpotterfyTheme.text,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _statItem(String label, String value) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            SpotterfyTheme.primary.withValues(alpha: 0.1),
-            SpotterfyTheme.surface,
-          ],
-        ),
+        color: SpotterfyTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: SpotterfyTheme.primary.withValues(alpha: 0.16),
+          color: SpotterfyTheme.overlay(0.08),
         ),
       ),
       child: Column(
@@ -737,7 +617,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(
             value,
             style: TextStyle(
-              color: SpotterfyTheme.primary,
+              color: SpotterfyTheme.text,
               fontSize: 24,
               fontWeight: FontWeight.w800,
             ),

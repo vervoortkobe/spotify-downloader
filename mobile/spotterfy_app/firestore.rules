@@ -169,5 +169,14 @@ service cloud.firestore {
         );
       allow delete: if false;
     }
+
+    // ---- Feedback ----
+    // Anyone can submit feedback.
+    // Only admins can read, update (mark read/unread), or delete feedback.
+    match /feedback/{feedbackId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null && isAdmin();
+    }
   }
 }
+

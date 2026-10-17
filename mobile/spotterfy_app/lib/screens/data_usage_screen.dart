@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/status_provider.dart';
 import 'package:spotterfy_app/services/network_stats_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
-import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/widgets/app_background.dart';
+import 'package:spotterfy_app/widgets/app_chrome.dart';
 
 final _wifiColor = SpotterfyTheme.primary;
 final _cellColor = Color(0xFF38bdf8);
@@ -15,23 +17,11 @@ class DataUsageScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final net = context.watch<NetworkStatsService>();
     final status = context.watch<StatusProvider>();
-    return SwipeBackWrapper(
-      child: Scaffold(
-        backgroundColor: SpotterfyTheme.background,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          title: Text(
-            'Data Usage',
-            style: TextStyle(
-              color: SpotterfyTheme.text,
-              fontWeight: FontWeight.bold,
-              fontSize: 22,
-            ),
-          ),
-        ),
+    return HideAppChrome(
+      child: AppGradientScaffold(
+        title: 'Data Usage',
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 160),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -45,7 +35,7 @@ class DataUsageScreen extends StatelessWidget {
               _historyCard(net),
               const SizedBox(height: 20),
               _sectionTitle('Services'),
-              _servicesCard(status),
+              _servicesCard(status, net),
             ],
           ),
         ),
@@ -298,10 +288,7 @@ class DataUsageScreen extends StatelessWidget {
               ),
             )
           else
-            SizedBox(
-              height: 190,
-              child: _UsageGraph(data: data, currentMonth: net.month),
-            ),
+            _UsageLineChart(data: data, currentMonth: net.month),
         ],
       ),
     );
@@ -320,12 +307,26 @@ class DataUsageScreen extends StatelessWidget {
     ],
   );
 
-  Widget _servicesCard(StatusProvider status) {
+  Widget _servicesCard(StatusProvider status, NetworkStatsService net) {
     final backend = status.backendOnline;
     final warp = status.warpConnected;
+    final connTitle = !net.online
+        ? 'Offline'
+        : (net.isCellular ? 'Mobile data' : 'Wi-Fi');
+    final connIcon = !net.online
+        ? Icons.signal_wifi_off
+        : (net.isCellular ? Icons.signal_cellular_alt : Icons.wifi);
+    final connColor = !net.online ? const Color(0xFFef4444) : _wifiColor;
     return _card(
       Column(
         children: [
+          _serviceRow(
+            icon: connIcon,
+            title: 'Connected',
+            state: connTitle,
+            color: connColor,
+          ),
+          Divider(color: SpotterfyTheme.card, height: 20),
           _serviceRow(
             icon: Icons.cloud_outlined,
             title: 'Backend',
@@ -387,37 +388,152 @@ class DataUsageScreen extends StatelessWidget {
   );
 }
 
-class _UsageGraph extends StatelessWidget {
+/// Interactive line chart for data usage history.
+/// Supports tap-and-drag to inspect individual data points.
+class _UsageLineChart extends StatefulWidget {
   final List<MonthUsage> data;
   final String currentMonth;
-  const _UsageGraph({required this.data, required this.currentMonth});
+  const _UsageLineChart({required this.data, required this.currentMonth});
+
+  @override
+  State<_UsageLineChart> createState() => _UsageLineChartState();
+}
+
+class _UsageLineChartState extends State<_UsageLineChart> {
+  int? _selectedIndex;
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _UsageGraphPainter(data: data, currentMonth: currentMonth),
-      child: Container(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final chartHeight = 200.0;
+        return Column(
+          children: [
+            SizedBox(
+              height: chartHeight,
+              width: constraints.maxWidth,
+              child: GestureDetector(
+                onTapDown: (details) => _handleTap(details.localPosition, constraints.maxWidth, chartHeight),
+                onHorizontalDragUpdate: (details) => _handleTap(details.localPosition, constraints.maxWidth, chartHeight),
+                child: CustomPaint(
+                  painter: _UsageLineChartPainter(
+                    data: widget.data,
+                    currentMonth: widget.currentMonth,
+                    selectedIndex: _selectedIndex,
+                  ),
+                ),
+              ),
+            ),
+            if (_selectedIndex != null && _selectedIndex! >= 0 && _selectedIndex! < widget.data.length)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _buildDetailCard(widget.data[_selectedIndex!]),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _handleTap(Offset position, double width, double height) {
+    const labelH = 20.0;
+    final chartH = height - labelH;
+    final chartTop = 18.0;
+    final chartBottom = chartH - 4;
+    if (position.dy < chartTop || position.dy > chartBottom) return;
+
+    final data = widget.data;
+    if (data.isEmpty) return;
+
+    final n = data.length;
+    final stepX = n > 1 ? width / (n - 1) : width / 2;
+    final x = n > 1 ? position.dx : width / 2;
+    final idx = (x / stepX).round().clamp(0, n - 1);
+
+    setState(() => _selectedIndex = idx);
+  }
+
+  Widget _buildDetailCard(MonthUsage m) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: SpotterfyTheme.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _wifiColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            m.shortLabel,
+            style: TextStyle(
+              color: SpotterfyTheme.text,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _detailRow(_wifiColor, 'Wi-Fi', m.wifi),
+          const SizedBox(height: 4),
+          _detailRow(_cellColor, 'Mobile', m.cellular),
+          const SizedBox(height: 4),
+          _detailRow(SpotterfyTheme.mutedDark, 'Total', m.total),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(Color color, String label, int value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+            ),
+          ],
+        ),
+        Text(
+          NetworkStatsService.formatBytes(value),
+          style: TextStyle(
+            color: SpotterfyTheme.text,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _UsageGraphPainter extends CustomPainter {
+class _UsageLineChartPainter extends CustomPainter {
   final List<MonthUsage> data;
   final String currentMonth;
-  _UsageGraphPainter({required this.data, required this.currentMonth});
+  final int? selectedIndex;
+  _UsageLineChartPainter({
+    required this.data,
+    required this.currentMonth,
+    this.selectedIndex,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     const labelH = 20.0;
     const topPad = 18.0;
     final chartH = size.height - labelH;
-    final maxV = data
-        .fold<int>(1, (m, e) => e.total > m ? e.total : m)
-        .toDouble();
+    final maxV = data.fold<int>(1, (m, e) => e.total > m ? e.total : m).toDouble();
     final n = data.length;
-    final groupW = size.width / n;
-    const barW = 14.0;
 
+    // Grid
     final gridPaint = Paint()
       ..color = SpotterfyTheme.card
       ..strokeWidth = 1;
@@ -426,75 +542,100 @@ class _UsageGraphPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
-    final wifiPaint = Paint()..color = _wifiColor;
-    final cellPaint = Paint()..color = _cellColor;
-    final labelStyle = TextStyle(color: SpotterfyTheme.muted, fontSize: 10);
-    final valueStyle = TextStyle(
-      color: SpotterfyTheme.text,
-      fontSize: 9,
-      fontWeight: FontWeight.w600,
+    if (n == 0) return;
+
+    Offset pt(int i, double v) {
+      final x = n > 1 ? (size.width / (n - 1)) * i : size.width / 2;
+      final y = chartH - (maxV > 0 ? (v / maxV) * (chartH - topPad - 4) : 0);
+      return Offset(x, y);
+    }
+
+    void drawLine(List<Offset> pts, Color color, double width) {
+      if (pts.isEmpty) return;
+      final paint = Paint()
+        ..color = color
+        ..strokeWidth = width
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke;
+      if (pts.length == 1) {
+        canvas.drawCircle(pts.first, width / 2, Paint()..color = color);
+        return;
+      }
+      final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (var i = 1; i < pts.length; i++) {
+        path.lineTo(pts[i].dx, pts[i].dy);
+      }
+      canvas.drawPath(path, paint);
+    }
+
+    // Draw lines
+    drawLine(
+      [for (var i = 0; i < n; i++) pt(i, data[i].wifi.toDouble())],
+      _wifiColor,
+      2.5,
+    );
+    drawLine(
+      [for (var i = 0; i < n; i++) pt(i, data[i].cellular.toDouble())],
+      _cellColor,
+      2,
     );
 
+    // Draw points and selection
+    final labelStyle = TextStyle(color: SpotterfyTheme.muted, fontSize: 10);
     for (var i = 0; i < n; i++) {
-      final m = data[i];
-      final cx = groupW * i + groupW / 2;
-      final isCurrent = m.month == currentMonth;
-      final maxBarH = chartH - topPad - 4;
-      final wifiH = maxBarH * (m.wifi / maxV);
-      final cellH = maxBarH * (m.cellular / maxV);
+      final p = pt(i, data[i].total.toDouble());
+      final isSelected = selectedIndex == i;
 
-      RRect bar(double x, double h, Paint p) => RRect.fromRectAndCorners(
-        Rect.fromLTWH(x, chartH - h, barW, h),
-        topLeft: const Radius.circular(4),
-        topRight: const Radius.circular(4),
+      // Point
+      canvas.drawCircle(
+        p,
+        isSelected ? 5 : 3,
+        Paint()..color = isSelected ? _wifiColor : SpotterfyTheme.text,
       );
-      if (m.wifi > 0) {
-        canvas.drawRRect(bar(cx - barW - 2, wifiH, wifiPaint), wifiPaint);
-      }
-      if (m.cellular > 0) {
-        canvas.drawRRect(bar(cx + 2, cellH, cellPaint), cellPaint);
-      }
-      if (m.total == 0) {
-        canvas.drawCircle(
-          Offset(cx, chartH - 2),
-          2,
-          Paint()..color = SpotterfyTheme.card,
+
+      // Selection highlight
+      if (isSelected) {
+        final wifiPt = pt(i, data[i].wifi.toDouble());
+        final cellPt = pt(i, data[i].cellular.toDouble());
+        canvas.drawCircle(wifiPt, 4, Paint()..color = _wifiColor);
+        canvas.drawCircle(cellPt, 4, Paint()..color = _cellColor);
+
+        // Vertical selection line
+        final selLinePaint = Paint()
+          ..color = SpotterfyTheme.muted.withValues(alpha: 0.3)
+          ..strokeWidth = 1;
+        canvas.drawLine(
+          Offset(p.dx, topPad),
+          Offset(p.dx, chartH),
+          selLinePaint,
         );
       }
 
-      if (isCurrent && m.total > 0) {
-        // value label above tallest bar
-        final vt = TextPainter(
-          text: TextSpan(
-            text: NetworkStatsService.formatBytes(m.total),
-            style: valueStyle,
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        vt.paint(canvas, Offset(cx - vt.width / 2, 0));
+      // Date labels: first, middle, last
+      if (i == 0 || i == n - 1 || i == n ~/ 2) {
+        final d = data[i].month;
         final tp = TextPainter(
-          text: TextSpan(text: m.shortLabel, style: valueStyle),
+          text: TextSpan(text: d, style: labelStyle),
           textDirection: TextDirection.ltr,
         )..layout();
-        tp.paint(canvas, Offset(cx - tp.width / 2, chartH + 4));
-      } else {
-        final tp = TextPainter(
-          text: TextSpan(text: m.shortLabel, style: labelStyle),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp.paint(canvas, Offset(cx - tp.width / 2, chartH + 4));
-      }
-      if (isCurrent) {
-        canvas.drawCircle(
-          Offset(cx, chartH + 12),
-          2,
-          Paint()..color = _wifiColor,
-        );
+        final double x = (i == 0 ? 0.0 : (i == n - 1 ? size.width - tp.width : p.dx - tp.width / 2));
+        tp.paint(canvas, Offset(x.clamp(0.0, size.width - tp.width), chartH + 4));
       }
     }
+
+    // Max value label
+    final maxLabel = TextPainter(
+      text: TextSpan(
+        text: NetworkStatsService.formatBytes(maxV.toInt()),
+        style: labelStyle,
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    maxLabel.paint(canvas, Offset(size.width - maxLabel.width, 0));
   }
 
   @override
-  bool shouldRepaint(covariant _UsageGraphPainter old) =>
-      old.data != data || old.currentMonth != currentMonth;
+  bool shouldRepaint(covariant _UsageLineChartPainter old) =>
+      old.data != data || old.currentMonth != currentMonth || old.selectedIndex != selectedIndex;
 }

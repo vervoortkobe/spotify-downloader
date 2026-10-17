@@ -138,7 +138,7 @@ class _AppBottomNavState extends State<AppBottomNav> {
               child: NavigationBar(
                 backgroundColor: Colors.transparent,
                 elevation: 0,
-                indicatorColor: SpotterfyTheme.primary.withValues(alpha: 0.18),
+                indicatorColor: SpotterfyTheme.primaryDark.withValues(alpha: 0.18),
                 selectedIndex: widget.currentIndex.clamp(0, 3),
                 // Reselecting the tab you are already on pops that tab back to
                 // its root, so a pushed sub-page is never a dead end.

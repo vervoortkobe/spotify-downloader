@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:spotterfy_app/models/feedback_model.dart';
 import 'package:spotterfy_app/models/user_model.dart';
 import 'package:spotterfy_app/providers/admin_provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
@@ -8,7 +9,7 @@ import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/widgets/app_chrome.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
-/// Admin tools: user stats, search across every account, and moderation.
+/// Admin tools: user stats, search across every account, moderation, and feedback.
 ///
 /// Reached from Settings rather than as the app's root, so an admin can use the
 /// app normally and drop into these tools when needed.
@@ -19,20 +20,33 @@ class AdminScreen extends StatefulWidget {
   State<AdminScreen> createState() => _AdminScreenState();
 }
 
-class _AdminScreenState extends State<AdminScreen> {
+class _AdminScreenState extends State<AdminScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabCtrl;
   final _searchCtrl = TextEditingController();
+  final _feedbackSearchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<AdminProvider>().loadUsers();
+      if (mounted) {
+        final prov = context.read<AdminProvider>();
+        prov.loadUsers();
+        prov.loadFeedback();
+      }
     });
   }
 
   @override
   void dispose() {
+    _tabCtrl.dispose();
     _searchCtrl.dispose();
+    _feedbackSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -43,49 +57,114 @@ class _AdminScreenState extends State<AdminScreen> {
 
     return HideAppChrome(
       child: Scaffold(
-      backgroundColor: SpotterfyTheme.pageBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text(
-          'Admin',
-          style: TextStyle(
-            color: SpotterfyTheme.text,
-            fontWeight: FontWeight.w800,
+        backgroundColor: SpotterfyTheme.pageBackground,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: Text(
+            'Admin',
+            style: TextStyle(
+              color: SpotterfyTheme.text,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Reload',
+              icon: Icon(Icons.refresh, color: SpotterfyTheme.text),
+              onPressed: (admin.isLoading || admin.isLoadingFeedback)
+                  ? null
+                  : () => admin.refresh(),
+            ),
+          ],
+          bottom: TabBar(
+            controller: _tabCtrl,
+            indicatorColor: SpotterfyTheme.primary,
+            indicatorWeight: 3,
+            labelColor: SpotterfyTheme.primary,
+            unselectedLabelColor: SpotterfyTheme.mutedDark,
+            dividerColor: Colors.transparent,
+            tabs: [
+              Tab(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.people_alt_outlined, size: 18),
+                    const SizedBox(width: 8),
+                    Text('Users (${admin.totalCount})'),
+                  ],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.feedback_outlined, size: 18),
+                    const SizedBox(width: 8),
+                    const Text('Feedback'),
+                    if (admin.unreadFeedbackCount > 0) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: SpotterfyTheme.primary,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${admin.unreadFeedbackCount}',
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Reload',
-            icon: Icon(Icons.refresh, color: SpotterfyTheme.text),
-            onPressed: admin.isLoading ? null : () => admin.refresh(),
-          ),
-        ],
-      ),
-      body: admin.isLoading && admin.users.isEmpty
-          ? Center(
-              child: CircularProgressIndicator(color: SpotterfyTheme.primary),
-            )
-          : RefreshIndicator(
-              color: SpotterfyTheme.primary,
-              backgroundColor: SpotterfyTheme.surface,
-              onRefresh: () => admin.refresh(),
-              child: CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(child: _statsGrid(admin.stats)),
-                  SliverToBoxAdapter(child: _searchRow(admin)),
-                  SliverToBoxAdapter(child: _filterChips(admin)),
-                  if (admin.error != null)
-                    SliverToBoxAdapter(child: _errorBanner(admin.error!)),
-                  SliverToBoxAdapter(child: _listHeader(admin)),
-                  ..._userSlivers(admin, myUid),
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                ],
-              ),
-            ),
+        body: TabBarView(
+          controller: _tabCtrl,
+          children: [
+            _usersTab(admin, myUid),
+            _feedbackTab(admin),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _usersTab(AdminProvider admin, String? myUid) {
+    if (admin.isLoading && admin.users.isEmpty) {
+      return Center(
+        child: CircularProgressIndicator(color: SpotterfyTheme.primary),
+      );
+    }
+    return RefreshIndicator(
+      color: SpotterfyTheme.primary,
+      backgroundColor: SpotterfyTheme.surface,
+      onRefresh: () => admin.refresh(),
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(child: _statsGrid(admin.stats)),
+          SliverToBoxAdapter(child: _searchRow(admin)),
+          SliverToBoxAdapter(child: _filterChips(admin)),
+          if (admin.error != null)
+            SliverToBoxAdapter(child: _errorBanner(admin.error!)),
+          SliverToBoxAdapter(child: _listHeader(admin)),
+          ..._userSlivers(admin, myUid),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
+    );
+  }
+
 
   // --- Stats ---------------------------------------------------------------
 
@@ -867,7 +946,453 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+
+  // --- Feedback Tab --------------------------------------------------------
+
+  Widget _feedbackTab(AdminProvider admin) {
+    if (admin.isLoadingFeedback && admin.feedbacks.isEmpty) {
+      return Center(
+        child: CircularProgressIndicator(color: SpotterfyTheme.primary),
+      );
+    }
+    final feedbacks = admin.visibleFeedbacks;
+
+    return RefreshIndicator(
+      color: SpotterfyTheme.primary,
+      backgroundColor: SpotterfyTheme.surface,
+      onRefresh: () => admin.loadFeedback(),
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(child: _feedbackSearchRow(admin)),
+          SliverToBoxAdapter(child: _feedbackFilterChips(admin)),
+          if (admin.feedbackError != null)
+            SliverToBoxAdapter(child: _errorBanner(admin.feedbackError!)),
+          SliverToBoxAdapter(child: _feedbackHeader(admin, feedbacks.length)),
+          if (feedbacks.isEmpty)
+            SliverToBoxAdapter(child: _emptyFeedback(admin))
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList.separated(
+                itemCount: feedbacks.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (_, i) => _feedbackCard(feedbacks[i], admin),
+              ),
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackSearchRow(AdminProvider admin) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: TextField(
+        controller: _feedbackSearchCtrl,
+        onChanged: admin.searchFeedback,
+        style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Search feedback message, user or email',
+          hintStyle: TextStyle(
+            color: SpotterfyTheme.mutedDark,
+            fontSize: 13,
+          ),
+          prefixIcon: Icon(
+            Icons.search,
+            color: SpotterfyTheme.mutedDark,
+            size: 18,
+          ),
+          suffixIcon: admin.feedbackQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: Icon(
+                    Icons.clear,
+                    color: SpotterfyTheme.mutedDark,
+                    size: 16,
+                  ),
+                  onPressed: () {
+                    _feedbackSearchCtrl.clear();
+                    admin.searchFeedback('');
+                  },
+                ),
+          filled: true,
+          fillColor: SpotterfyTheme.surface,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 12,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _feedbackFilterChips(AdminProvider admin) {
+    return SizedBox(
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          for (final f in FeedbackFilter.values)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _chip(
+                label: '${f.label} (${admin.feedbackCountFor(f)})',
+                selected: admin.feedbackFilter == f,
+                onTap: () => admin.setFeedbackFilter(f),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackHeader(AdminProvider admin, int count) {
+    final total = admin.feedbacks.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            count == total
+                ? '$total submissions'
+                : '$count of $total submissions',
+            style: TextStyle(
+              color: SpotterfyTheme.mutedDark,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (admin.unreadFeedbackCount > 0)
+            Text(
+              '${admin.unreadFeedbackCount} unread',
+              style: TextStyle(
+                color: SpotterfyTheme.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyFeedback(AdminProvider admin) {
+    final isFiltering = admin.feedbackQuery.isNotEmpty ||
+        admin.feedbackFilter != FeedbackFilter.all;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+      child: Column(
+        children: [
+          Icon(
+            isFiltering ? Icons.search_off : Icons.mark_chat_read_outlined,
+            color: SpotterfyTheme.mutedDark,
+            size: 48,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            isFiltering
+                ? 'No feedback matches this filter'
+                : 'No feedback submissions yet',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: SpotterfyTheme.text,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isFiltering
+                ? 'Try a different search or clear the filter.'
+                : 'Feedback submitted by users in Settings will appear here.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: SpotterfyTheme.mutedDark,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackCard(FeedbackModel f, AdminProvider admin) {
+    final busy = admin.busyFeedbackId == f.id;
+    final user = admin.userByUid(f.userId);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: SpotterfyTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: f.isRead
+              ? SpotterfyTheme.overlay(0.06)
+              : SpotterfyTheme.primary.withValues(alpha: 0.35),
+          width: f.isRead ? 1 : 1.5,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: user != null ? () => _showUserSheet(user, admin) : null,
+                  child: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: SpotterfyTheme.card,
+                    backgroundImage: f.userPhotoUrl.isNotEmpty
+                        ? NetworkImage(f.userPhotoUrl)
+                        : (user?.photoUrl.isNotEmpty == true
+                            ? NetworkImage(user!.photoUrl)
+                            : null),
+                    child: f.userPhotoUrl.isEmpty &&
+                            (user?.photoUrl.isEmpty ?? true)
+                        ? Text(
+                            (f.userName.isNotEmpty
+                                    ? f.userName[0]
+                                    : (f.userEmail.isNotEmpty
+                                        ? f.userEmail[0]
+                                        : '?'))
+                                .toUpperCase(),
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: user != null ? () => _showUserSheet(user, admin) : null,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                f.userName.isNotEmpty ? f.userName : 'Anonymous',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: SpotterfyTheme.text,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            if (f.platform.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: SpotterfyTheme.overlay(0.06),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  f.platform,
+                                  style: TextStyle(
+                                    color: SpotterfyTheme.mutedDark,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (f.userEmail.isNotEmpty)
+                          Text(
+                            f.userEmail,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: SpotterfyTheme.mutedDark,
+                              fontSize: 11,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (!f.isRead) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: SpotterfyTheme.primary,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'NEW',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+                    Text(
+                      _ago(f.createdAt),
+                      style: TextStyle(
+                        color: SpotterfyTheme.mutedDark,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF141414),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.05),
+                ),
+              ),
+              child: SelectableText(
+                f.message,
+                style: TextStyle(
+                  color: SpotterfyTheme.text,
+                  fontSize: 13,
+                  height: 1.45,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  Icons.schedule,
+                  size: 12,
+                  color: SpotterfyTheme.mutedDark,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _plainDate(f.createdAt),
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
+                    fontSize: 10,
+                  ),
+                ),
+                const Spacer(),
+                if (busy)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF1ED760),
+                    ),
+                  )
+                else ...[
+                  IconButton(
+                    tooltip: f.isRead ? 'Mark as unread' : 'Mark as read',
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 18,
+                    icon: Icon(
+                      f.isRead
+                          ? Icons.mark_email_unread_outlined
+                          : Icons.mark_email_read_outlined,
+                      color: f.isRead
+                          ? SpotterfyTheme.mutedDark
+                          : SpotterfyTheme.primary,
+                    ),
+                    onPressed: () => admin.markFeedbackRead(f.id, !f.isRead),
+                  ),
+                  IconButton(
+                    tooltip: 'Delete feedback',
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 18,
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Color(0xFFef4444),
+                    ),
+                    onPressed: () => _confirmDeleteFeedback(f, admin),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteFeedback(
+    FeedbackModel f,
+    AdminProvider admin,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: SpotterfyTheme.surface,
+        title: Text(
+          'Delete feedback?',
+          style: TextStyle(
+            color: SpotterfyTheme.text,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to permanently delete this feedback message from ${f.userName.isNotEmpty ? f.userName : "this user"}?',
+          style: TextStyle(color: SpotterfyTheme.mutedDark, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: SpotterfyTheme.mutedDark),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Color(0xFFef4444)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await admin.deleteFeedback(f.id);
+    }
+  }
 }
+
 
 class _Tag extends StatelessWidget {
   final String label;

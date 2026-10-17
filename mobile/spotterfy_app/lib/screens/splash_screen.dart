@@ -11,6 +11,8 @@ import 'package:spotterfy_app/screens/login_screen.dart';
 import 'package:spotterfy_app/screens/suspended_screen.dart';
 import 'package:spotterfy_app/screens/onboarding_screen.dart';
 import 'package:spotterfy_app/screens/main_screen.dart';
+import 'package:spotterfy_app/services/api_service.dart';
+import 'package:spotterfy_app/widgets/update_modal.dart';
 import 'package:spotterfy_app/services/firebase_service.dart' as fb;
 import 'package:spotterfy_app/widgets/refresh_button.dart';
 import 'package:spotterfy_app/services/audio_handler.dart';
@@ -372,10 +374,22 @@ class _AuthGateState extends State<_AuthGate> {
   /// instead of being swallowed by a one-shot "already navigated" flag.
   String? _syncedUid;
 
+  /// Whether an update check has already been triggered on this launch.
+  bool _updateChecked = false;
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     if (auth.isLoading) return const SizedBox.shrink();
+
+    // Auto-check for updates once on launch, after the first frame renders.
+    if (!_updateChecked) {
+      _updateChecked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _checkForUpdatesOnLaunch(context);
+      });
+    }
 
     // Returns the target directly rather than pushing it. This screen *is* the
     // auth gate: sign-out flips isLoggedIn, this rebuilds, and the whole
@@ -399,6 +413,18 @@ class _AuthGateState extends State<_AuthGate> {
       });
     }
     return _targetFor(auth);
+  }
+
+  /// Auto-checks for updates on launch and shows a modal if one is available.
+  Future<void> _checkForUpdatesOnLaunch(BuildContext context) async {
+    final latest = await ApiService.checkForUpdates();
+    if (!context.mounted) return;
+    final remote = latest?['version']?.trim() ?? '';
+    if (latest == null || remote.isEmpty) return;
+    if (ApiService.isNewerVersion(remote, ApiService.appVersion)) {
+      if (!context.mounted) return;
+      await showUpdateModal(context, latest);
+    }
   }
 
   Widget _targetFor(AuthProvider auth) {
