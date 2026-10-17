@@ -112,7 +112,7 @@ class MiniPlayer extends StatelessWidget {
                                 track.title,
                                 style: TextStyle(
                                   color: SpotterfyTheme.text,
-                                  fontSize: 15,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   height: 1.15,
                                 ),
@@ -124,7 +124,7 @@ class MiniPlayer extends StatelessWidget {
                                 track.artists,
                                 style: TextStyle(
                                   color: SpotterfyTheme.muted,
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   height: 1.2,
                                 ),
                                 maxLines: 1,
@@ -283,7 +283,7 @@ class _MiniProgressRow extends StatelessWidget {
     final durMs = durationMs;
     final timeStyle = TextStyle(
       color: SpotterfyTheme.muted,
-      fontSize: 10,
+      fontSize: 12,
       height: 1.2,
       fontWeight: FontWeight.w500,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -303,12 +303,12 @@ class _MiniProgressRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(_fmtDuration(pos.inMilliseconds), style: timeStyle),
-                    Text(_fmtDuration(durMs), style: timeStyle),
-                  ],
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    '${_fmtDuration(pos.inMilliseconds)} - ${_fmtDuration(durMs)}',
+                    style: timeStyle,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 _MiniProgressBar(
@@ -382,6 +382,7 @@ class _MiniPlayPauseButton extends StatelessWidget {
         size: 40,
         isPlaying: isPlaying,
         isActive: isPlaying,
+        alwaysGreen: true,
         tooltip: isPlaying ? 'Pause' : 'Play',
         onPressed: () {
           HapticFeedback.lightImpact();
@@ -504,9 +505,8 @@ class _SwipeRevealBackground extends StatelessWidget {
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 22),
       decoration: BoxDecoration(
-        color: const Color(0xFF1F1F1F),
+        color: const Color(0xFF151515),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: SpotterfyTheme.primary, width: 1.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

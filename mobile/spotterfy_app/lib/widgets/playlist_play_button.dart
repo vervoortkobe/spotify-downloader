@@ -18,6 +18,9 @@ class PlaylistPlayButton extends StatefulWidget {
   /// Row is the source but playback is paused.
   final bool isActive;
 
+  /// Keeps the mini-player button green-tinted regardless of playback state.
+  final bool alwaysGreen;
+
   final String tooltip;
 
   const PlaylistPlayButton({
@@ -26,6 +29,7 @@ class PlaylistPlayButton extends StatefulWidget {
     this.size = 40,
     this.isPlaying = false,
     this.isActive = false,
+    this.alwaysGreen = false,
     this.tooltip = 'Play',
   });
 
@@ -52,15 +56,19 @@ class _PlaylistPlayButtonState extends State<PlaylistPlayButton> {
     } else if (_held) {
       // Solid green on press, matching the now-playing transport button.
       background = SpotterfyTheme.primary;
-      foreground = Colors.black;
+      foreground = Colors.white;
       border = Colors.transparent;
+    } else if (widget.alwaysGreen) {
+      background = SpotterfyTheme.primary.withValues(alpha: 0.18);
+      foreground = Colors.white;
+      border = SpotterfyTheme.primary.withValues(alpha: 0.5);
     } else if (active) {
       background = SpotterfyTheme.primary.withValues(alpha: 0.18);
-      foreground = SpotterfyTheme.primary;
+      foreground = Colors.white;
       border = SpotterfyTheme.primary.withValues(alpha: 0.5);
     } else {
       background = SpotterfyTheme.overlay(0.10);
-      foreground = SpotterfyTheme.onAccent;
+      foreground = Colors.white;
       border = SpotterfyTheme.overlay(0.14);
     }
 
@@ -98,11 +106,11 @@ class _PlaylistPlayButtonState extends State<PlaylistPlayButton> {
                           ? 0
                           : _held
                           ? 0.45
-                          : active
+                          : active || widget.alwaysGreen
                           ? 0.25
                           : 0,
                     ),
-                    blurRadius: _held ? 16 : 10,
+                    blurRadius: _held || widget.alwaysGreen ? 16 : 10,
                   ),
                 ],
               ),

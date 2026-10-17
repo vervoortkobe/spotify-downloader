@@ -548,8 +548,10 @@ class _PlayPauseButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: SpotterfyTheme.primary,
-      shape: const CircleBorder(),
+      color: SpotterfyTheme.primary.withValues(alpha: 0.18),
+      shape: CircleBorder(
+        side: BorderSide(color: SpotterfyTheme.primary.withValues(alpha: 0.5)),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -561,14 +563,14 @@ class _PlayPauseButton extends StatelessWidget {
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: SpotterfyTheme.primary.withValues(alpha: 0.35),
+                color: SpotterfyTheme.primary.withValues(alpha: 0.25),
                 blurRadius: 16,
               ),
             ],
           ),
           child: Icon(
             isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            color: Colors.black,
+            color: Colors.white,
             size: 34,
           ),
         ),
@@ -592,11 +594,14 @@ class _StaticCover extends StatelessWidget {
           child: SizedBox(
             width: side,
             height: side,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                color: SpotterfyTheme.surface,
-                child: _PlayerCover(track: track),
+            child: Hero(
+              tag: 'mini-cover-${track.id}',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  color: SpotterfyTheme.surface,
+                  child: _PlayerCover(track: track),
+                ),
               ),
             ),
           ),
@@ -710,17 +715,29 @@ class _CoverCarouselState extends State<_CoverCarousel> {
               HapticFeedback.selectionClick();
               widget.onPageSelected(i);
             },
-            itemBuilder: (_, i) => _CarouselPage(
-              position: _position,
-              index: i,
-              inactiveScale: _inactiveScale,
-              // Built once per page; only the transform around it changes.
-              child: SizedBox(
+            itemBuilder: (_, i) {
+              final track = widget.tracks[i];
+              final cover = SizedBox(
                 width: side,
                 height: side,
-                child: _PlayerCover(track: widget.tracks[i]),
-              ),
-            ),
+                child: _PlayerCover(track: track),
+              );
+              return _CarouselPage(
+                position: _position,
+                index: i,
+                inactiveScale: _inactiveScale,
+                // Only the centered cover shares the mini-player's Hero tag.
+                child: i == widget.currentIndex
+                    ? Hero(
+                        tag: 'mini-cover-${track.id}',
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: cover,
+                        ),
+                      )
+                    : cover,
+              );
+            },
           ),
         );
       },
@@ -827,8 +844,7 @@ class _TrackDownloadButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final downloads = context.watch<DownloadProvider>();
-    final downloading =
-        downloads.activeTrackId == track.id && downloads.isBusy;
+    final downloading = downloads.activeTrackId == track.id && downloads.isBusy;
     final downloaded = downloads.isDownloaded(track.id);
     return Tooltip(
       message: downloading
