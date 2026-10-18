@@ -13,6 +13,7 @@ import 'package:spotterfy_app/providers/download_provider.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
+import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
@@ -26,6 +27,18 @@ class _PlaylistHeader extends StatelessWidget {
   final VoidCallback onAddToLibrary;
   final bool canAddToLibrary;
   final bool isAddingToLibrary;
+
+  /// The playlist already lives in the user's library, so the add action is
+  /// replaced by a non-interactive "in library" check.
+  final bool inLibrary;
+
+  /// Sort view is active (non-default order).
+  final bool sortActive;
+  final VoidCallback onSort;
+
+  /// Shuffle is toggled on.
+  final bool shuffleOn;
+  final VoidCallback onShuffle;
 
   /// Whether [playlist] belongs to the signed-in user.
   ///
@@ -41,6 +54,11 @@ class _PlaylistHeader extends StatelessWidget {
     required this.onAddToLibrary,
     required this.canAddToLibrary,
     required this.isAddingToLibrary,
+    required this.inLibrary,
+    required this.sortActive,
+    required this.onSort,
+    required this.shuffleOn,
+    required this.onShuffle,
     required this.isMine,
   });
 
@@ -140,32 +158,48 @@ class _PlaylistHeader extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Expanded(
-                  flex: 3,
-                  child: _PrimaryButton(
-                    icon: Icons.play_arrow_rounded,
-                    label: 'Play',
-                    onTap: onPlay,
-                  ),
+                PlaylistPlayButton(
+                  size: 52,
+                  alwaysGreen: true,
+                  tooltip: 'Play',
+                  onPressed: onPlay,
                 ),
-                const SizedBox(width: 10),
+                if (inLibrary)
+                  const _HeaderCircleButton(
+                    icon: Icons.library_add_check_rounded,
+                    tooltip: 'In your library',
+                    onTap: null,
+                    active: true,
+                  )
+                else if (canAddToLibrary)
+                  _HeaderCircleButton(
+                    icon: isAddingToLibrary
+                        ? Icons.hourglass_top_rounded
+                        : Icons.library_add_outlined,
+                    tooltip: isAddingToLibrary
+                        ? 'Adding to your library…'
+                        : 'Add to your library',
+                    onTap: isAddingToLibrary ? null : onAddToLibrary,
+                  ),
+                _HeaderCircleButton(
+                  icon: Icons.sort_rounded,
+                  tooltip: 'Sort',
+                  active: sortActive,
+                  onTap: onSort,
+                ),
+                _HeaderCircleButton(
+                  icon: Icons.shuffle_rounded,
+                  tooltip: 'Shuffle',
+                  active: shuffleOn,
+                  onTap: onShuffle,
+                ),
               ],
             ),
-            if (canAddToLibrary) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: _SecondaryButton(
-                  icon: isAddingToLibrary
-                      ? Icons.hourglass_top_rounded
-                      : Icons.library_add_outlined,
-                  label: isAddingToLibrary ? 'Adding to your library…' : 'Add to your library',
-                  onTap: isAddingToLibrary ? () {} : onAddToLibrary,
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -263,110 +297,62 @@ class _PlaylistHeader extends StatelessWidget {
   );
 }
 
-/// Green filled call to action.
-class _PrimaryButton extends StatelessWidget {
+/// Round, translucent chip for the header's secondary action.
+///
+/// Matches the mini player's controls - a faint overlay fill with a hairline
+/// rim - so it reads as part of the header rather than a standout button next
+/// to the green play chip.
+class _HeaderCircleButton extends StatelessWidget {
   final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+  final String tooltip;
+  final VoidCallback? onTap;
 
-  const _PrimaryButton({
+  /// Green tint for an active view (sort/shuffle) or a "done" state (in
+  /// library). Stays tinted even when [onTap] is null.
+  final bool active;
+
+  /// Matches the size of the play chip beside it.
+  static const double size = 52;
+
+  const _HeaderCircleButton({
     required this.icon,
-    required this.label,
+    required this.tooltip,
     required this.onTap,
+    this.active = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: SpotterfyTheme.primary.withValues(alpha: 0.34),
-              blurRadius: 18,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: SpotterfyTheme.primary,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              height: 46,
-              alignment: Alignment.center,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, color: SpotterfyTheme.onAccent, size: 24),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: SpotterfyTheme.onAccent,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      letterSpacing: 0.1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Outlined secondary action.
-class _SecondaryButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _SecondaryButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: SpotterfyTheme.overlay(0.07),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          height: 46,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: SpotterfyTheme.overlay(0.16)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: SpotterfyTheme.text, size: 19),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: SpotterfyTheme.text,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            ],
+    final enabled = onTap != null;
+    final Color background;
+    final Color border;
+    final Color foreground;
+    if (active) {
+      background = SpotterfyTheme.primary.withValues(alpha: 0.18);
+      border = SpotterfyTheme.primary.withValues(alpha: 0.5);
+      foreground = SpotterfyTheme.primary;
+    } else if (!enabled) {
+      background = SpotterfyTheme.overlay(0.04);
+      border = SpotterfyTheme.overlay(0.06);
+      foreground = SpotterfyTheme.mutedDark;
+    } else {
+      background = SpotterfyTheme.overlay(0.10);
+      border = SpotterfyTheme.overlay(0.14);
+      foreground = SpotterfyTheme.text;
+    }
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: background,
+        shape: CircleBorder(side: BorderSide(color: border)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Icon(icon, color: foreground, size: size * 0.46),
           ),
         ),
       ),
@@ -392,18 +378,16 @@ class _PlaylistViewState {
   bool shuffle = false;
 }
 
-/// Square icon button used by the view controls, with a tinted active state.
+/// Square icon button used by the selection toolbar.
 class _SquareButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
-  final bool active;
   final VoidCallback onPressed;
 
   const _SquareButton({
     required this.icon,
     required this.tooltip,
     required this.onPressed,
-    this.active = false,
   });
 
   @override
@@ -411,9 +395,7 @@ class _SquareButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: active
-            ? SpotterfyTheme.primary.withValues(alpha: 0.18)
-            : SpotterfyTheme.overlay(0.06),
+        color: SpotterfyTheme.overlay(0.06),
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           onTap: onPressed,
@@ -424,17 +406,9 @@ class _SquareButton extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: active
-                    ? SpotterfyTheme.primary.withValues(alpha: 0.5)
-                    : SpotterfyTheme.overlay(0.1),
-              ),
+              border: Border.all(color: SpotterfyTheme.overlay(0.1)),
             ),
-            child: Icon(
-              icon,
-              size: 19,
-              color: active ? SpotterfyTheme.primary : SpotterfyTheme.text,
-            ),
+            child: Icon(icon, size: 19, color: SpotterfyTheme.text),
           ),
         ),
       ),
@@ -799,7 +773,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   Widget _viewControls() {
     final visible = _visibleTracks;
     final filtering = _query.trim().isNotEmpty;
-    final viewIsDefault = !filtering && _sort == _PlaylistSort.custom;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
       child: Column(
@@ -858,20 +831,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              _SquareButton(
-                icon: Icons.sort_rounded,
-                tooltip: 'Sort',
-                active: !viewIsDefault,
-                onPressed: _showSortSheet,
-              ),
-              const SizedBox(width: 8),
-              _SquareButton(
-                icon: Icons.shuffle_rounded,
-                tooltip: 'Shuffle',
-                active: _shuffleOn,
-                onPressed: _toggleShuffle,
               ),
             ],
           ),
@@ -1016,7 +975,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 title: _playlist.tracks.isEmpty
                     ? Text(
                         _playlist.displayName,
-                        style: TextStyle(color: SpotterfyTheme.text, fontSize: 18),
+                        style: TextStyle(
+                          color: SpotterfyTheme.text,
+                          fontSize: 18,
+                        ),
                       )
                     : null,
                 actions: [
@@ -1209,12 +1171,20 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         playlist: _playlist,
                         onPlay: _playAll,
                         isMine: isMine,
+                        inLibrary:
+                            user != null &&
+                            !isMine &&
+                            playlistProvider.isInLibrary(_playlist),
                         canAddToLibrary:
                             user != null &&
                             !isMine &&
                             !playlistProvider.isInLibrary(_playlist),
                         isAddingToLibrary: _addingToLibrary,
                         onAddToLibrary: _addToLibrary,
+                        sortActive: _sort != _PlaylistSort.custom,
+                        onSort: _showSortSheet,
+                        shuffleOn: _shuffleOn,
+                        onShuffle: _toggleShuffle,
                       ),
                     ),
                     SliverToBoxAdapter(child: _viewControls()),

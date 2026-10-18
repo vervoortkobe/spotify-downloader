@@ -6,6 +6,8 @@ import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/services/download_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
+import 'package:spotterfy_app/widgets/playlist_play_button.dart';
+import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
 
 /// Songs downloaded from inside Spotterfy, stored in the app's own folder so
@@ -20,6 +22,10 @@ class DownloadsScreen extends StatefulWidget {
 class _DownloadsScreenState extends State<DownloadsScreen> {
   final Set<String> _selected = {};
   bool _selecting = false;
+
+  /// Paths whose file-tag read (for the length) has already been kicked off, so
+  /// a build that doesn't yet have a value asks at most once per path.
+  final Set<String> _durationRequests = {};
 
   @override
   void initState() {
@@ -102,22 +108,45 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     );
   }
 
-  void _playAll() {
+  /// Builds playable tracks for [entries], pointing at the stored files so
+  /// playback uses the download directly and carrying each file's real length.
+  List<TrackModel> _tracksFromEntries(List<DownloadEntry> entries) {
     final prov = context.read<DownloadProvider>();
+    return entries.map((e) {
+      final path = prov.localPathFor(e.trackId) ?? '';
+      return TrackModel(
+        id: e.trackId,
+        title: e.title,
+        artists: e.artists,
+        sourceUrl: path,
+        durationMs: _durationMsFor(path),
+      );
+    }).toList();
+  }
+
+  /// Length of a downloaded file, read from its embedded tags.
+  ///
+  /// Reuses [StorageCover]'s read - the artwork every row already loads - so a
+  /// row can show a real time without a second file read. The first build for a
+  /// path starts the read and rebuilds once the value lands.
+  int _durationMsFor(String path) {
+    if (path.isEmpty) return 0;
+    if (!StorageCoverCache.contains(path)) {
+      if (_durationRequests.add(path)) {
+        StorageCoverCache.load(path).then((_) {
+          if (mounted) setState(() {});
+        });
+      }
+      return 0;
+    }
+    return StorageCoverCache.durationMsFor(path);
+  }
+
+  void _playAll() {
     final player = context.read<PlayerProvider>();
     final entries = _entries;
     if (entries.isEmpty) return;
-    final tracks = entries
-        .map(
-          (e) => TrackModel(
-            id: e.trackId,
-            title: e.title,
-            artists: e.artists,
-            // The stored file, so playback uses the download directly.
-            sourceUrl: prov.localPathFor(e.trackId) ?? '',
-          ),
-        )
-        .toList();
+    final tracks = _tracksFromEntries(entries);
     player.setQueue(tracks, startIndex: 0);
     player.play(tracks.first, queue: tracks);
   }
@@ -181,12 +210,15 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
               ]
             : [
                 if (entries.isNotEmpty)
-                  IconButton(
-                    icon: Icon(Icons.play_arrow, color: SpotterfyTheme.text),
-                    tooltip: 'Play all downloads',
-                    onPressed: _playAll,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: PlaylistPlayButton(
+                      size: 36,
+                      alwaysGreen: true,
+                      tooltip: 'Play all downloads',
+                      onPressed: _playAll,
+                    ),
                   ),
-                const SizedBox(width: 4),
               ],
       ),
       body: entries.isEmpty
@@ -255,15 +287,23 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     itemBuilder: (_, i) {
                       final e = entries[i];
                       final path = prov.localPathFor(e.trackId) ?? '';
+                      final player = context.watch<PlayerProvider>();
+                      final isActive = player.currentTrack?.id == e.trackId;
+                      final isPlaying = isActive && player.isPlaying;
                       return TrackTile(
                         track: TrackModel(
                           id: e.trackId,
                           title: e.title,
                           artists: e.artists,
                           sourceUrl: path,
+                          durationMs: _durationMsFor(path),
                         ),
                         coverPath: path.isEmpty ? null : path,
                         isDownloaded: true,
+                        subtitleMeta: _fmtBytes(e.sizeBytes),
+                        roundPlayButton: true,
+                        isSelected: isActive,
+                        isPlaying: isPlaying,
                         selectionMode: selecting,
                         selected: _selected.contains(e.trackId),
                         onLongPress: () {
@@ -273,20 +313,22 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                         onPlay: selecting
                             ? () => _toggle(e.trackId)
                             : () {
-                                final player = context.read<PlayerProvider>();
-                                final list = entries
-                                    .map(
-                                      (x) => TrackModel(
-                                        id: x.trackId,
-                                        title: x.title,
-                                        artists: x.artists,
-                                        sourceUrl:
-                                            prov.localPathFor(x.trackId) ?? '',
-                                      ),
-                                    )
-                                    .toList();
-                                player.setQueue(list, startIndex: i);
-                                player.play(list[i], queue: list);
+                                final p = context.read<PlayerProvider>();
+                                // The chip shows a pause glyph while the song
+                                // plays, so tapping it should pause instead of
+                                // restarting the track.
+                                if (p.currentTrack?.id == e.trackId &&
+                                    p.isPlaying) {
+                                  p.pause();
+                                  return;
+                                }
+                                final list = _tracksFromEntries(entries);
+                                final idx = list.indexWhere(
+                                  (t) => t.id == e.trackId,
+                                );
+                                final start = idx < 0 ? 0 : idx;
+                                p.setQueue(list, startIndex: start);
+                                p.play(list[start], queue: list);
                               },
                         onDownload: selecting
                             ? null

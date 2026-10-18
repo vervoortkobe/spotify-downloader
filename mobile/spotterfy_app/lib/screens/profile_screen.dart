@@ -283,7 +283,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _socialActions(context),
               const SizedBox(height: 28),
               // A dedicated section, separate from your own profile's stats.
-              _sectionTitle('Playlists (${_theirPlaylists.length})'),
+              _sectionTitle(
+                'Playlists',
+                trailing: '${_theirPlaylists.length}',
+              ),
               const SizedBox(height: 8),
               if (_theirPlaylists.isEmpty)
                 _emptyHint('This user has not shared any playlists yet.')
@@ -576,12 +579,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ),
-          if (trailing != null)
-            Text(
-              trailing,
-              style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
-            ),
+          if (trailing != null) _countBadge(trailing),
         ],
+      ),
+    );
+  }
+
+  /// A count shown as a number inside a small grey circle, so it reads as a
+  /// badge instead of blending into the heading text.
+  Widget _countBadge(String count) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: SpotterfyTheme.overlay(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: SpotterfyTheme.overlay(0.06)),
+      ),
+      child: Text(
+        count,
+        style: TextStyle(
+          color: SpotterfyTheme.text,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

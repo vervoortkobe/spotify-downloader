@@ -10,18 +10,33 @@ import 'package:spotterfy_app/theme/app_theme.dart';
 class StorageCoverCache {
   static final Map<String, Uint8List?> _cache = {};
 
+  /// Length of each file, in ms. Read from the same tags as the artwork, so a
+  /// row can show a real time without a second file read.
+  static final Map<String, int> _durations = {};
+
+  /// In-flight reads, so a cover widget and a row asking for the length at the
+  /// same time share one read rather than racing.
+  static final Map<String, Future<Uint8List?>> _inflight = {};
+
   static bool contains(String path) => _cache.containsKey(path);
   static Uint8List? get(String path) => _cache[path];
+  static int durationMsFor(String path) => _durations[path] ?? 0;
 
-  static Future<Uint8List?> load(String path) async {
-    if (_cache.containsKey(path)) return _cache[path];
-    Uint8List? bytes;
-    try {
-      final meta = readMetadata(File(path), getImage: true);
-      if (meta.pictures.isNotEmpty) bytes = meta.pictures.first.bytes;
-    } catch (_) {}
-    _cache[path] = bytes;
-    return bytes;
+  static Future<Uint8List?> load(String path) {
+    if (_cache.containsKey(path)) return Future.value(_cache[path]);
+    return _inflight.putIfAbsent(path, () async {
+      Uint8List? bytes;
+      var ms = 0;
+      try {
+        final meta = readMetadata(File(path), getImage: true);
+        ms = meta.duration?.inMilliseconds ?? 0;
+        if (meta.pictures.isNotEmpty) bytes = meta.pictures.first.bytes;
+      } catch (_) {}
+      _cache[path] = bytes;
+      _durations[path] = ms;
+      _inflight.remove(path);
+      return bytes;
+    });
   }
 }
 
