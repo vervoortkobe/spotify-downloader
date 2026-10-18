@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/jam_session_model.dart';
 import '../models/track_model.dart';
 
 class JamService {
@@ -75,14 +76,49 @@ class JamService {
     await _firestore.collection('jam_sessions').doc(sessionId).update(data);
   }
 
-  Stream<DocumentSnapshot<Map<String, dynamic>>> listenToJamSession(
-    String sessionId,
-  ) {
-    return _firestore.collection('jam_sessions').doc(sessionId).snapshots();
+  /// Every session that has not ended, newest first. A one-shot read for the
+  /// polling "live jams" list.
+  Future<List<JamSessionModel>> activeSessionsOnce() async {
+    final snap = await _firestore.collection('jam_sessions').get();
+    return snap.docs
+        .where((d) => d.data()['ended'] != true)
+        .map(jamSessionFromDoc)
+        .toList();
   }
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> getActiveSessions() {
-    return _firestore.collection('jam_sessions').snapshots();
+  /// A single session including its shared queue, or null when it is gone. A
+  /// one-shot read for the polling in-jam view.
+  Future<JamSessionModel?> jamSessionOnce(String sessionId) async {
+    final doc = await _firestore
+        .collection('jam_sessions')
+        .doc(sessionId)
+        .get();
+    if (!doc.exists) return null;
+    return jamSessionFromDoc(doc);
+  }
+
+  /// Deserializes a session document, tolerating missing fields.
+  static JamSessionModel jamSessionFromDoc(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data() ?? const <String, dynamic>{};
+    return JamSessionModel(
+      id: doc.id,
+      name: data['name'] as String? ?? '',
+      createdBy: data['createdBy'] as String? ?? '',
+      tracks: (data['tracks'] as List<dynamic>? ?? const [])
+          .map((t) => TrackModel.fromJson(Map<String, dynamic>.from(t as Map)))
+          .toList(),
+      currentTrackIndex: (data['currentTrackIndex'] as num?)?.toInt() ?? 0,
+      currentPositionMs: (data['currentPositionMs'] as num?)?.toInt() ?? 0,
+      isPlaying: data['isPlaying'] as bool? ?? false,
+      ended: data['ended'] as bool? ?? false,
+      participants: (data['participants'] as List<dynamic>? ?? const [])
+          .map((e) => e as String)
+          .toList(),
+      createdAt:
+          (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    );
   }
 
   void dispose() {

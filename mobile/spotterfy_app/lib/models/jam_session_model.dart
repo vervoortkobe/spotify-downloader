@@ -11,6 +11,10 @@ class JamSessionModel {
   final int currentTrackIndex;
   final int currentPositionMs;
   final bool isPlaying;
+
+  /// Set by the creator's "end jam" action. A polled session that comes back
+  /// ended means the jam is over and the client should drop out of it.
+  final bool ended;
   final List<String> participants;
   final DateTime createdAt;
 
@@ -22,6 +26,7 @@ class JamSessionModel {
     this.currentTrackIndex = 0,
     this.currentPositionMs = 0,
     this.isPlaying = false,
+    this.ended = false,
     this.participants = const [],
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();

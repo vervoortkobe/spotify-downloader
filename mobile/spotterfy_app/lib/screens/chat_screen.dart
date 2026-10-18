@@ -1,12 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/social_provider.dart';
+import 'package:spotterfy_app/services/polling_service.dart';
 import 'package:spotterfy_app/services/social_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 
 /// One-to-one conversation with a friend.
+///
+/// The transcript is refreshed by polling rather than a live Firestore
+/// listener, so a dropped connection or a missing index cannot leave the thread
+/// frozen. Sending a message also kicks the poll so the sender sees it
+/// immediately instead of waiting out the interval.
 class ChatScreen extends StatefulWidget {
   final SocialUser peer;
 
@@ -20,45 +28,86 @@ class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
 
+  /// Pulses the conversation poll right after we send, so our own message shows
+  /// up without waiting for the next tick.
+  final _refresh = StreamController<void>.broadcast();
+
+  late String _myUid;
+  late String _chatId;
+  late Stream<List<ChatMessage>> _messages;
+  StreamSubscription<List<ChatMessage>>? _messagesSub;
+  bool _initialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    _myUid = context.read<SocialProvider>().uid ?? '';
+    _chatId = SocialService.chatIdFor(_myUid, widget.peer.uid);
+    _messages = PollingService.instance.poll<List<ChatMessage>>(
+      fetch: () => SocialService.instance.messagesOnce(_chatId),
+      interval: PollingService.chatInterval,
+      signature: (list) => '${list.length}:${list.isEmpty ? '' : list.last.id}',
+      refresh: _refresh.stream,
+    );
+    _messagesSub = _messages.listen((_) => _scrollToBottomIfNear());
+  }
+
   @override
   void dispose() {
+    _messagesSub?.cancel();
+    _refresh.close();
     _controller.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  String get _chatId => SocialService.chatIdFor(
-    context.read<SocialProvider>().uid ?? '',
-    widget.peer.uid,
-  );
-
-  void _send() {
+  Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     final auth = context.read<AuthProvider>();
     final social = context.read<SocialProvider>();
     _controller.clear();
-    social.sendMessage(
+    await social.sendMessage(
       myName: auth.user?.displayName ?? 'Me',
       myPhoto: auth.user?.photoUrl ?? '',
       peer: widget.peer,
       text: text,
     );
-    // Jump to the newest message once the list has grown.
+    if (!mounted) return;
+    _refresh.add(null);
+    _scrollToBottom();
+  }
+
+  /// Jumps to the newest message after sending, once the list has grown.
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-        );
-      }
+      if (!_scroll.hasClients) return;
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  /// Keeps the newest message visible as it arrives, but does not yank a user
+  /// who has scrolled up to read history back to the bottom.
+  void _scrollToBottomIfNear() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      final position = _scroll.position;
+      final atBottom =
+          position.maxScrollExtent - position.pixels < 120 ||
+          position.maxScrollExtent == 0;
+      if (atBottom) _scroll.jumpTo(position.maxScrollExtent);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final myUid = context.read<SocialProvider>().uid ?? '';
+    final myUid = _myUid;
     return AppGradientScaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -96,7 +145,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Expanded(
             child: StreamBuilder<List<ChatMessage>>(
-              stream: SocialService.instance.messagesStream(_chatId),
+              stream: _messages,
               builder: (context, snap) {
                 final messages = snap.data ?? const <ChatMessage>[];
                 if (messages.isEmpty) {

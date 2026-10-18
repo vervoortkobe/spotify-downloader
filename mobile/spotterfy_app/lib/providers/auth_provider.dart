@@ -95,10 +95,16 @@ class AuthProvider extends ChangeNotifier {
       try {
         if (firebaseUser != null) {
           UserModel? userData;
+          // A failed read is *not* the same as "no profile document". The two
+          // used to be conflated, so any transient Firestore error (offline,
+          // rules, timeout) invented an empty, auto-approved account and the
+          // user ended up "logged in" with a blank profile.
+          var readFailed = false;
           try {
             userData = await _authService.getUserData(firebaseUser.uid);
-          } catch (_) {
-            debugPrint('Firestore read blocked (rules) - keeping cached user');
+          } catch (e) {
+            readFailed = true;
+            debugPrint('Profile read failed for ${firebaseUser.uid}: $e');
           }
           // Auth events can overlap while the Firestore profile read is in
           // flight. A slow response for an old account must not undo a later
@@ -107,7 +113,12 @@ class AuthProvider extends ChangeNotifier {
 
           if (userData != null) {
             _user = userData;
-          } else if (_user == null || _user!.uid != firebaseUser.uid) {
+          } else if (!readFailed &&
+              (_user == null || _user!.uid != firebaseUser.uid)) {
+            // Genuinely no profile document (first sign-in): bootstrap a
+            // minimal one. Onboarding fills in the rest. We deliberately do
+            // NOT do this when the read failed - keeping the cached user (or
+            // staying signed out) is far better than a phantom account.
             _user = UserModel(
               uid: firebaseUser.uid,
               email: firebaseUser.email ?? '',
@@ -125,18 +136,22 @@ class AuthProvider extends ChangeNotifier {
         debugPrint('Auth state listener error: $e');
       }
       if (generation != _authEventGeneration) return;
-      await _saveCachedUser(generation: generation);
+      await _saveCachedUser();
       if (generation != _authEventGeneration) return;
       _isLoading = false;
       notifyListeners();
     });
   }
 
-  Future<void> _saveCachedUser({int? generation}) async {
+  Future<void> _saveCachedUser() async {
+    // Snapshot the auth generation *before* awaiting: if a sign-out/sign-in
+    // lands while the write is in flight, the newer event must win, so a stale
+    // write cannot resurrect the cached user after a sign-out cleared it.
+    final generation = _authEventGeneration;
     try {
       final user = _user;
       final prefs = await SharedPreferences.getInstance();
-      if (generation != null && generation != _authEventGeneration) return;
+      if (generation != _authEventGeneration) return;
       if (user == null) {
         await prefs.remove('cached_user');
         return;
@@ -188,7 +203,9 @@ class AuthProvider extends ChangeNotifier {
       if (cached == null) return;
       // Offload JSON + DateTime parse to background isolate
       final parsed = await compute(_parseUserIsolate, cached);
-      if (parsed != null) _user = parsed;
+      // An identity without a uid is not a usable account; treating it as one
+      // is how a blank "logged in" state could appear before Firebase replied.
+      if (parsed != null && parsed.uid.isNotEmpty) _user = parsed;
     } catch (e) {
       debugPrint('Failed to load cached user: $e');
     }
@@ -214,7 +231,13 @@ class AuthProvider extends ChangeNotifier {
   Future<void> signOut() async {
     // Invalidate any profile read still running for the previous account.
     _authEventGeneration++;
-    await _authService.signOut();
+    try {
+      await _authService.signOut();
+    } catch (e) {
+      // A platform sign-out failure must never leave the app showing the old
+      // account as signed in: clear the local state regardless.
+      debugPrint('Sign-out error (clearing local state anyway): $e');
+    }
     _user = null;
     await _saveCachedUser();
     notifyListeners();

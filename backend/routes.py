@@ -82,13 +82,13 @@ def _run_scrape_job(input_url, service, progress_job_id):
             _, url_type, item_id = detect_url_service(input_url)
 
         if not service:
-            scrape_job_progress[progress_job_id].update({'total': 0, 'completed': 0, 'status': 'error'})
             scrape_job_results[progress_job_id] = {'error': 'Unsupported URL'}
+            scrape_job_progress[progress_job_id].update({'total': 0, 'completed': 0, 'status': 'error'})
             return
 
         if not url_type or not item_id:
-            scrape_job_progress[progress_job_id].update({'total': 0, 'completed': 0, 'status': 'error'})
             scrape_job_results[progress_job_id] = {'error': 'Could not parse URL'}
+            scrape_job_progress[progress_job_id].update({'total': 0, 'completed': 0, 'status': 'error'})
             return
 
         scrape_job_progress[progress_job_id].update({'status': 'scraping'})
@@ -185,8 +185,8 @@ def _run_scrape_job(input_url, service, progress_job_id):
         elif service in ("youtube", "soundcloud"):
             playlist_name, tracks = _scrape_external(input_url, service, url_type, progress_job_id)
         else:
-            scrape_job_progress[progress_job_id].update({'status': 'error'})
             scrape_job_results[progress_job_id] = {'error': f'Unsupported service: {service}'}
+            scrape_job_progress[progress_job_id].update({'status': 'error'})
             return
 
         gc.collect()
@@ -199,25 +199,32 @@ def _run_scrape_job(input_url, service, progress_job_id):
         if service == "spotify" and url_type in ("track", "playlist") and item_id:
             canonical_url = f"https://open.spotify.com/{url_type}/{item_id}"
 
-        scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'current': len(tracks), 'status': 'complete'})
+        # Publish the result BEFORE flipping the status to complete. A client
+        # watches /scrape-progress and fetches /scrape-result the moment it sees
+        # "complete"; if the status flipped first there is a window where the
+        # progress says finished but the result is still missing, and the client
+        # reports a failure even though the backend succeeded.
         scrape_job_results[progress_job_id] = {
             'playlistName': playlist_name,
             'tracks': tracks,
             'canonicalUrl': canonical_url,
         }
+        scrape_job_progress[progress_job_id].update({'total': len(tracks), 'completed': len(tracks), 'current': len(tracks), 'status': 'complete'})
 
     except SpotifyDownAPIError as e:
         print(f"[Scrape] Job {progress_job_id} Spotify API error: {e}", flush=True)
+        # Same ordering rule as the success path: make the error readable before
+        # the poller can observe the terminal status.
+        scrape_job_results[progress_job_id] = {'error': f'Spotify API error: {e}'}
         if progress_job_id in scrape_job_progress:
             scrape_job_progress[progress_job_id]['status'] = 'error'
-        scrape_job_results[progress_job_id] = {'error': f'Spotify API error: {e}'}
     except Exception as e:
         print(f"[Scrape] Job {progress_job_id} failed: {e}", flush=True)
         import traceback
         traceback.print_exc()
+        scrape_job_results[progress_job_id] = {'error': str(e)}
         if progress_job_id in scrape_job_progress:
             scrape_job_progress[progress_job_id]['status'] = 'error'
-        scrape_job_results[progress_job_id] = {'error': str(e)}
 
 
 @routes.route("/api/scrape-result/<job_id>", methods=["GET"])

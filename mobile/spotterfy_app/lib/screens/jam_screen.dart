@@ -48,6 +48,17 @@ class _JamScreenState extends State<JamScreen> {
   bool matches(String haystack) =>
       _query.isEmpty || haystack.toLowerCase().contains(_query);
 
+  /// Friends to offer in a picker. A failed read is treated as "no friends" so
+  /// the picker can prompt instead of throwing out of an async handler.
+  Future<List<SocialUser>> _friendsOrEmpty(String uid) async {
+    try {
+      return await SocialService.instance.friendsOnce(uid);
+    } catch (e) {
+      debugPrint('[Jam] friend picker read failed: $e');
+      return const [];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final jam = context.watch<JamProvider>();
@@ -637,7 +648,7 @@ class _JamScreenState extends State<JamScreen> {
   Future<void> _startMessage(BuildContext context) async {
     final uid = context.read<SocialProvider>().uid;
     if (uid == null) return;
-    final friends = await SocialService.instance.friendsOnce(uid);
+    final friends = await _friendsOrEmpty(uid);
     if (!context.mounted) return;
     if (friends.isEmpty) {
       ScaffoldMessenger.of(
@@ -769,7 +780,7 @@ class _JamScreenState extends State<JamScreen> {
   Future<void> _showFriendPicker(BuildContext context) async {
     final uid = context.read<SocialProvider>().uid;
     if (uid == null) return;
-    final friends = await SocialService.instance.friendsOnce(uid);
+    final friends = await _friendsOrEmpty(uid);
     if (!context.mounted) return;
 
     if (friends.isEmpty) {

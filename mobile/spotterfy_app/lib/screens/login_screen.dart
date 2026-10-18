@@ -1,32 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
-import 'package:spotterfy_app/screens/main_screen.dart';
-import 'package:spotterfy_app/screens/suspended_screen.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
-import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-
-    // Already logged in - redirect.
-    // A suspended account is stopped here before it can reach onboarding or the
-    // app, and admins land in the app like everyone else (the admin tools live
-    // in Settings).
-    if (!auth.isLoading && auth.isLoggedIn) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
-        final target = auth.needsModeration
-            ? const SuspendedScreen()
-            : const MainScreen();
-        Navigator.pushReplacement(context, swipeRoute(target));
-      });
-    }
-
+    // Routing is owned by the auth gate in the splash screen: it watches
+    // AuthProvider and swaps this screen out for onboarding / suspended / the
+    // app the moment the user is signed in. Navigating from here instead (as
+    // this screen used to) stacked a second MainScreen on top of the gate,
+    // bypassed onboarding, and tripped the duplicate-TabNavigator GlobalKey
+    // crash the gate was rewritten to avoid.
     return Scaffold(
       backgroundColor: SpotterfyTheme.pageBackground,
       body: Stack(
@@ -95,18 +82,7 @@ class LoginScreen extends StatelessWidget {
                               : () async {
                                   final success = await auth.signInWithGoogle();
                                   if (!context.mounted) return;
-                                  if (success) {
-                                    // Re-read auth: signing in resolves the
-                                    // user document, so isBanned is only known
-                                    // now, not when this screen first built.
-                                    final target = auth.needsModeration
-                                        ? const SuspendedScreen()
-                                        : const MainScreen();
-                                    Navigator.pushReplacement(
-                                      context,
-                                      swipeRoute(target),
-                                    );
-                                  } else {
+                                  if (!success) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                         content: Text(
@@ -115,6 +91,9 @@ class LoginScreen extends StatelessWidget {
                                       ),
                                     );
                                   }
+                                  // On success the auth gate rebuilds and
+                                  // swaps this screen for the right
+                                  // destination (onboarding / suspended / app).
                                 },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: SpotterfyTheme.primary,

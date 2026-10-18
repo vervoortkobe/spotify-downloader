@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:spotterfy_app/services/social_service.dart';
+import 'package:spotterfy_app/services/polling_service.dart';
 
 /// Live social state for the signed-in user: friends, friend requests,
 /// notifications and conversations.
@@ -49,44 +50,73 @@ class SocialProvider extends ChangeNotifier {
     return 'none';
   }
 
-  /// Begins listening. Safe to call repeatedly; only the first call for a given
-  /// uid actually subscribes.
+  /// Begins polling for [uid]'s social data. Safe to call repeatedly; only the
+  /// first call for a given uid actually starts the timers.
+  ///
+  /// Each list is refreshed on its own timer. The signature functions keep
+  /// [notifyListeners] from firing when a tick returns the same data, so a
+  /// quiet account does not rebuild the UI every few seconds.
   void start(String uid) {
     if (_uid == uid) return;
     stop();
     _uid = uid;
-    _friendsSub = _service.friendsStream(uid).listen((v) {
-      _friends = v;
-      notifyListeners();
-    }, onError: _onListenError);
-    _requestsSub = _service.friendRequestsStream(uid).listen((v) {
-      _requests = v;
-      notifyListeners();
-    }, onError: _onListenError);
-    _notificationsSub = _service.notificationsStream(uid).listen((v) {
-      _notifications = v;
-      notifyListeners();
-    }, onError: _onListenError);
-    _chatsSub = _service.chatsStream(uid).listen((v) {
-      _chats = v;
-      notifyListeners();
-    }, onError: _onListenError);
+
+    _friendsSub = PollingService.instance
+        .poll(
+          fetch: () => _service.friendsOnce(uid),
+          interval: PollingService.socialInterval,
+          signature: (list) => list.map((f) => f.uid).join(','),
+        )
+        .listen((v) {
+          _friends = v;
+          notifyListeners();
+        });
+
+    _requestsSub = PollingService.instance
+        .poll(
+          fetch: () => _service.friendRequestsOnce(uid),
+          interval: PollingService.socialInterval,
+          signature: (list) =>
+              list.map((r) => '${r.otherUid}:${r.status}').join(','),
+        )
+        .listen((v) {
+          _requests = v;
+          notifyListeners();
+        });
+
+    _notificationsSub = PollingService.instance
+        .poll(
+          fetch: () => _service.notificationsOnce(uid),
+          interval: PollingService.socialInterval,
+          signature: (list) =>
+              '${list.length}:${list.where((n) => !n.read).length}:'
+              '${list.isEmpty ? '' : list.first.id}',
+        )
+        .listen((v) {
+          _notifications = v;
+          notifyListeners();
+        });
+
+    _chatsSub = PollingService.instance
+        .poll(
+          fetch: () => _service.chatsOnce(uid),
+          interval: PollingService.socialInterval,
+          signature: (list) => list
+              .map(
+                (c) =>
+                    '${c.id}:${c.updatedAt.millisecondsSinceEpoch}:'
+                    '${c.lastMessage}',
+              )
+              .join('|'),
+        )
+        .listen((v) {
+          _chats = v;
+          notifyListeners();
+        });
   }
 
-  /// Swallows listener errors instead of letting them escape.
-  ///
-  /// A `Stream.listen` with no `onError` turns *any* stream error into an
-  /// unhandled async exception, which in debug prints an `Unhandled Exception`
-  /// and in release takes the isolate's error handler. Every one of these
-  /// queries is gated on `request.auth != null`, so the common trigger is
-  /// ordinary: the token is revoked by a sign-out while the listen is still
-  /// attached, and Firestore answers `PERMISSION_DENIED`. That is a normal
-  /// lifecycle event, not a fault worth crashing on - the data simply stops
-  /// updating until [syncUid] is called again with a live uid.
-  void _onListenError(Object error, StackTrace stack) {
-    debugPrint('[Social] listener stopped: $error');
-  }
-
+  /// Stops every timer. The polling streams only run while subscribed, so
+  /// cancelling is enough - there is no listener to leak.
   void stop() {
     _friendsSub?.cancel();
     _requestsSub?.cancel();

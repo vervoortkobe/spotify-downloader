@@ -43,9 +43,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       setState(() => _sending = false);
       _controller.clear();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Thank you! Your feedback has been sent.'),
-          backgroundColor: Color(0xFF1ED760),
+        SnackBar(
+          content: const Text('Thank you! Your feedback has been sent.'),
+          backgroundColor: SpotterfyTheme.primary,
         ),
       );
     } catch (e) {
@@ -111,12 +111,12 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            Color(0xFF1ED760).withValues(alpha: 0.12),
-                            Color(0xFF1ED760).withValues(alpha: 0.04),
+                            SpotterfyTheme.primary.withValues(alpha: 0.12),
+                            SpotterfyTheme.primary.withValues(alpha: 0.04),
                           ],
                         ),
                         border: Border.all(
-                          color: Color(0xFF1ED760).withValues(alpha: 0.3),
+                          color: SpotterfyTheme.primary.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
@@ -128,19 +128,19 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Color(0xFF1ED760),
+                                    color: SpotterfyTheme.primary,
                                   ),
                                 )
                               : Icon(
                                   Icons.send_rounded,
                                   size: 20,
-                                  color: Color(0xFF1ED760),
+                                  color: SpotterfyTheme.primary,
                                 ),
                           const SizedBox(width: 10),
                           Text(
                             _sending ? 'Sending…' : 'Send feedback',
                             style: TextStyle(
-                              color: Color(0xFF1ED760),
+                              color: SpotterfyTheme.primary,
                               fontWeight: FontWeight.w700,
                               fontSize: 15,
                             ),

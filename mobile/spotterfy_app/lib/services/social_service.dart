@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 
 /// A person as shown in friend lists, pickers and chat headers.
 class SocialUser {
@@ -153,23 +152,6 @@ class SocialService {
 
   // ------------------------------------------------------------- friends
 
-  /// Everyone the user has accepted as a friend.
-  Stream<List<SocialUser>> friendsStream(String uid) {
-    return _db
-        .collection('users')
-        .doc(uid)
-        .collection('friends')
-        .snapshots()
-        .map(
-          (snap) => snap.docs.map(_userFromFriendDoc).toList()
-            ..sort(
-              (a, b) => a.displayName.toLowerCase().compareTo(
-                b.displayName.toLowerCase(),
-              ),
-            ),
-        );
-  }
-
   SocialUser _userFromFriendDoc(DocumentSnapshot<Map<String, dynamic>> d) {
     final data = d.data() ?? {};
     return SocialUser(
@@ -196,17 +178,16 @@ class SocialService {
 
   // ----------------------------------------------------- friend requests
 
-  Stream<List<FriendRequest>> friendRequestsStream(String uid) {
-    return _db
+  /// Every request in either direction, newest first. A one-shot read; the live
+  /// list is driven by polling.
+  Future<List<FriendRequest>> friendRequestsOnce(String uid) async {
+    final snap = await _db
         .collection('users')
         .doc(uid)
         .collection('friendRequests')
-        .snapshots()
-        .map(
-          (snap) =>
-              snap.docs.map(FriendRequest.fromDoc).toList()
-                ..sort((a, b) => b.at.compareTo(a.at)),
-        );
+        .get();
+    return snap.docs.map(FriendRequest.fromDoc).toList()
+      ..sort((a, b) => b.at.compareTo(a.at));
   }
 
   /// Sends a friend request, writing both the sender's outgoing copy and the
@@ -344,17 +325,15 @@ class SocialService {
 
   // --------------------------------------------------------- notifications
 
-  Stream<List<AppNotification>> notificationsStream(String uid) {
-    return _db
+  /// Every notification, newest first. A one-shot read for polling.
+  Future<List<AppNotification>> notificationsOnce(String uid) async {
+    final snap = await _db
         .collection('users')
         .doc(uid)
         .collection('notifications')
-        .snapshots()
-        .map(
-          (snap) =>
-              snap.docs.map(AppNotification.fromDoc).toList()
-                ..sort((a, b) => b.at.compareTo(a.at)),
-        );
+        .get();
+    return snap.docs.map(AppNotification.fromDoc).toList()
+      ..sort((a, b) => b.at.compareTo(a.at));
   }
 
   Future<void> markNotificationsRead(String uid) async {
@@ -374,55 +353,50 @@ class SocialService {
 
   // -------------------------------------------------------------- messages
 
-  /// Friends you have a conversation with, newest activity first.
-  Stream<List<ChatThread>> chatsStream(String uid) {
-    return _db
+  /// Friends you have a conversation with, newest activity first. A one-shot
+  /// read for the polling chat list.
+  Future<List<ChatThread>> chatsOnce(String uid) async {
+    final snap = await _db
         .collection('chats')
         .where('members', arrayContains: uid)
-        .snapshots()
-        .map((snap) {
-          final threads = snap.docs.map((
-            DocumentSnapshot<Map<String, dynamic>> d,
-          ) {
-            final data = d.data() ?? {};
-            final members = (data['members'] as List?)?.cast<String>() ?? [];
-            final peer = members.firstWhere((m) => m != uid, orElse: () => uid);
-            final names = (data['memberNames'] as Map?)?.cast<String, String>();
-            return ChatThread(
-              id: d.id,
-              peerUid: peer,
-              peerName: names?[peer] ?? 'User',
-              peerPhoto: '',
-              lastMessage: (data['lastMessage'] as String?) ?? '',
-              updatedAt:
-                  (data['updatedAt'] as Timestamp?)?.toDate() ??
-                  DateTime.fromMillisecondsSinceEpoch(0),
-            );
-          }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-          return threads;
-        });
+        .get();
+    return snap.docs.map((DocumentSnapshot<Map<String, dynamic>> d) {
+      final data = d.data() ?? const <String, dynamic>{};
+      final members = (data['members'] as List?)?.cast<String>() ?? [];
+      final peer = members.firstWhere((m) => m != uid, orElse: () => uid);
+      final names = (data['memberNames'] as Map?)?.cast<String, String>();
+      return ChatThread(
+        id: d.id,
+        peerUid: peer,
+        peerName: names?[peer] ?? 'User',
+        peerPhoto: '',
+        lastMessage: (data['lastMessage'] as String?) ?? '',
+        updatedAt:
+            (data['updatedAt'] as Timestamp?)?.toDate() ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+      );
+    }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
-  Stream<List<ChatMessage>> messagesStream(String chatId) {
-    return _db
+  /// The full conversation, oldest first. A one-shot read for polling.
+  Future<List<ChatMessage>> messagesOnce(String chatId) async {
+    final snap = await _db
         .collection('chats')
         .doc(chatId)
         .collection('messages')
         .orderBy('at')
-        .snapshots()
-        .map(
-          (snap) => snap.docs.map((DocumentSnapshot<Map<String, dynamic>> d) {
-            final data = d.data() ?? {};
-            return ChatMessage(
-              id: d.id,
-              senderUid: (data['senderUid'] as String?) ?? '',
-              text: (data['text'] as String?) ?? '',
-              at:
-                  (data['at'] as Timestamp?)?.toDate() ??
-                  DateTime.fromMillisecondsSinceEpoch(0),
-            );
-          }).toList(),
-        );
+        .get();
+    return snap.docs.map((DocumentSnapshot<Map<String, dynamic>> d) {
+      final data = d.data() ?? const <String, dynamic>{};
+      return ChatMessage(
+        id: d.id,
+        senderUid: (data['senderUid'] as String?) ?? '',
+        text: (data['text'] as String?) ?? '',
+        at:
+            (data['at'] as Timestamp?)?.toDate() ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+      );
+    }).toList();
   }
 
   /// Sends a message, creating the conversation on first use.
@@ -468,21 +442,20 @@ class SocialService {
     await batch.commit();
   }
 
-  /// Friend picker data for creating a jam with someone.
+  /// Everyone the user has accepted as a friend, sorted by name.
+  ///
+  /// A one-shot read used both by the friend pickers and by the polling friend
+  /// list. Errors are left to the caller: polling keeps the last good list when
+  /// a tick throws rather than blanking the screen.
   Future<List<SocialUser>> friendsOnce(String uid) async {
-    try {
-      final snap = await _db
-          .collection('users')
-          .doc(uid)
-          .collection('friends')
-          .get();
-      return snap.docs.map(_userFromFriendDoc).toList()..sort(
-        (a, b) =>
-            a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
-      );
-    } catch (e) {
-      debugPrint('[Social] friendsOnce failed: $e');
-      return const [];
-    }
+    final snap = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('friends')
+        .get();
+    return snap.docs.map(_userFromFriendDoc).toList()..sort(
+      (a, b) =>
+          a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+    );
   }
 }

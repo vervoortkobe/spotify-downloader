@@ -276,12 +276,12 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            Color(0xFF1ED760).withValues(alpha: 0.12),
-                            Color(0xFF1ED760).withValues(alpha: 0.04),
+                            SpotterfyTheme.primary.withValues(alpha: 0.12),
+                            SpotterfyTheme.primary.withValues(alpha: 0.04),
                           ],
                         ),
                         border: Border.all(
-                          color: Color(0xFF1ED760).withValues(alpha: 0.3),
+                          color: SpotterfyTheme.primary.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
@@ -293,19 +293,19 @@ class _StorageUsageScreenState extends State<StorageUsageScreen> {
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Color(0xFF1ED760),
+                                    color: SpotterfyTheme.primary,
                                   ),
                                 )
                               : Icon(
                                   Icons.logout_rounded,
                                   size: 20,
-                                  color: Color(0xFF1ED760),
+                                  color: SpotterfyTheme.primary,
                                 ),
                           const SizedBox(width: 10),
                           Text(
                             _resetting ? 'Clearing cache…' : 'Reset cache',
                             style: TextStyle(
-                              color: Color(0xFF1ED760),
+                              color: SpotterfyTheme.primary,
                               fontWeight: FontWeight.w700,
                               fontSize: 15,
                             ),

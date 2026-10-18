@@ -319,13 +319,18 @@ class PlaylistProvider extends ChangeNotifier {
       ),
     );
     try {
+      // The scraper reports *why* it failed (rate limit, unknown job, backend
+      // error) so the snackbar and notification can say something useful rather
+      // than a blanket "could not read that playlist".
+      String? failure;
       final playlist = await ApiService.scrapePlaylist(
         url,
         service: service,
         onProgress: _onImportProgress,
+        onError: (message) => failure = message,
       );
       if (playlist == null) {
-        _error = 'Failed to fetch playlist';
+        _error = failure ?? 'Failed to fetch playlist';
         debugPrint('importFromUrl: scrape returned null');
         _isLoading = false;
         _importProgress = null;
@@ -334,7 +339,7 @@ class PlaylistProvider extends ChangeNotifier {
           NotificationService().showDownloadProgress(
             id: NotificationService.importNotificationId,
             title: 'Import failed',
-            subtitle: 'Could not read that playlist',
+            subtitle: failure ?? 'Could not read that playlist',
             isError: true,
           ),
         );

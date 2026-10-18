@@ -1307,12 +1307,12 @@ class _AdminScreenState extends State<AdminScreen>
                 ),
                 const Spacer(),
                 if (busy)
-                  const SizedBox(
+                  SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Color(0xFF1ED760),
+                      color: SpotterfyTheme.primary,
                     ),
                   )
                 else ...[

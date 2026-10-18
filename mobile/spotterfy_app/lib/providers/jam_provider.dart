@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:spotterfy_app/models/jam_session_model.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/services/jam_service.dart';
+import 'package:spotterfy_app/services/polling_service.dart';
 
 class JamProvider extends ChangeNotifier {
   /// Created on first use: [JamService] touches `FirebaseFirestore.instance` in
@@ -11,8 +12,8 @@ class JamProvider extends ChangeNotifier {
   JamService get _jamService => _service ??= JamService();
   JamSessionModel? _currentSession;
   List<JamSessionModel> _activeSessions = [];
-  StreamSubscription? _sessionSub;
-  StreamSubscription? _activeSub;
+  StreamSubscription<List<JamSessionModel>>? _activeSub;
+  StreamSubscription<JamSessionModel?>? _sessionSub;
   String? _uid;
 
   JamSessionModel? get currentSession => _currentSession;
@@ -35,6 +36,7 @@ class JamProvider extends ChangeNotifier {
 
   JamProvider();
 
+  /// Starts (or restarts) polling for [uid]. A null uid tears everything down.
   void syncUid(String? uid) {
     if (_uid == uid) return;
     _uid = uid;
@@ -48,36 +50,21 @@ class JamProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _activeSub = _jamService.getActiveSessions().listen(
-      (snap) {
-        _activeSessions = snap.docs
-            .where((d) => d.data()['ended'] != true)
-            .map(
-              (d) => JamSessionModel(
-                id: d.id,
-                name: d['name'] as String? ?? '',
-                createdBy: d['createdBy'] as String? ?? '',
-                tracks: [],
-                participants:
-                    (d['participants'] as List<dynamic>?)
-                        ?.map((e) => e as String)
-                        .toList() ??
-                    [],
-              ),
-            )
-            .toList();
-        notifyListeners();
-      },
-      // See SocialProvider._onListenError: a listener without an error handler
-      // turns every PERMISSION_DENIED (which is what a revoked token produces)
-      // into an unhandled async exception.
-      onError: _onListenError,
-    );
+    // The live-jam list is discovery data; it does not need the short in-jam
+    // interval, so it polls with the rest of the social graph.
+    _activeSub = PollingService.instance
+        .poll(
+          fetch: () => _jamService.activeSessionsOnce(),
+          interval: PollingService.socialInterval,
+          signature: (list) => list
+              .map((s) => '${s.id}:${s.name}:${s.participants.length}')
+              .join('|'),
+        )
+        .listen((sessions) {
+          _activeSessions = sessions;
+          notifyListeners();
+        });
     notifyListeners();
-  }
-
-  void _onListenError(Object error, StackTrace stack) {
-    debugPrint('[Jam] listener stopped: $error');
   }
 
   /// Creates a session and subscribes to it.
@@ -112,45 +99,34 @@ class JamProvider extends ChangeNotifier {
     _subscribe(sessionId);
   }
 
-  /// Subscribes to [sessionId] and parses the full document, including the
-  /// shared queue.
+  /// Polls [sessionId] for the full document, including the shared queue and
+  /// playback state.
+  ///
+  /// The session polls faster than the rest of the app: everyone in a jam should
+  /// see a track change or a play/pause from another participant quickly. A
+  /// session that disappears or comes back ended drops this user out of the jam.
   void _subscribe(String sessionId) {
     _sessionSub?.cancel();
-    _sessionSub = _jamService.listenToJamSession(sessionId).listen((snap) {
-      if (!snap.exists) {
-        _currentSession = null;
-        notifyListeners();
-        return;
-      }
-      final data = snap.data() ?? const {};
-      if (data['ended'] == true) {
-        _sessionSub?.cancel();
-        _sessionSub = null;
-        _currentSession = null;
-        notifyListeners();
-        return;
-      }
-      final raw = (data['tracks'] as List<dynamic>? ?? const []);
-      _currentSession = JamSessionModel(
-        id: snap.id,
-        name: data['name'] as String? ?? '',
-        createdBy: data['createdBy'] as String? ?? '',
-        tracks: raw
-            .map(
-              (t) => TrackModel.fromJson(Map<String, dynamic>.from(t as Map)),
-            )
-            .toList(),
-        currentTrackIndex: (data['currentTrackIndex'] as num?)?.toInt() ?? 0,
-        currentPositionMs: (data['currentPositionMs'] as num?)?.toInt() ?? 0,
-        isPlaying: data['isPlaying'] as bool? ?? false,
-        participants:
-            (data['participants'] as List<dynamic>?)
-                ?.map((e) => e as String)
-                .toList() ??
-            [],
-      );
-      notifyListeners();
-    }, onError: _onListenError);
+    _sessionSub = PollingService.instance
+        .poll<JamSessionModel?>(
+          fetch: () => _jamService.jamSessionOnce(sessionId),
+          interval: PollingService.jamInterval,
+          signature: (session) => session == null
+              ? 'gone'
+              : '${session.tracks.length}:${session.currentTrackIndex}:'
+                    '${session.currentPositionMs ~/ 1000}:${session.isPlaying}:'
+                    '${session.participants.length}:${session.ended}',
+        )
+        .listen((session) {
+          if (session == null || session.ended) {
+            _sessionSub?.cancel();
+            _sessionSub = null;
+            _currentSession = null;
+          } else {
+            _currentSession = session;
+          }
+          notifyListeners();
+        });
   }
 
   /// Ends the jam. Creator only - see [canEnd].
@@ -162,6 +138,7 @@ class JamProvider extends ChangeNotifier {
     }
     await _jamService.endJamSession(uid, session.id);
     _sessionSub?.cancel();
+    _sessionSub = null;
     _currentSession = null;
     notifyListeners();
   }
@@ -171,6 +148,7 @@ class JamProvider extends ChangeNotifier {
     if (session == null) return;
     await _jamService.leaveJamSession(uid, session.id);
     _sessionSub?.cancel();
+    _sessionSub = null;
     _currentSession = null;
     notifyListeners();
   }

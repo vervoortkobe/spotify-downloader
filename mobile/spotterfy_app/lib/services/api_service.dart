@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -71,30 +72,110 @@ class ApiService {
     return name;
   }
 
+  static final Random _jobIdRandom = Random();
+
+  /// Job id generated on the client, mirroring the web frontend.
+  ///
+  /// The backend echoes this id back, but sending it means we always know which
+  /// job to poll even if the POST response body is lost or the gateway returns a
+  /// 5xx after the server already accepted the request. Without it, a dropped
+  /// response made the app say "could not read that playlist" while the backend
+  /// happily kept scraping.
+  static String _newJobId() {
+    final ts = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    final r1 = _jobIdRandom.nextInt(0xFFFFFF).toRadixString(16).padLeft(6, '0');
+    final r2 = _jobIdRandom.nextInt(0xFFFFFF).toRadixString(16).padLeft(6, '0');
+    return 'm-$ts-$r1$r2';
+  }
+
+  /// Best-effort human-readable message from a backend error body, covering both
+  /// `{"error": "..."}` and the `{"event":"error","data":{"message":...}}` shape.
+  static String? _backendMessage(String body) {
+    try {
+      final data = jsonDecode(body);
+      if (data is Map) {
+        final err = data['error'];
+        if (err is String && err.trim().isNotEmpty) return err.trim();
+        final inner = data['data'];
+        if (inner is Map) {
+          final msg = inner['message'];
+          if (msg is String && msg.trim().isNotEmpty) return msg.trim();
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Backoff for a retried start POST: honour the server's `Retry-After` when it
+  /// sends one (rate limiting), otherwise grow linearly.
+  static Duration _startRetryDelay(http.Response res, int attempt) {
+    final header = res.headers['retry-after'];
+    final seconds = header == null ? null : int.tryParse(header.trim());
+    if (seconds != null && seconds > 0) {
+      return Duration(seconds: seconds.clamp(1, 30));
+    }
+    return Duration(milliseconds: 400 * attempt);
+  }
+
   static Future<PlaylistModel?> scrapePlaylist(
     String url, {
     String service = 'auto',
     void Function(ScrapeProgress progress)? onProgress,
+    void Function(String message)? onError,
   }) async {
+    final cleanUrl = url.split('?').first;
+    final jobId = _newJobId();
+    debugPrint('scrapePlaylist request url=$cleanUrl service=$service job=$jobId');
+
+    void fail(String message) {
+      debugPrint('scrapePlaylist failed: $message');
+      onError?.call(message);
+    }
+
     try {
-      final cleanUrl = url.split('?').first;
-      debugPrint('scrapePlaylist request url=$cleanUrl service=$service');
-      final reqBody = jsonEncode({'playlistUrl': cleanUrl, 'service': service});
-      _trackUp(reqBody);
-      final startRes = await http.post(
-        Uri.parse('$_baseUrl/scrape-playlist'),
-        headers: _headers(),
-        body: reqBody,
-      );
-      _trackDown(startRes.bodyBytes.length);
-      debugPrint(
-        'scrapePlaylist start status=${startRes.statusCode} body=${startRes.body.substring(0, startRes.body.length > 1000 ? 1000 : startRes.body.length)}',
-      );
-      if (startRes.statusCode != 200) {
-        debugPrint('scrapePlaylist non-200');
-        return null;
+      // --- 1) Start the job -------------------------------------------------
+      // Retry transient failures (rate limit / gateway / network) so a blip on
+      // the way out does not abort an import the backend could still run.
+      http.Response? startRes;
+      for (var attempt = 1; attempt <= 4; attempt++) {
+        try {
+          final reqBody = jsonEncode({
+            'playlistUrl': cleanUrl,
+            'service': service,
+            'progressJobId': jobId,
+          });
+          _trackUp(reqBody);
+          startRes = await http.post(
+            Uri.parse('$_baseUrl/scrape-playlist'),
+            headers: _headers(),
+            body: reqBody,
+          );
+          _trackDown(startRes.bodyBytes.length);
+          debugPrint(
+            'scrapePlaylist start attempt $attempt status=${startRes.statusCode}',
+          );
+          if (startRes.statusCode == 200) break;
+          final retryable =
+              startRes.statusCode == 429 || startRes.statusCode >= 500;
+          if (!retryable || attempt == 4) break;
+          await Future.delayed(_startRetryDelay(startRes, attempt));
+        } catch (e) {
+          // The request may still have reached the server, so keep the job id
+          // and try to pick the job up below rather than giving up outright.
+          debugPrint('scrapePlaylist start attempt $attempt error: $e');
+          startRes = null;
+          if (attempt == 4) break;
+          await Future.delayed(Duration(milliseconds: 400 * attempt));
+        }
       }
-      final startData = jsonDecode(startRes.body) as Map<String, dynamic>;
+
+      final startData = <String, dynamic>{};
+      if (startRes != null && startRes.statusCode == 200) {
+        final decoded = jsonDecode(startRes.body);
+        if (decoded is Map<String, dynamic>) startData.addAll(decoded);
+      }
+
+      // Legacy synchronous response (older backend versions).
       if (startData['event'] == 'complete' && startData['data'] != null) {
         final playlistData = startData['data'] as Map<String, dynamic>;
         final tracks = (playlistData['tracks'] as List<dynamic>)
@@ -120,31 +201,60 @@ class ApiService {
           spotifyUrl: cleanUrl,
         );
       }
-      final jobId = startData['jobId'] as String?;
-      if (jobId == null) {
-        debugPrint(
-          'scrapePlaylist no jobId and not legacy complete: keys=${startData.keys.toList()}',
+
+      // A hard 4xx (including a 429 we already retried) means the job never
+      // started, so say why instead of showing a generic failure. A 5xx is
+      // different: the gateway may have failed *after* the server began
+      // scraping, so we fall through and try to poll the job by the id we sent.
+      if (startRes != null &&
+          startRes.statusCode != 200 &&
+          startRes.statusCode < 500) {
+        fail(
+          startRes.statusCode == 429
+              ? 'The server is busy - please try importing again in a moment.'
+              : _backendMessage(startRes.body) ??
+                    'Server rejected the import (HTTP ${startRes.statusCode}).',
         );
         return null;
       }
-      debugPrint('scrapePlaylist jobId=$jobId polling...');
-      // The backend resolves the job on a worker thread, so this polls
-      // /api/scrape-progress. Each response carries the real completed/total,
-      // which is what makes "song 7 of 24" possible instead of a spinner that
-      // knows nothing.
-      //
-      // No timeout: large playlists (2000+ tracks) can take many minutes on the
-      // backend. The notification keeps the user informed while we wait.
+
+      // Poll the id we generated unless the backend handed one back.
+      final returnedId = (startData['jobId'] as String?)?.trim();
+      final activeJobId = (returnedId == null || returnedId.isEmpty)
+          ? jobId
+          : returnedId;
+
+      // --- 2) Poll progress -------------------------------------------------
+      // No overall timeout: large playlists (2000+ tracks) can take many
+      // minutes. We only give up when the backend reports it never knew this
+      // job, which is what happens if the start request never landed.
       var i = 0;
+      var missingPolls = 0;
+      final startConfirmed = startRes != null && startRes.statusCode == 200;
+      final missingLimit = startConfirmed ? 3 : 12;
       while (true) {
         await Future.delayed(const Duration(milliseconds: 500));
-        final progRes = await http.get(
-          Uri.parse('$_baseUrl/scrape-progress/$jobId'),
-          headers: _headers(json: false),
-        );
-        _trackDown(progRes.bodyBytes.length);
+        late http.Response progRes;
+        try {
+          progRes = await http.get(
+            Uri.parse('$_baseUrl/scrape-progress/$activeJobId'),
+            headers: _headers(json: false),
+          );
+          _trackDown(progRes.bodyBytes.length);
+        } catch (e) {
+          debugPrint('scrapePlaylist progress poll error: $e');
+          continue;
+        }
+        i++;
+        if (progRes.statusCode == 404) {
+          missingPolls++;
+          if (missingPolls >= missingLimit) {
+            fail('The server is not tracking this import. Please try again.');
+            return null;
+          }
+          continue;
+        }
         if (progRes.statusCode != 200) {
-          i++;
           if (i % 20 == 0) {
             debugPrint(
               'scrapePlaylist progress poll error: ${progRes.statusCode}',
@@ -152,7 +262,14 @@ class ApiService {
           }
           continue;
         }
-        final prog = jsonDecode(progRes.body) as Map<String, dynamic>;
+        missingPolls = 0;
+        late Map<String, dynamic> prog;
+        try {
+          prog = jsonDecode(progRes.body) as Map<String, dynamic>;
+        } catch (e) {
+          debugPrint('scrapePlaylist progress decode error: $e');
+          continue;
+        }
         final snapshot = ScrapeProgress(
           completed: (prog['completed'] as num?)?.toInt() ?? 0,
           total: (prog['total'] as num?)?.toInt() ?? 0,
@@ -164,25 +281,24 @@ class ApiService {
           break;
         }
         if (snapshot.isError) {
-          debugPrint('scrapePlaylist job error: $prog');
+          // The progress snapshot carries no message; read the stored result so
+          // the user sees the real reason instead of a generic failure.
+          final message = await _scrapeResultError(activeJobId);
+          fail(message ?? 'The playlist could not be read.');
           return null;
         }
-        i++;
         if (i % 4 == 0) debugPrint('scrapePlaylist progress $i: $prog');
       }
-      final resultRes = await http.get(
-        Uri.parse('$_baseUrl/scrape-result/$jobId'),
-        headers: _headers(json: false),
-      );
-      _trackDown(resultRes.bodyBytes.length);
-      debugPrint('scrapePlaylist result status=${resultRes.statusCode}');
-      if (resultRes.statusCode != 200) {
-        debugPrint('scrapePlaylist result non-200 body=${resultRes.body}');
+
+      // --- 3) Read the result ----------------------------------------------
+      final result = await _fetchScrapeResult(activeJobId);
+      if (result == null) {
+        fail('The server finished the import but its result was unavailable.');
         return null;
       }
-      final result = jsonDecode(resultRes.body) as Map<String, dynamic>;
-      if (result['error'] != null) {
-        debugPrint('scrapePlaylist result error: ${result['error']}');
+      final err = result['error'];
+      if (err != null) {
+        fail(err.toString());
         return null;
       }
       final tracks = (result['tracks'] as List<dynamic>)
@@ -210,8 +326,46 @@ class ApiService {
       );
     } catch (e) {
       debugPrint('Scrape failed: $e');
+      fail('Import failed: $e');
       return null;
     }
+  }
+
+  /// Fetches `/api/scrape-result/<id>`, retrying briefly while the backend
+  /// publishes it (it can land a moment after progress flips to complete).
+  static Future<Map<String, dynamic>?> _fetchScrapeResult(String jobId) async {
+    for (var attempt = 1; attempt <= 6; attempt++) {
+      try {
+        final res = await http.get(
+          Uri.parse('$_baseUrl/scrape-result/$jobId'),
+          headers: _headers(json: false),
+        );
+        _trackDown(res.bodyBytes.length);
+        if (res.statusCode == 200) {
+          final decoded = jsonDecode(res.body);
+          if (decoded is Map<String, dynamic>) return decoded;
+        }
+        debugPrint(
+          'scrapePlaylist result attempt $attempt status=${res.statusCode}',
+        );
+        final retryable =
+            res.statusCode == 404 || res.statusCode == 429 || res.statusCode >= 500;
+        if (!retryable) return null;
+      } catch (e) {
+        debugPrint('scrapePlaylist result attempt $attempt error: $e');
+      }
+      if (attempt < 6) {
+        await Future.delayed(Duration(milliseconds: 250 * attempt));
+      }
+    }
+    return null;
+  }
+
+  /// The backend's stored message for a job that finished with an error.
+  static Future<String?> _scrapeResultError(String jobId) async {
+    final result = await _fetchScrapeResult(jobId);
+    final err = result?['error'];
+    return err?.toString();
   }
 
   static String streamTrackUrl(String sourceUrl) {
