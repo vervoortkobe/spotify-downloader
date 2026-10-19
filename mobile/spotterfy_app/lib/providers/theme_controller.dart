@@ -17,6 +17,14 @@ class ThemeController extends ChangeNotifier {
   static const _accentKey = 'theme_accent';
   static const _oledKey = 'theme_oled_black';
 
+  /// Names that were renamed in a later release. Without this, a stored
+  /// "Spotify green" would fall back to the same palette but leave no tile
+  /// selected, because the theme page compares the raw stored name.
+  static const _legacyNames = {
+    'Spotify green': 'Spotify Green',
+    'Blood': 'Crimson',
+  };
+
   /// Name of the chosen accent, matching an entry in [SpotterfyTheme.palettes].
   String _accent = SpotterfyTheme.palettes.first.name;
 
@@ -56,7 +64,10 @@ class ThemeController extends ChangeNotifier {
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _accent = prefs.getString(_accentKey) ?? _accent;
+      final storedAccent = prefs.getString(_accentKey);
+      _accent = storedAccent == null
+          ? _accent
+          : _legacyNames[storedAccent] ?? storedAccent;
       _oled = prefs.getBool(_oledKey) ?? _oled;
     } catch (_) {
       // Preferences unavailable: keep the defaults rather than failing startup.

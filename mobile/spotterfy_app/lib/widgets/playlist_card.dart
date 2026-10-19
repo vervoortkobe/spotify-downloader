@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/utils/duration_format.dart';
+import 'package:spotterfy_app/widgets/animated_equalizer.dart';
 import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 
 class PlaylistCard extends StatelessWidget {
@@ -59,41 +60,32 @@ class PlaylistCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            _Cover(url: playlist.coverUrl, radius: 12, active: active),
+            _Cover(
+              url: playlist.coverUrl,
+              radius: 12,
+              active: active,
+              animating: isPlaying,
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      if (active) ...[
-                        Icon(
-                          Icons.graphic_eq_rounded,
-                          color: SpotterfyTheme.primary,
-                          size: 15,
-                        ),
-                        const SizedBox(width: 5),
-                      ],
-                      Expanded(
-                        child: Text(
-                          // Strips the " - Author" suffix the scraper bakes into
-                          // the stored name; the byline underneath already
-                          // shows the owner, so it was showing up twice.
-                          playlist.displayName,
-                          style: TextStyle(
-                            color: active
-                                ? SpotterfyTheme.primary
-                                : SpotterfyTheme.text,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.1,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    // Strips the " - Author" suffix the scraper bakes into
+                    // the stored name; the byline underneath already
+                    // shows the owner, so it was showing up twice.
+                    playlist.displayName,
+                    style: TextStyle(
+                      color: active
+                          ? SpotterfyTheme.primary
+                          : SpotterfyTheme.text,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.1,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 5),
                   Text(
@@ -169,7 +161,16 @@ class _Cover extends StatelessWidget {
   final double radius;
   final bool active;
 
-  const _Cover({required this.url, required this.radius, required this.active});
+  /// Whether the bars on the active cover sway. A paused playlist keeps the
+  /// marker but stops the animation, so it can never read as playing.
+  final bool animating;
+
+  const _Cover({
+    required this.url,
+    required this.radius,
+    required this.active,
+    required this.animating,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -188,16 +189,31 @@ class _Cover extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius - 1),
-        child: url.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: url,
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                placeholder: (_, _) => _placeholder(),
-                errorWidget: (_, _, _) => _placeholder(),
-              )
-            : _placeholder(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            url.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: url,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.cover,
+                    placeholder: (_, _) => _placeholder(),
+                    errorWidget: (_, _, _) => _placeholder(),
+                  )
+                : _placeholder(),
+            // The source playlist is marked on its artwork, the same way a
+            // playing track is marked in a list, instead of pushing its title
+            // sideways with an icon.
+            if (active)
+              ColoredBox(
+                color: Colors.black.withValues(alpha: 0.55),
+                child: Center(
+                  child: AnimatedEqualizer(size: 22, animating: animating),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

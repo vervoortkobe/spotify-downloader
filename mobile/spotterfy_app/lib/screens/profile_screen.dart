@@ -12,12 +12,17 @@ import 'package:spotterfy_app/services/social_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/jam_session_sheet.dart';
+import 'package:spotterfy_app/widgets/profile_playlist_tile.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/chat_screen.dart';
 import 'package:spotterfy_app/screens/downloads_screen.dart';
 import 'package:spotterfy_app/screens/playlist_detail_screen.dart';
 import 'package:spotterfy_app/screens/settings_screen.dart';
+import 'package:spotterfy_app/screens/user_playlists_screen.dart';
 import 'package:spotterfy_app/screens/admin_screen.dart';
+
+/// The profile previews this many playlists; the rest live behind "View all".
+const _playlistPreviewCount = 5;
 
 /// A user's profile.
 ///
@@ -149,9 +154,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (own.isEmpty)
                 _emptyHint('You have not imported any playlists yet.')
               else
-                ...own.map((playlist) => _playlistItem(context, playlist)),
+                ...own
+                    .take(_playlistPreviewCount)
+                    .map((playlist) => _playlistItem(context, playlist)),
+              if (own.length > _playlistPreviewCount)
+                _viewAllPlaylistsButton(
+                  context,
+                  total: own.length,
+                  onTap: () => Navigator.push(
+                    context,
+                    swipeRoute(
+                      UserPlaylistsScreen(
+                        title: 'Your Playlists',
+                        playlists: own,
+                      ),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
-              _sectionTitle('More'),
+              _sectionTitle('Other'),
               _actionButton(
                 context,
                 icon: Icons.download_done,
@@ -284,16 +305,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _socialActions(context),
               const SizedBox(height: 28),
               // A dedicated section, separate from your own profile's stats.
-              _sectionTitle(
-                'Playlists',
-                trailing: '${_theirPlaylists.length}',
-              ),
+              _sectionTitle('Playlists', trailing: '${_theirPlaylists.length}'),
               const SizedBox(height: 8),
               if (_theirPlaylists.isEmpty)
                 _emptyHint('This user has not shared any playlists yet.')
               else
-                ..._theirPlaylists.map(
-                  (playlist) => _playlistItem(context, playlist),
+                ..._theirPlaylists
+                    .take(_playlistPreviewCount)
+                    .map((playlist) => _playlistItem(context, playlist)),
+              if (_theirPlaylists.length > _playlistPreviewCount)
+                _viewAllPlaylistsButton(
+                  context,
+                  total: _theirPlaylists.length,
+                  onTap: () => Navigator.push(
+                    context,
+                    swipeRoute(
+                      UserPlaylistsScreen(
+                        title: 'Playlists',
+                        playlists: _theirPlaylists,
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -527,9 +559,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (uid == null || auth.user == null) return;
 
     if (jam.inJam) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You are already in a jam')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('You are already in a jam')));
       return;
     }
 
@@ -565,9 +597,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: BoxDecoration(
         color: SpotterfyTheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: SpotterfyTheme.overlay(0.08),
-        ),
+        border: Border.all(color: SpotterfyTheme.overlay(0.08)),
       ),
       child: Column(
         children: [
@@ -698,9 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: BoxDecoration(
         color: SpotterfyTheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: SpotterfyTheme.overlay(0.08),
-        ),
+        border: Border.all(color: SpotterfyTheme.overlay(0.08)),
       ),
       child: Column(
         children: [
@@ -727,85 +755,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _playlistItem(BuildContext context, PlaylistModel playlist) {
-    // A rounded card with real artwork rather than a bare ListTile: the rows sit
-    // directly on the page background, so grouping them gives the section an
-    // edge and makes the artwork read as the thing you are picking.
+    return ProfilePlaylistTile(
+      playlist: playlist,
+      onTap: () => Navigator.push(
+        context,
+        swipeRoute(PlaylistDetailScreen(playlist: playlist)),
+      ),
+    );
+  }
+
+  /// Opens the full playlist list when the profile preview is capped at
+  /// [_playlistPreviewCount] rows.
+  Widget _viewAllPlaylistsButton(
+    BuildContext context, {
+    required int total,
+    required VoidCallback onTap,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: SpotterfyTheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => Navigator.push(
-            context,
-            swipeRoute(PlaylistDetailScreen(playlist: playlist)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox(
-                    width: 52,
-                    height: 52,
-                    child: playlist.coverUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: playlist.coverUrl,
-                            fit: BoxFit.cover,
-                            placeholder: (_, _) =>
-                                Container(color: SpotterfyTheme.card),
-                            errorWidget: (_, _, _) => Container(
-                              color: SpotterfyTheme.card,
-                              child: Icon(
-                                Icons.music_note,
-                                color: SpotterfyTheme.muted,
-                                size: 22,
-                              ),
-                            ),
-                          )
-                        : Container(
-                            color: SpotterfyTheme.card,
-                            child: Icon(
-                              Icons.music_note,
-                              color: SpotterfyTheme.muted,
-                              size: 22,
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        playlist.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: SpotterfyTheme.text,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${playlist.tracks.length} tracks  •  ${playlist.sourceLabel}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: SpotterfyTheme.muted,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: SpotterfyTheme.mutedDark),
-              ],
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: onTap,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: SpotterfyTheme.primary,
+            backgroundColor: SpotterfyTheme.primaryBg,
+            side: BorderSide(
+              color: SpotterfyTheme.primary.withValues(alpha: 0.45),
             ),
+            minimumSize: const Size(0, 44),
+            shape: const StadiumBorder(),
+            textStyle: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('View all $total playlists'),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.arrow_forward_rounded,
+                size: 18,
+                color: SpotterfyTheme.primary,
+              ),
+            ],
           ),
         ),
       ),

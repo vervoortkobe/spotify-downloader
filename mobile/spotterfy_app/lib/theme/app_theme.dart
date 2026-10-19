@@ -69,6 +69,11 @@ class SpotterfyTheme {
     const Color(0xFF101010),
   );
 
+  /// Opaque accent wash sitting on [surface] - the green selected rows in a
+  /// sort sheet use, and the dark fill for accent-coloured buttons.
+  static Color get accentSurface =>
+      Color.alphaBlend(primary.withValues(alpha: 0.12), surface);
+
   /// Canvas colour behind a page.
   ///
   /// Derived from the accent rather than the fixed green-black it used to be, so
@@ -93,7 +98,7 @@ class SpotterfyTheme {
   /// not one.
   static const List<AppPalette> palettes = [
     AppPalette(
-      name: 'Spotify green',
+      name: 'Spotify Green',
       primary: Color(0xFF1DB954),
       primaryDark: Color(0xFF1ED760),
     ),
@@ -121,6 +126,21 @@ class SpotterfyTheme {
       name: 'Amber',
       primary: Color(0xFFFBBF24),
       primaryDark: Color(0xFFFCD34D),
+    ),
+    AppPalette(
+      name: 'Crimson',
+      primary: Color(0xFFFF4D5E),
+      primaryDark: Color(0xFFFF5C75),
+    ),
+    AppPalette(
+      name: 'Tangerine',
+      primary: Color(0xFFFF8A3D),
+      primaryDark: Color(0xFFFFB077),
+    ),
+    AppPalette(
+      name: 'Indigo',
+      primary: Color(0xFF818CF8),
+      primaryDark: Color(0xFFA5B4FC),
     ),
   ];
 

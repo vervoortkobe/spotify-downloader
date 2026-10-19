@@ -17,6 +17,7 @@ import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
 import 'package:spotterfy_app/widgets/no_results_view.dart';
+import 'package:spotterfy_app/widgets/sort_sheet.dart';
 
 /// One row in the storage root list: a folder treated as a playlist, or the
 /// loose tracks sitting directly in a scan root.
@@ -1443,57 +1444,68 @@ class _LibraryScreenState extends State<LibraryScreen>
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final url = controller.text.trim();
-                      if (url.isEmpty) return;
-                      Navigator.pop(ctx);
-                      final auth = context.read<AuthProvider>();
-                      final prov = context.read<PlaylistProvider>();
-                      final existing = prov.getPlaylistByUrl(url);
-                      if (existing != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Already in library: ${existing.name}',
+                  height: 52,
+                  // The same dark accent surface the sort sheet uses for its
+                  // selected row, so the sheet's primary action matches the
+                  // rest of the library instead of shouting in bright green.
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: SpotterfyTheme.accentSurface,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(14),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () async {
+                          final url = controller.text.trim();
+                          if (url.isEmpty) return;
+                          Navigator.pop(ctx);
+                          final auth = context.read<AuthProvider>();
+                          final prov = context.read<PlaylistProvider>();
+                          final existing = prov.getPlaylistByUrl(url);
+                          if (existing != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Already in library: ${existing.name}',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Importing...')),
+                          );
+                          final playlist = await prov.importFromUrl(url);
+                          if (playlist != null && auth.user != null) {
+                            await prov.savePlaylist(auth.user!.uid, playlist);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Imported "${playlist.name}"'),
+                              ),
+                            );
+                          } else if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(prov.error ?? 'Import failed'),
+                              ),
+                            );
+                          }
+                        },
+                        child: Center(
+                          child: Text(
+                            'Import Playlist',
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
                             ),
                           ),
-                        );
-                        return;
-                      }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Importing...')),
-                      );
-                      final playlist = await prov.importFromUrl(url);
-                      if (playlist != null && auth.user != null) {
-                        await prov.savePlaylist(auth.user!.uid, playlist);
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Imported "${playlist.name}"'),
-                          ),
-                        );
-                      } else if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(prov.error ?? 'Import failed'),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: SpotterfyTheme.primary,
-                      foregroundColor: SpotterfyTheme.onAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(
-                      'Import',
-                      style: TextStyle(
-                        color: SpotterfyTheme.onAccent,
-                        fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
@@ -1632,7 +1644,7 @@ class _SortPill extends StatelessWidget {
                 Text(
                   'Sort',
                   style: TextStyle(
-                    color: accent,
+                    color: SpotterfyTheme.text,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1647,148 +1659,20 @@ class _SortPill extends StatelessWidget {
     );
   }
 
-  void _showSheet(BuildContext context) {
-    HapticFeedback.selectionClick();
-    showModalBottomSheet<void>(
+  Future<void> _showSheet(BuildContext context) async {
+    final picked = await showAppSortSheet<_LibrarySort>(
       context: context,
-      // useRootNavigator pushes the sheet above the *root* navigator, which is
-      // what puts it over the mini player: the mini player is a sibling of the
-      // tab navigators inside MainScreen's Stack, so a sheet opened on a tab's
-      // own navigator renders underneath it and its lowest options are simply
-      // not tappable.
-      useRootNavigator: true,
-      backgroundColor: SpotterfyTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetCtx) => SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: SpotterfyTheme.overlay(0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Header: an accent chip makes the sheet identifiable at a glance
-              // and the subtitle says which of the two lists is being reordered.
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: SpotterfyTheme.primary.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.swap_vert_rounded,
-                        size: 18,
-                        color: SpotterfyTheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Sort by',
-                            style: TextStyle(
-                              color: SpotterfyTheme.text,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            scope,
-                            style: TextStyle(
-                              color: SpotterfyTheme.mutedDark,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              // Each option is its own rounded surface; the active one is tinted
-              // green and carries a check, so the current order is obvious
-              // without comparing positions in a plain list.
-              for (final s in options) _option(sheetCtx, s),
-            ],
+      scope: scope,
+      current: current,
+      options: [
+        for (final option in options)
+          SortSheetOption(
+            value: option,
+            label: option.label,
+            icon: option.icon,
           ),
-        ),
-      ),
+      ],
     );
-  }
-
-  Widget _option(BuildContext sheetCtx, _LibrarySort s) {
-    final selected = s == current;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Material(
-        color: selected
-            ? SpotterfyTheme.primary.withValues(alpha: 0.12)
-            : SpotterfyTheme.overlay(0.04),
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {
-            Navigator.pop(sheetCtx);
-            onPicked(s);
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            child: Row(
-              children: [
-                Icon(
-                  s.icon,
-                  size: 18,
-                  color: selected
-                      ? SpotterfyTheme.primary
-                      : SpotterfyTheme.muted,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    s.label,
-                    style: TextStyle(
-                      color: selected
-                          ? SpotterfyTheme.primary
-                          : SpotterfyTheme.text,
-                      fontSize: 14,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                ),
-                if (selected)
-                  Icon(
-                    Icons.check_rounded,
-                    size: 18,
-                    color: SpotterfyTheme.primary,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    if (picked != null) onPicked(picked);
   }
 }

@@ -8,6 +8,7 @@ import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 import 'package:spotterfy_app/widgets/round_icon_button.dart';
+import 'package:spotterfy_app/widgets/sort_sheet.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
 
@@ -282,60 +283,23 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     );
   }
 
-  void _showSortSheet() {
-    showModalBottomSheet<void>(
+  Future<void> _showSortSheet() async {
+    final picked = await showAppSortSheet<_DownloadSort>(
       context: context,
-      useRootNavigator: true,
-      backgroundColor: SpotterfyTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetCtx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: SpotterfyTheme.overlay(0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Sort by',
-              style: TextStyle(
-                color: SpotterfyTheme.text,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            for (final s in _DownloadSort.values)
-              RadioListTile<_DownloadSort>(
-                value: s,
-                // ignore: deprecated_member_use
-                groupValue: _sort,
-                // ignore: deprecated_member_use
-                onChanged: (v) {
-                  if (v == null) return;
-                  Navigator.pop(sheetCtx);
-                  setState(() => _sort = v);
-                },
-                dense: true,
-                activeColor: SpotterfyTheme.primary,
-                title: Text(
-                  s.label,
-                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
-                ),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      scope: 'Downloaded tracks',
+      current: _sort,
+      options: [
+        for (final option in _DownloadSort.values)
+          SortSheetOption(
+            value: option,
+            label: option.label,
+            icon: option.icon,
+          ),
+      ],
     );
+    if (picked != null && picked != _sort && mounted) {
+      setState(() => _sort = picked);
+    }
   }
 
   /// The download rows. Pulled out of [build] so the empty/no-match branch stays
@@ -613,12 +577,13 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 
 /// Order the downloads list can be shown in.
 enum _DownloadSort {
-  recent('Recently added'),
-  oldest('Oldest first'),
-  title('Title'),
-  artist('Artist'),
-  size('Size');
+  recent('Recently added', Icons.schedule_rounded),
+  oldest('Oldest first', Icons.history_rounded),
+  title('Title', Icons.sort_by_alpha_rounded),
+  artist('Artist', Icons.person_outline_rounded),
+  size('Size', Icons.sd_storage_rounded);
 
-  const _DownloadSort(this.label);
+  const _DownloadSort(this.label, this.icon);
   final String label;
+  final IconData icon;
 }

@@ -16,6 +16,7 @@ import 'package:spotterfy_app/utils/duration_format.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
 import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/sort_sheet.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/player_screen.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
@@ -355,13 +356,14 @@ class _HeaderCircleButton extends StatelessWidget {
 
 /// How the track list is ordered.
 enum _PlaylistSort {
-  custom('Custom order'),
-  title('Title'),
-  artist('Artist'),
-  duration('Length');
+  custom('Custom order', Icons.format_list_numbered_rounded),
+  title('Title', Icons.sort_by_alpha_rounded),
+  artist('Artist', Icons.person_outline_rounded),
+  duration('Length', Icons.timer_outlined);
 
-  const _PlaylistSort(this.label);
+  const _PlaylistSort(this.label, this.icon);
   final String label;
+  final IconData icon;
 }
 
 /// Search / sort / shuffle for one playlist, kept across visits.
@@ -870,60 +872,23 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
   }
 
-  void _showSortSheet() {
-    showModalBottomSheet<void>(
+  Future<void> _showSortSheet() async {
+    final picked = await showAppSortSheet<_PlaylistSort>(
       context: context,
-      useRootNavigator: true,
-      backgroundColor: SpotterfyTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetCtx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: SpotterfyTheme.overlay(0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Sort by',
-              style: TextStyle(
-                color: SpotterfyTheme.text,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            for (final s in _PlaylistSort.values)
-              RadioListTile<_PlaylistSort>(
-                value: s,
-                // ignore: deprecated_member_use
-                groupValue: _sort,
-                // ignore: deprecated_member_use
-                onChanged: (v) {
-                  if (v == null) return;
-                  Navigator.pop(sheetCtx);
-                  _setSort(v);
-                },
-                dense: true,
-                activeColor: SpotterfyTheme.primary,
-                title: Text(
-                  s.label,
-                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
-                ),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      scope: 'Tracks in this playlist',
+      current: _sort,
+      options: [
+        for (final option in _PlaylistSort.values)
+          SortSheetOption(
+            value: option,
+            label: option.label,
+            icon: option.icon,
+          ),
+      ],
     );
+    if (picked != null && picked != _sort && mounted) {
+      _setSort(picked);
+    }
   }
 
   @override

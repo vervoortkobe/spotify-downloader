@@ -105,11 +105,11 @@ class _JamScreenState extends State<JamScreen> {
         padding: const EdgeInsets.only(bottom: MiniPlayer.footerHeight),
         child: FloatingActionButton(
           onPressed: () => _startMessage(context),
-          backgroundColor: SpotterfyTheme.primary,
-          foregroundColor: SpotterfyTheme.onAccent,
+          backgroundColor: SpotterfyTheme.accentSurface,
+          foregroundColor: SpotterfyTheme.text,
           elevation: 2,
           tooltip: 'New message',
-          child: const Icon(Icons.chat_bubble_rounded),
+          child: const Icon(Icons.chat_bubble_outline_rounded),
         ),
       ),
       body: ListView(

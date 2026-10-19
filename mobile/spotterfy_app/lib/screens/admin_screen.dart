@@ -7,6 +7,7 @@ import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/widgets/app_chrome.dart';
+import 'package:spotterfy_app/widgets/sort_sheet.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
 /// Admin tools: user stats, search across every account, moderation, and feedback.
@@ -131,10 +132,7 @@ class _AdminScreenState extends State<AdminScreen>
         ),
         body: TabBarView(
           controller: _tabCtrl,
-          children: [
-            _usersTab(admin, myUid),
-            _feedbackTab(admin),
-          ],
+          children: [_usersTab(admin, myUid), _feedbackTab(admin)],
         ),
       ),
     );
@@ -164,7 +162,6 @@ class _AdminScreenState extends State<AdminScreen>
       ),
     );
   }
-
 
   // --- Stats ---------------------------------------------------------------
 
@@ -316,72 +313,27 @@ class _AdminScreenState extends State<AdminScreen>
     );
   }
 
-  void _showSortSheet(AdminProvider admin) {
-    // useRootNavigator so the sheet clears the mini player, which is drawn
-    // outside this tab's navigator and would otherwise cover the options.
-    showModalBottomSheet<void>(
+  Future<void> _showSortSheet(AdminProvider admin) async {
+    final picked = await showAppSortSheet<AdminSort>(
       context: context,
-      useRootNavigator: true,
-      backgroundColor: SpotterfyTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetCtx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: SpotterfyTheme.overlay(0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Sort users by',
-              style: TextStyle(
-                color: SpotterfyTheme.text,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            for (final s in AdminSort.values)
-              ListTile(
-                dense: true,
-                onTap: () {
-                  Navigator.pop(sheetCtx);
-                  admin.setSort(s);
-                },
-                title: Row(
-                  children: [
-                    SizedBox(
-                      width: 24,
-                      child: admin.sort == s
-                          ? Icon(
-                              Icons.check,
-                              size: 18,
-                              color: SpotterfyTheme.primary,
-                            )
-                          : null,
-                    ),
-                    Text(
-                      s.label,
-                      style: TextStyle(
-                        color: SpotterfyTheme.text,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
+      title: 'Sort users by',
+      scope: 'Admin user list',
+      current: admin.sort,
+      options: [
+        for (final option in AdminSort.values)
+          SortSheetOption(
+            value: option,
+            label: option.label,
+            icon: switch (option) {
+              AdminSort.newest => Icons.schedule_rounded,
+              AdminSort.oldest => Icons.history_rounded,
+              AdminSort.name => Icons.sort_by_alpha_rounded,
+              AdminSort.active => Icons.bolt_rounded,
+            },
+          ),
+      ],
     );
+    if (picked != null) admin.setSort(picked);
   }
 
   Widget _filterChips(AdminProvider admin) {
@@ -995,10 +947,7 @@ class _AdminScreenState extends State<AdminScreen>
         decoration: InputDecoration(
           isDense: true,
           hintText: 'Search feedback message, user or email',
-          hintStyle: TextStyle(
-            color: SpotterfyTheme.mutedDark,
-            fontSize: 13,
-          ),
+          hintStyle: TextStyle(color: SpotterfyTheme.mutedDark, fontSize: 13),
           prefixIcon: Icon(
             Icons.search,
             color: SpotterfyTheme.mutedDark,
@@ -1085,7 +1034,8 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   Widget _emptyFeedback(AdminProvider admin) {
-    final isFiltering = admin.feedbackQuery.isNotEmpty ||
+    final isFiltering =
+        admin.feedbackQuery.isNotEmpty ||
         admin.feedbackFilter != FeedbackFilter.all;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
@@ -1114,10 +1064,7 @@ class _AdminScreenState extends State<AdminScreen>
                 ? 'Try a different search or clear the filter.'
                 : 'Feedback submitted by users in Settings will appear here.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: SpotterfyTheme.mutedDark,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: SpotterfyTheme.mutedDark, fontSize: 12),
           ),
         ],
       ),
@@ -1148,23 +1095,26 @@ class _AdminScreenState extends State<AdminScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 GestureDetector(
-                  onTap: user != null ? () => _showUserSheet(user, admin) : null,
+                  onTap: user != null
+                      ? () => _showUserSheet(user, admin)
+                      : null,
                   child: CircleAvatar(
                     radius: 18,
                     backgroundColor: SpotterfyTheme.card,
                     backgroundImage: f.userPhotoUrl.isNotEmpty
                         ? NetworkImage(f.userPhotoUrl)
                         : (user?.photoUrl.isNotEmpty == true
-                            ? NetworkImage(user!.photoUrl)
-                            : null),
-                    child: f.userPhotoUrl.isEmpty &&
+                              ? NetworkImage(user!.photoUrl)
+                              : null),
+                    child:
+                        f.userPhotoUrl.isEmpty &&
                             (user?.photoUrl.isEmpty ?? true)
                         ? Text(
                             (f.userName.isNotEmpty
                                     ? f.userName[0]
                                     : (f.userEmail.isNotEmpty
-                                        ? f.userEmail[0]
-                                        : '?'))
+                                          ? f.userEmail[0]
+                                          : '?'))
                                 .toUpperCase(),
                             style: TextStyle(
                               color: SpotterfyTheme.text,
@@ -1178,7 +1128,9 @@ class _AdminScreenState extends State<AdminScreen>
                 const SizedBox(width: 10),
                 Expanded(
                   child: GestureDetector(
-                    onTap: user != null ? () => _showUserSheet(user, admin) : null,
+                    onTap: user != null
+                        ? () => _showUserSheet(user, admin)
+                        : null,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1186,7 +1138,9 @@ class _AdminScreenState extends State<AdminScreen>
                           children: [
                             Flexible(
                               child: Text(
-                                f.userName.isNotEmpty ? f.userName : 'Anonymous',
+                                f.userName.isNotEmpty
+                                    ? f.userName
+                                    : 'Anonymous',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -1276,9 +1230,7 @@ class _AdminScreenState extends State<AdminScreen>
               decoration: BoxDecoration(
                 color: const Color(0xFF141414),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.05),
-                ),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
               ),
               child: SelectableText(
                 f.message,
@@ -1292,11 +1244,7 @@ class _AdminScreenState extends State<AdminScreen>
             const SizedBox(height: 8),
             Row(
               children: [
-                Icon(
-                  Icons.schedule,
-                  size: 12,
-                  color: SpotterfyTheme.mutedDark,
-                ),
+                Icon(Icons.schedule, size: 12, color: SpotterfyTheme.mutedDark),
                 const SizedBox(width: 4),
                 Text(
                   _plainDate(f.createdAt),
@@ -1392,7 +1340,6 @@ class _AdminScreenState extends State<AdminScreen>
     }
   }
 }
-
 
 class _Tag extends StatelessWidget {
   final String label;
