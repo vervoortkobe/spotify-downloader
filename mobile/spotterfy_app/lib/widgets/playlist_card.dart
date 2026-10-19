@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/utils/duration_format.dart';
 import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 
 class PlaylistCard extends StatelessWidget {
@@ -159,13 +160,7 @@ class PlaylistCard extends StatelessWidget {
 
   String _totalDuration(PlaylistModel playlist) {
     final total = playlist.tracks.fold<int>(0, (sum, t) => sum + t.durationMs);
-    final hours = total ~/ 3600000;
-    final minutes = (total % 3600000) ~/ 60000;
-    final seconds = (total % 60000) ~/ 1000;
-    if (hours > 0) {
-      return '${hours}h ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-    }
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    return formatDurationMs(total);
   }
 }
 

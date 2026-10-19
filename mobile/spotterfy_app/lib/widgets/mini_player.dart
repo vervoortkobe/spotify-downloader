@@ -9,6 +9,7 @@ import 'package:spotterfy_app/screens/player_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/main.dart';
+import 'package:spotterfy_app/utils/duration_format.dart';
 import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 
 class MiniPlayer extends StatelessWidget {
@@ -351,12 +352,6 @@ class _MiniProgressRow extends StatelessWidget {
 
   const _MiniProgressRow({required this.durationMs});
 
-  static String _fmtDuration(int ms) {
-    final minutes = ms ~/ 60000;
-    final seconds = (ms % 60000) ~/ 1000;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final player = context.read<PlayerProvider>();
@@ -386,8 +381,8 @@ class _MiniProgressRow extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(_fmtDuration(pos.inMilliseconds), style: timeStyle),
-                    Text(_fmtDuration(durMs), style: timeStyle),
+                    Text(formatDurationMs(pos.inMilliseconds), style: timeStyle),
+                    Text(formatDurationMs(durMs), style: timeStyle),
                   ],
                 ),
                 const SizedBox(height: 2),

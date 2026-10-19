@@ -11,6 +11,7 @@ import 'package:spotterfy_app/services/playlist_service.dart';
 import 'package:spotterfy_app/services/social_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
+import 'package:spotterfy_app/widgets/jam_session_sheet.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/chat_screen.dart';
 import 'package:spotterfy_app/screens/downloads_screen.dart';
@@ -301,6 +302,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Shared look for the relationship actions: one pill shape, one height and
+  /// accent-derived colours so the block reads as a set.
+  ///
+  /// It used to pair the theme's pill-shaped Message button with a default
+  /// 12px-radius outline for Create jam, and pinned the accent label to
+  /// hardcoded black - which the light palettes get wrong.
+  ButtonStyle _socialButtonStyle({bool filled = false, bool quiet = false}) {
+    const shape = StadiumBorder();
+    const label = TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
+    if (filled) {
+      return FilledButton.styleFrom(
+        backgroundColor: SpotterfyTheme.primary,
+        foregroundColor: SpotterfyTheme.onAccent,
+        minimumSize: const Size(0, 46),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        shape: shape,
+        textStyle: label,
+        elevation: 0,
+      );
+    }
+    return OutlinedButton.styleFrom(
+      foregroundColor: quiet ? SpotterfyTheme.muted : SpotterfyTheme.primary,
+      backgroundColor: quiet ? Colors.transparent : SpotterfyTheme.primaryBg,
+      side: BorderSide(
+        color: quiet
+            ? SpotterfyTheme.overlay(0.18)
+            : SpotterfyTheme.primary.withValues(alpha: 0.45),
+      ),
+      minimumSize: const Size(0, 46),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      shape: shape,
+      textStyle: label,
+    );
+  }
+
   /// Friend-request / message / jam controls for the viewed user.
   ///
   /// Renders whatever the current relationship is: nothing sent yet, an
@@ -346,7 +382,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(
               children: [
                 Expanded(
-                  child: ElevatedButton.icon(
+                  child: FilledButton.icon(
                     onPressed: req.isEmpty
                         ? null
                         : () async {
@@ -363,20 +399,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             );
                           },
-                    icon: const Icon(Icons.person_add_alt_1, size: 18),
-                    label: const Text('Accept request'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: SpotterfyTheme.primary,
-                      foregroundColor: Colors.black,
+                    icon: const Icon(Icons.check_rounded, size: 18),
+                    label: const Text(
+                      'Accept',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    style: _socialButtonStyle(filled: true),
                   ),
                 ),
                 const SizedBox(width: 10),
-                OutlinedButton(
-                  onPressed: req.isEmpty
-                      ? null
-                      : () => social.declineRequest(req.first),
-                  child: const Text('Decline'),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: req.isEmpty
+                        ? null
+                        : () => social.declineRequest(req.first),
+                    style: _socialButtonStyle(quiet: true),
+                    child: const Text(
+                      'Decline',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -384,10 +428,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
 
       case 'outgoing':
-        // Reads as "pressed": empty fill, accent border and accent text, so it
-        // looks like a toggle that is currently on. Tapping it unsends, which is
-        // the whole point of showing the state on the button itself rather than in
-        // a separate card with a Cancel link.
+        // Reads as a state rather than an action: accent-wash fill, accent
+        // border and a waiting glyph. Tapping it unsends, which is the whole
+        // point of showing the state on the button itself rather than in a
+        // separate card with a Cancel link.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -401,13 +445,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     (r) => r.otherUid == uid && r.isPending,
                   ),
                 ),
-                icon: const Icon(Icons.hourglass_top, size: 18),
+                icon: const Icon(Icons.schedule_rounded, size: 18),
                 label: const Text('Friend request sent'),
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  foregroundColor: SpotterfyTheme.primary,
-                  side: BorderSide(color: SpotterfyTheme.primary),
-                ),
+                style: _socialButtonStyle(),
               ),
             ),
           ],
@@ -422,25 +462,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(
               children: [
                 Expanded(
-                  child: ElevatedButton.icon(
+                  child: FilledButton.icon(
                     onPressed: () => Navigator.push(
                       context,
                       swipeRoute(ChatScreen(peer: peer)),
                     ),
-                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                    label: const Text('Message'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: SpotterfyTheme.primary,
-                      foregroundColor: Colors.black,
+                    icon: const Icon(Icons.chat_bubble_rounded, size: 18),
+                    label: const Text(
+                      'Message',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    style: _socialButtonStyle(filled: true),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _createJamWith(peer),
-                    icon: const Icon(Icons.groups, size: 18),
-                    label: const Text('Create jam'),
+                    icon: const Icon(Icons.graphic_eq_rounded, size: 18),
+                    label: const Text(
+                      'Create jam',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: _socialButtonStyle(),
                   ),
                 ),
               ],
@@ -456,14 +502,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: FilledButton.icon(
                 onPressed: send,
-                icon: const Icon(Icons.person_add_alt_1, size: 18),
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
                 label: const Text('Send friend request'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: SpotterfyTheme.primary,
-                  foregroundColor: Colors.black,
-                ),
+                style: _socialButtonStyle(filled: true),
               ),
             ),
           ],
@@ -471,17 +514,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _createJamWith(SocialUser peer) {
+  /// Starts a jam with [peer] and drops straight into the session sheet.
+  ///
+  /// The friend is invited up front: creating the session without them left a
+  /// jam that only the creator was in, which is not a jam at all. Failures are
+  /// surfaced instead of being swallowed by a "created" snackbar.
+  Future<void> _createJamWith(SocialUser peer) async {
     final uid = _targetUid;
     final auth = context.read<AuthProvider>();
     final jam = context.read<JamProvider>();
     final playlistProv = context.read<PlaylistProvider>();
     if (uid == null || auth.user == null) return;
+
+    if (jam.inJam) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You are already in a jam')),
+      );
+      return;
+    }
+
     final tracks = playlistProv.currentPlaylist?.tracks ?? const [];
-    jam.createSession(auth.user!.uid, 'Jam with ${peer.displayName}', tracks);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Jam with ${peer.displayName} created')),
-    );
+    try {
+      await jam.createSession(
+        auth.user!.uid,
+        'Jam with ${peer.displayName}',
+        tracks,
+        invite: [peer.uid],
+      );
+    } on StateError catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
+    if (!mounted) return;
+    showJamSessionSheet(context);
   }
 
   // ------------------------------------------------------------ shared

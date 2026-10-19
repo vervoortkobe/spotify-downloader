@@ -13,6 +13,11 @@ class JamService {
     List<TrackModel> tracks, {
     List<String> invite = const [],
   }) async {
+    // Invited friends are participants from the very first write. Writing the
+    // creator first and adding invitees in a second update left a window where
+    // the jam existed with nobody to jam with, and a failed second write left it
+    // that way for good.
+    final participants = <String>{uid, ...invite};
     final docRef = await _firestore.collection('jam_sessions').add({
       'name': name,
       'createdBy': uid,
@@ -21,17 +26,9 @@ class JamService {
       'currentPositionMs': 0,
       'isPlaying': false,
       'ended': false,
-      'participants': [uid],
+      'participants': participants.toList(),
       'createdAt': FieldValue.serverTimestamp(),
     });
-    // Invite everyone up front rather than making them find the session in the
-    // live list: a jam you were invited to should already list you as a
-    // participant, so it shows up as "your jam" the moment it is created.
-    if (invite.isNotEmpty) {
-      await _firestore.collection('jam_sessions').doc(docRef.id).update({
-        'participants': FieldValue.arrayUnion(invite),
-      });
-    }
     return docRef.id;
   }
 

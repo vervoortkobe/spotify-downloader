@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
+import 'package:spotterfy_app/utils/duration_format.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:spotterfy_app/widgets/animated_equalizer.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
@@ -61,6 +62,11 @@ class TrackTile extends StatelessWidget {
   final String? coverPath;
   final bool emphasizeActions;
 
+  /// Playlist the row belongs to, when it is shown inside one. Swiping right
+  /// to "play now" keeps that playlist as the playback source, so the library
+  /// keeps its now-playing tint instead of dropping it on a swipe.
+  final String? playSourceId;
+
   /// Extra metadata appended to the subtitle after the artists, e.g. a file
   /// size on the downloads page. Rendered as "Artist  •  3.4 MB".
   final String? subtitleMeta;
@@ -83,6 +89,7 @@ class TrackTile extends StatelessWidget {
     this.coverPath,
     this.emphasizeActions = false,
     this.subtitleMeta,
+    this.playSourceId,
   });
 
   @override
@@ -125,6 +132,7 @@ class TrackTile extends StatelessWidget {
             player.play(
               track,
               queue: [track, ...player.queue.where((t) => t.id != track.id)],
+              sourceId: playSourceId,
             );
           } else {
             // Swipe LEFT -> queue at end, keep current position
@@ -297,7 +305,7 @@ class TrackTile extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Text(
-                        _fmtDuration(Duration(milliseconds: track.durationMs)),
+                        formatDurationMs(track.durationMs),
                         style: TextStyle(
                           color: SpotterfyTheme.mutedDark,
                           fontSize: 11,
@@ -432,12 +440,6 @@ class TrackTile extends StatelessWidget {
     if (meta.isEmpty) return artists;
     if (artists.isEmpty) return meta;
     return '$artists  •  $meta';
-  }
-
-  String _fmtDuration(Duration d) {
-    final m = d.inMinutes.remainder(60);
-    final s = d.inSeconds.remainder(60);
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 }
 

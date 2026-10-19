@@ -69,8 +69,14 @@ class JamProvider extends ChangeNotifier {
 
   /// Creates a session and subscribes to it.
   ///
-  /// [invite] are uids to add as participants up front. Refuses if already in a
-  /// jam - one at a time, so a second create would silently orphan the first.
+  /// [invite] are uids to add as participants up front. A jam is a shared
+  /// listening session, so it must start with at least one friend: allowing an
+  /// empty invite made it possible to create a session nobody was in, which
+  /// looked like a broken jam from every other screen. The guard lives here so
+  /// every entry point (profiles, the chat picker) is covered.
+  ///
+  /// Refuses if already in a jam - one at a time, so a second create would
+  /// silently orphan the first.
   Future<String> createSession(
     String uid,
     String name,
@@ -78,6 +84,9 @@ class JamProvider extends ChangeNotifier {
     List<String> invite = const [],
   }) async {
     if (_currentSession != null) throw StateError('already in a jam');
+    if (invite.where((id) => id != uid).isEmpty) {
+      throw StateError('a jam needs at least one friend');
+    }
     final id = await _jamService.createJamSession(
       uid,
       name,
@@ -171,7 +180,9 @@ class JamProvider extends ChangeNotifier {
   void dispose() {
     _sessionSub?.cancel();
     _activeSub?.cancel();
-    _jamService.dispose();
+    // `_service` directly: disposing must not *create* the Firestore-backed
+    // service on a provider that never used one.
+    _service?.dispose();
     super.dispose();
   }
 }

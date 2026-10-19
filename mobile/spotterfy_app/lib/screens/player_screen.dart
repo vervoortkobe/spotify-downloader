@@ -9,6 +9,7 @@ import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/providers/download_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/utils/duration_format.dart';
 import 'package:spotterfy_app/widgets/queue_sheet.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -338,14 +339,6 @@ class _PlayerScreenState extends State<PlayerScreen>
       ),
     );
   }
-}
-
-/// Formats a duration as `m:ss`. Top level rather than a member so the seek
-/// section can use it after the position read was moved out of the screen build.
-String _fmtDuration(Duration d) {
-  final m = d.inMinutes.remainder(60);
-  final s = d.inSeconds.remainder(60);
-  return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
 }
 
 /// Slowly drifting green gradient glows plus a field of soft green particles
@@ -1068,7 +1061,7 @@ class _SeekSection extends StatelessWidget {
               ValueListenableBuilder<Duration>(
                 valueListenable: player.positionNotifier,
                 builder: (context, pos, _) => Text(
-                  _fmtDuration(pos),
+                  formatDuration(pos),
                   style: TextStyle(
                     color: SpotterfyTheme.muted,
                     fontSize: 12,
@@ -1077,7 +1070,7 @@ class _SeekSection extends StatelessWidget {
                 ),
               ),
               Text(
-                _fmtDuration(dur),
+                formatDuration(dur),
                 style: TextStyle(
                   color: SpotterfyTheme.muted,
                   fontSize: 12,

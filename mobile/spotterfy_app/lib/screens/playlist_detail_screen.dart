@@ -12,6 +12,7 @@ import 'package:spotterfy_app/providers/playlist_provider.dart';
 import 'package:spotterfy_app/providers/download_provider.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/playlist_service.dart';
+import 'package:spotterfy_app/utils/duration_format.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
 import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
@@ -61,14 +62,6 @@ class _PlaylistHeader extends StatelessWidget {
     required this.onShuffle,
     required this.isMine,
   });
-
-  static String _formatTotal(int ms) {
-    final total = (ms / 1000).round();
-    final h = total ~/ 3600;
-    final m = (total % 3600) ~/ 60;
-    if (h > 0) return '$h hr ${m.toString().padLeft(2, '0')} min';
-    return '$m min';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -206,12 +199,12 @@ class _PlaylistHeader extends StatelessWidget {
     );
   }
 
-  /// Sends "N songs · 1h 24 min · Spotify · 12 downloaded" as separate chips
+  /// Sends "N songs · 01:24:00 · Spotify · 12 downloaded" as separate chips
   /// so each fact can drop out independently on narrow screens.
   Widget _statRow(int count, int totalMs, int known, int downloaded) {
     final bits = <String>[
       '$count ${count == 1 ? 'song' : 'songs'}',
-      if (totalMs > 0) _formatTotal(totalMs),
+      if (totalMs > 0) formatDurationMs(totalMs),
       playlist.sourceLabel,
     ];
     return Wrap(
@@ -1248,6 +1241,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                             track: track,
                             isSelected: player.currentTrack?.id == track.id,
                             isPlaying: isPlaying,
+                            playSourceId: _playlist.id,
                             // Long press opens multi-select; in selection mode
                             // a tap toggles instead of playing.
                             onLongPress: () => _toggleSelection(track),
@@ -1446,7 +1440,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     if (tracks.isEmpty) return;
     final player = context.read<PlayerProvider>();
     player.setQueue(tracks, startIndex: 0);
-    player.play(tracks.first, queue: tracks);
+    player.play(tracks.first, queue: tracks, sourceId: _playlist.id);
     _clearSelection();
   }
 
@@ -1477,7 +1471,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final safeIndex = index < 0 ? 0 : index.clamp(0, order.length - 1);
     final player = context.read<PlayerProvider>();
     player.setQueue(order, startIndex: safeIndex);
-    player.play(track, queue: order);
+    player.play(track, queue: order, sourceId: _playlist.id);
     // Same rise/fall animation as opening from the mini player, but on the ROOT
     // navigator: the player is full-screen, so it must cover the bottom nav
     // rather than sit above it inside this tab's stack.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/track_model.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/utils/duration_format.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._();
@@ -112,12 +113,6 @@ class NotificationService {
     }
   }
 
-  static String _posText(Duration d) {
-    final m = d.inMinutes.remainder(60);
-    final s = d.inSeconds.remainder(60);
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-
   Future<void> showPlaybackNotification({
     required TrackModel track,
     required bool isPlaying,
@@ -127,7 +122,7 @@ class NotificationService {
     if (!_initialized || _plugin == null) return;
 
     final sub =
-        '${track.artists}  •  ${_posText(position)} / ${_posText(duration)}';
+        '${track.artists}  •  ${formatDuration(position)} / ${formatDuration(duration)}';
 
     final isLong = duration.inSeconds > 0;
     final prog = isLong ? position.inSeconds.clamp(0, duration.inSeconds) : 0;

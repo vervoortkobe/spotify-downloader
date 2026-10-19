@@ -421,15 +421,18 @@ class _LibraryScreenState extends State<LibraryScreen>
         itemCount: list.length,
         itemBuilder: (context, i) {
           final p = list[i];
-          final curTrack = context.watch<PlayerProvider>().currentTrack;
-          final isPlayingNow = context.watch<PlayerProvider>().isPlaying;
+          final player = context.watch<PlayerProvider>();
+          // Only the playlist playback was started from is "the one playing".
+          // Asking which playlists merely contain the current track lit up
+          // every row that shared a song with it - an imported playlist holding
+          // the track you are playing turned green next to the real one.
           final isSource =
-              curTrack != null && p.tracks.any((t) => t.id == curTrack.id);
+              player.currentTrack != null && player.sourceId == p.id;
           return PlaylistCard(
             playlist: p,
             showOwner: false,
             isActive: isSource,
-            isPlaying: isSource && isPlayingNow,
+            isPlaying: isSource && player.isPlaying,
             onTap: () => Navigator.push(
               context,
               swipeRoute(PlaylistDetailScreen(playlist: p)),
@@ -437,19 +440,17 @@ class _LibraryScreenState extends State<LibraryScreen>
             onPlay: p.tracks.isEmpty
                 ? null
                 : () async {
-                    final curTrack = context
-                        .read<PlayerProvider>()
-                        .currentTrack;
-                    if (curTrack != null &&
-                        p.tracks.any((t) => t.id == curTrack.id)) {
-                      // Same playlist -> toggle, which also covers pausing via
-                      // the row's own button.
-                      await context.read<PlayerProvider>().togglePlayPause();
+                    // The row's own button toggles when this is the playlist
+                    // playback came from; every other row starts that playlist.
+                    if (player.sourceId == p.id &&
+                        player.currentTrack != null) {
+                      await player.togglePlayPause();
                       return;
                     }
-                    await context.read<PlayerProvider>().play(
+                    await player.play(
                       p.tracks.first,
                       queue: p.tracks,
+                      sourceId: p.id,
                     );
                   },
             // Long press for the destructive option. A confirm dialog is

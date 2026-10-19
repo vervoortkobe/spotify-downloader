@@ -30,6 +30,14 @@ class PlayerProvider extends ChangeNotifier {
   DateTime _lastPositionChangeAt = DateTime.now();
   Timer? _positionFallbackTimer;
 
+  /// Id of the playlist playback was started from, when it came from one.
+  ///
+  /// The library tints the playing playlist. Deciding that by "which playlists
+  /// contain the current track" lit up *every* playlist that happened to share
+  /// a song - import a playlist that holds the track you are playing and two
+  /// rows turned green. Recording the context explicitly leaves exactly one.
+  String? _sourceId;
+
   /// Whether playback was running when the app last exited. Only used to decide
   /// whether restoring into the media session is worth a resume hint - never to
   /// start audio by itself.
@@ -51,6 +59,10 @@ class PlayerProvider extends ChangeNotifier {
   List<TrackModel> get recentlyPlayed => List.unmodifiable(_recentlyPlayed);
   int get currentIndex => _currentIndex;
   bool get isPlaying => _isPlaying;
+
+  /// Playlist the current playback was started from, or null when it did not
+  /// come from one (search results, downloads, a folder, a jam session).
+  String? get sourceId => _sourceId;
 
   /// Playhead, ticking several times a second while playing.
   ///
@@ -120,6 +132,7 @@ class PlayerProvider extends ChangeNotifier {
     _currentIndex = -1;
     _currentTrack = null;
     _recentlyPlayed = [];
+    _sourceId = null;
     _isPlaying = false;
     _starting = false;
     _playRequestId++;
@@ -140,6 +153,7 @@ class PlayerProvider extends ChangeNotifier {
     await prefs.remove('player_current_index');
     await prefs.remove('player_was_playing');
     await prefs.remove('player_position_ms');
+    await prefs.remove('player_source_id');
     await prefs.remove('player_recently_played');
     await prefs.remove('player_state_uid');
     notifyListeners();
@@ -525,7 +539,18 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> play(TrackModel track, {List<TrackModel>? queue}) {
+  Future<void> play(
+    TrackModel track, {
+    List<TrackModel>? queue,
+    String? sourceId,
+  }) {
+    // The latest caller owns the playback context, even when the load below is
+    // reused - tapping a playlist's play button while its first track is still
+    // loading must still move the highlight to that playlist.
+    if (_sourceId != sourceId) {
+      _sourceId = sourceId;
+      notifyListeners();
+    }
     // A tap can arrive more than once while YouTube resolves the stream URL.
     // Reuse the in-flight load for the *same* track: issuing concurrent
     // setAudioSource calls for one track can reset one another and leave the
@@ -1079,7 +1104,8 @@ class PlayerProvider extends ChangeNotifier {
     if (_queue.isEmpty || _currentIndex >= _queue.length - 1) return;
     await _cancelCrossfade();
     _currentIndex++;
-    await play(_queue[_currentIndex], queue: _queue);
+    // Advancing keeps the playlist highlight: the queue did not change context.
+    await play(_queue[_currentIndex], queue: _queue, sourceId: _sourceId);
   }
 
   Future<void> previous() async {
@@ -1095,7 +1121,7 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
     _currentIndex--;
-    await play(_queue[_currentIndex], queue: _queue);
+    await play(_queue[_currentIndex], queue: _queue, sourceId: _sourceId);
   }
 
   Future<void> stop() async {
@@ -1120,7 +1146,7 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> playFromQueue(int index) async {
     if (index < 0 || index >= _queue.length) return;
     _currentIndex = index;
-    await play(_queue[index], queue: _queue);
+    await play(_queue[index], queue: _queue, sourceId: _sourceId);
   }
 
   void removeFromQueue(int index) {
@@ -1347,6 +1373,9 @@ class PlayerProvider extends ChangeNotifier {
           _currentIndex = currentIndex;
           _currentTrack = _queue[_currentIndex];
           _position = Duration(milliseconds: positionMs);
+          // Keeps the library's "now playing" tint on the right playlist after
+          // a restart with the queue restored.
+          _sourceId = prefs.getString('player_source_id');
           // Remembered so the media session can be restored paused; auto-resume is the
           // driver's decision, not ours.
           _wasPlayingBeforeRestart =
@@ -1412,11 +1441,18 @@ class PlayerProvider extends ChangeNotifier {
         await prefs.setInt('player_current_index', _currentIndex);
         await prefs.setBool('player_was_playing', _isPlaying);
         await prefs.setInt('player_position_ms', _position.inMilliseconds);
+        final source = _sourceId;
+        if (source != null) {
+          await prefs.setString('player_source_id', source);
+        } else {
+          await prefs.remove('player_source_id');
+        }
       } else {
         await prefs.remove('player_queue');
         await prefs.remove('player_current_index');
         await prefs.remove('player_was_playing');
         await prefs.remove('player_position_ms');
+        await prefs.remove('player_source_id');
       }
       // Owned independently of the queue: the recently-played list needs an
       // owner even when no queue is being remembered.
@@ -1442,6 +1478,7 @@ class PlayerProvider extends ChangeNotifier {
       await prefs.remove('player_current_index');
       await prefs.remove('player_was_playing');
       await prefs.remove('player_position_ms');
+      await prefs.remove('player_source_id');
     } catch (e) {
       debugPrint('[Player] Failed to forget saved state: $e');
     }

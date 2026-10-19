@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/utils/duration_format.dart';
 import 'package:spotterfy_app/widgets/animated_equalizer.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 
@@ -79,17 +80,6 @@ class _QueueSheetState extends State<QueueSheet> {
         ),
       );
     }
-  }
-
-  String _fmtDuration(int ms) {
-    final total = (ms / 1000).round();
-    final h = total ~/ 3600;
-    final m = (total % 3600) ~/ 60;
-    final s = total % 60;
-    if (h > 0) {
-      return '$h hr ${m.toString().padLeft(2, '0')} min';
-    }
-    return '$m:${s.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -224,7 +214,7 @@ class _QueueSheetState extends State<QueueSheet> {
               Text(
                 count == 0
                     ? 'Empty'
-                    : '$count ${count == 1 ? 'song' : 'songs'} • ${_fmtDuration(totalMs)}',
+                    : '$count ${count == 1 ? 'song' : 'songs'} • ${formatDurationMs(totalMs)}',
                 style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
               ),
             ],
@@ -523,7 +513,7 @@ class _QueueRow extends StatelessWidget {
               const SizedBox(width: 8),
               if (track.durationMs > 0)
                 Text(
-                  _fmt(track.durationMs),
+                  formatDurationMs(track.durationMs),
                   style: TextStyle(
                     color: SpotterfyTheme.mutedDark,
                     fontSize: 11,
@@ -587,13 +577,6 @@ class _QueueRow extends StatelessWidget {
       size: 20,
     ),
   );
-
-  static String _fmt(int ms) {
-    final total = (ms / 1000).round();
-    final m = total ~/ 60;
-    final s = total % 60;
-    return '$m:${s.toString().padLeft(2, '0')}';
-  }
 }
 
 /// Per-row overflow menu: move up / move down / remove.
