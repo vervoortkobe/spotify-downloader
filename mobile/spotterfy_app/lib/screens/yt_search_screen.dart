@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/services/api_service.dart';
+import 'package:spotterfy_app/providers/download_provider.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
@@ -31,7 +34,9 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
   void initState() {
     super.initState();
     SharedPreferences.getInstance().then((prefs) {
-      if (mounted) setState(() => _history = prefs.getStringList(_historyKey) ?? []);
+      if (mounted) {
+        setState(() => _history = prefs.getStringList(_historyKey) ?? []);
+      }
     });
   }
 
@@ -96,7 +101,9 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
         if (request == _requestSequence) await _saveSearch(q);
       }
     } finally {
-      if (mounted && request == _requestSequence) setState(() => _loading = false);
+      if (mounted && request == _requestSequence) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -164,73 +171,144 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
               ),
             ),
           Expanded(
-            child: _results.isEmpty && !_loading
-                ? hasQuery
-                      ? _searchSubmitted
-                            ? NoResultsView(
-                                query: _controller.text,
-                                message: 'No YouTube results. Try a different search.',
-                                actionLabel: 'Clear search',
-                                onAction: _controller.clear,
-                              )
-                            : _searchHistoryView()
-                      : _suggestionsView()
-                : ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 100),
-                    itemCount: _results.length,
-                    itemBuilder: (_, i) {
-                      final t = _results[i];
-                      final player = context.watch<PlayerProvider>();
-                      final isPlaying =
-                          player.currentTrack?.id == t.id && player.isPlaying;
-                      return TrackTile(
-                        track: t,
-                        isSelected: player.currentTrack?.id == t.id,
-                        isPlaying: isPlaying,
-                        // Queue and play live on the swipe (right = play now,
-                        // left = add to queue), so the row carries no inline
-                        // transport buttons.
-                        emphasizeActions: true,
-                        onPlay: () {
-                          final p = context.read<PlayerProvider>();
-                          p.setQueue(_results, startIndex: i);
-                          p.play(t, queue: _results);
-                        },
-                      );
-                    },
-                  ),
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              color: SpotterfyTheme.primary,
+              backgroundColor: SpotterfyTheme.surface,
+              child: _resultsBody(hasQuery),
+            ),
           ),
         ],
       ),
     );
   }
 
+  /// Everything under the search bar, one scrollable per branch so the
+  /// pull-to-refresh gesture works from the empty states too.
+  Widget _resultsBody(bool hasQuery) {
+    if (_results.isNotEmpty || _loading) {
+      return ListView.builder(
+        // Explicitly scrollable: a two-result list would otherwise be too short
+        // to pull.
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 100),
+        itemCount: _results.length,
+        itemBuilder: (_, i) {
+          final t = _results[i];
+          final player = context.watch<PlayerProvider>();
+          final isPlaying = player.currentTrack?.id == t.id && player.isPlaying;
+          return TrackTile(
+            track: t,
+            isSelected: player.currentTrack?.id == t.id,
+            isPlaying: isPlaying,
+            // Queue and play live on the swipe (right = play now, left = add to
+            // queue), so the row carries no inline transport buttons.
+            emphasizeActions: true,
+            onPlay: () {
+              final p = context.read<PlayerProvider>();
+              p.setQueue(_results, startIndex: i);
+              p.play(t, queue: _results);
+            },
+          );
+        },
+      );
+    }
+    if (!hasQuery) return _suggestionsView();
+    if (_searchSubmitted) {
+      return _pullable(
+        NoResultsView(
+          query: _controller.text,
+          message: 'No YouTube results. Try a different search.',
+          actionLabel: 'Clear search',
+          onAction: _controller.clear,
+          // The pull wrapper below is the scrollable here.
+          scrollable: false,
+        ),
+      );
+    }
+    return _searchHistoryView();
+  }
+
+  /// Makes a non-scrolling state pullable: the content keeps its centring while
+  /// the wrapper always reports a viewport-tall, scrollable extent.
+  Widget _pullable(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  /// Pull-to-refresh: re-runs the submitted search, otherwise re-reads the
+  /// landing state (recently played from disk plus the local search history).
+  Future<void> _refresh() async {
+    final query = _controller.text.trim();
+    if (_searchSubmitted && query.isNotEmpty) {
+      await _searchYT(query);
+      return;
+    }
+    // Deliberately not awaited: it only notifies, and the indicator should stay
+    // up for the disk reads below.
+    context.read<PlayerProvider>().reloadRecentlyPlayed();
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList(_historyKey) ?? const <String>[];
+    // Small floor so the indicator is visible instead of blinking away on an
+    // instant local read.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (mounted) setState(() => _history = history);
+  }
+
+  /// Local file to read cover art from when the track has no remote artwork:
+  /// an on-device source file, or this app's own download of it.
+  String? _localCover(TrackModel track) {
+    if (track.cover.isNotEmpty) return null;
+    final source = track.sourceUrl;
+    if (source.isNotEmpty && !source.startsWith('http')) {
+      if (File(source).existsSync()) return source;
+    }
+    final downloads = context.read<DownloadProvider>();
+    return downloads.localPathFor(track.id) ??
+        (source.isNotEmpty ? downloads.localPathFor(source) : null);
+  }
+
   Widget _suggestionsView() {
     final player = context.watch<PlayerProvider>();
+    // Watched so a row's cover appears once the on-disk download index has
+    // finished loading, instead of staying on the placeholder.
+    context.watch<DownloadProvider>();
     final recentTracks = player.recentlyPlayed;
     if (recentTracks.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.music_note, size: 56, color: SpotterfyTheme.muted),
-            const SizedBox(height: 12),
-            Text(
-              'No recently played songs',
-              style: TextStyle(
-                color: SpotterfyTheme.text,
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
+      return _pullable(
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.music_note, size: 56, color: SpotterfyTheme.muted),
+              const SizedBox(height: 12),
+              Text(
+                'No recently played songs',
+                style: TextStyle(
+                  color: SpotterfyTheme.text,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text('Songs you play will appear here.',
-                style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
-          ],
+              const SizedBox(height: 6),
+              Text(
+                'Songs you play will appear here.',
+                style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12),
+              ),
+            ],
+          ),
         ),
       );
     }
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 100),
       itemCount: recentTracks.length,
       itemBuilder: (context, index) {
@@ -238,6 +316,10 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
         final isPlaying = player.currentTrack?.id == track.id && player.isPlaying;
         return TrackTile(
           track: track,
+          // Downloaded and on-device songs carry their artwork inside the file
+          // itself, which is why some of these rows had no cover: the tile
+          // needs the path to read it.
+          coverPath: _localCover(track),
           isSelected: player.currentTrack?.id == track.id,
           isPlaying: isPlaying,
           emphasizeActions: true,
@@ -253,15 +335,18 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
         .where((term) => term.toLowerCase().contains(query))
         .toList();
     if (matches.isEmpty) {
-      return Center(
-        child: Text(
-          'Search YouTube for “${_controller.text.trim()}”',
-          style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
-          textAlign: TextAlign.center,
+      return _pullable(
+        Center(
+          child: Text(
+            'Search YouTube for “${_controller.text.trim()}”',
+            style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 100),
       children: [
         Padding(

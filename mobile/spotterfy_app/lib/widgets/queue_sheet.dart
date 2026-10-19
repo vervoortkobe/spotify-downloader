@@ -550,9 +550,9 @@ class _QueueRow extends StatelessWidget {
   /// on-device song fell back to the generic note here while every other surface
   /// could still render its embedded art.
   Widget _cover() {
-    if (track.cover.isNotEmpty) {
+    if (track.artwork.isNotEmpty) {
       return CachedNetworkImage(
-        imageUrl: track.cover,
+        imageUrl: track.artwork,
         width: 44,
         height: 44,
         fit: BoxFit.cover,

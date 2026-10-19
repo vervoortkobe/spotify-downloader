@@ -198,9 +198,9 @@ class TrackTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                       child: Stack(
                         children: [
-                          track.cover.isNotEmpty
+                          track.artwork.isNotEmpty
                               ? CachedNetworkImage(
-                                  imageUrl: track.cover,
+                                  imageUrl: track.artwork,
                                   width: 48,
                                   height: 48,
                                   fit: BoxFit.cover,

@@ -281,7 +281,9 @@ class _MainMiniPlayerWrapper extends StatelessWidget {
         if (uid == null || !player.isSyncedTo(uid)) {
           return const SizedBox.shrink();
         }
-        if (player.currentTrack == null) return const SizedBox.shrink();
+        // No track yet is not a reason to hide the footer: it shows the
+        // placeholder card so the chrome is in the same place from the first
+        // launch, without the layout shifting when playback starts.
         return const SafeArea(top: false, child: MiniPlayer());
       },
     );

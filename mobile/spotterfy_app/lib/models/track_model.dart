@@ -41,6 +41,23 @@ class TrackModel {
     'durationMs': durationMs,
   };
 
+  /// Artwork URL to display for this track.
+  ///
+  /// Falls back to YouTube's own thumbnail for `yt_`-prefixed tracks: the flat
+  /// yt-dlp search behind `/search-tracks` does not always return thumbnails,
+  /// which left those rows (and the recently-played list) showing the blank
+  /// note placeholder even though the artwork exists at a predictable URL.
+  String get artwork {
+    if (cover.isNotEmpty) return cover;
+    if (id.startsWith('yt_')) {
+      final videoId = id.substring(3);
+      if (videoId.isNotEmpty) {
+        return 'https://i.ytimg.com/vi/$videoId/hqdefault.jpg';
+      }
+    }
+    return '';
+  }
+
   TrackModel copyWith({String? sourceUrl, int? durationMs}) => TrackModel(
     id: id,
     title: title,

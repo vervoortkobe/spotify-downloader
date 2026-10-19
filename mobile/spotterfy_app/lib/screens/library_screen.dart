@@ -1297,114 +1297,209 @@ class _LibraryScreenState extends State<LibraryScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       isScrollControlled: true,
-      builder: (ctx) => SingleChildScrollView(
-        child: Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-            left: 24,
-            right: 24,
-            top: 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3f3f46),
-                    borderRadius: BorderRadius.circular(2),
+      builder: (ctx) => Padding(
+        // Lifts the sheet with the keyboard instead of leaving the field behind
+        // it.
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: SpotterfyTheme.overlay(0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Import playlist',
-                style: TextStyle(
-                  color: SpotterfyTheme.text,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: SpotterfyTheme.primary.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.playlist_add_rounded,
+                        color: SpotterfyTheme.primary,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Import playlist',
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Paste a link to add a whole playlist',
+                            style: TextStyle(
+                              color: SpotterfyTheme.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'Paste Spotify / YouTube / SoundCloud URL',
-                  hintStyle: TextStyle(
-                    color: SpotterfyTheme.mutedDark,
-                    fontSize: 13,
-                  ),
-                  filled: true,
-                  fillColor: SpotterfyTheme.fill,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: SpotterfyTheme.borderColor),
-                  ),
-                  prefixIcon: Icon(
-                    Icons.link,
-                    color: SpotterfyTheme.primary,
-                    size: 20,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    final url = controller.text.trim();
-                    if (url.isEmpty) return;
-                    Navigator.pop(ctx);
-                    final auth = context.read<AuthProvider>();
-                    final prov = context.read<PlaylistProvider>();
-                    final existing = prov.getPlaylistByUrl(url);
-                    if (existing != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Already in library: ${existing.name}'),
-                        ),
-                      );
-                      return;
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Importing...')),
-                    );
-                    final playlist = await prov.importFromUrl(url);
-                    if (playlist != null && auth.user != null) {
-                      await prov.savePlaylist(auth.user!.uid, playlist);
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Imported "${playlist.name}"')),
-                      );
-                    } else if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(prov.error ?? 'Import failed')),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: SpotterfyTheme.primary,
-                    foregroundColor: SpotterfyTheme.onAccent,
-                    shape: RoundedRectangleBorder(
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.url,
+                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Paste Spotify / YouTube / SoundCloud URL',
+                    hintStyle: TextStyle(
+                      color: SpotterfyTheme.mutedDark,
+                      fontSize: 13,
+                    ),
+                    filled: true,
+                    fillColor: SpotterfyTheme.fill,
+                    border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: SpotterfyTheme.borderColor),
                     ),
-                  ),
-                  child: Text(
-                    'Import',
-                    style: TextStyle(
-                      color: SpotterfyTheme.onAccent,
-                      fontWeight: FontWeight.w700,
+                    prefixIcon: Icon(
+                      Icons.link,
+                      color: SpotterfyTheme.primary,
+                      size: 20,
+                    ),
+                    // One tap to drop in a link copied from another app, instead
+                    // of long-pressing the field to paste.
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        Icons.content_paste_rounded,
+                        size: 18,
+                        color: SpotterfyTheme.muted,
+                      ),
+                      tooltip: 'Paste from clipboard',
+                      onPressed: () async {
+                        final data = await Clipboard.getData(
+                          Clipboard.kTextPlain,
+                        );
+                        final text = data?.text?.trim() ?? '';
+                        if (text.isEmpty || !ctx.mounted) return;
+                        controller.text = text;
+                      },
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-            ],
+                const SizedBox(height: 12),
+                // Imports are server-side and can pull a lot of audio, so the
+                // cost is called out before the button rather than after.
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  decoration: BoxDecoration(
+                    color: SpotterfyTheme.overlay(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: SpotterfyTheme.borderColor.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 16,
+                        color: SpotterfyTheme.muted,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Importing a large playlist can take a while and may '
+                          'use a lot of mobile data. Wi-Fi is recommended.',
+                          style: TextStyle(
+                            color: SpotterfyTheme.muted,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final url = controller.text.trim();
+                      if (url.isEmpty) return;
+                      Navigator.pop(ctx);
+                      final auth = context.read<AuthProvider>();
+                      final prov = context.read<PlaylistProvider>();
+                      final existing = prov.getPlaylistByUrl(url);
+                      if (existing != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Already in library: ${existing.name}',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Importing...')),
+                      );
+                      final playlist = await prov.importFromUrl(url);
+                      if (playlist != null && auth.user != null) {
+                        await prov.savePlaylist(auth.user!.uid, playlist);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Imported "${playlist.name}"'),
+                          ),
+                        );
+                      } else if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(prov.error ?? 'Import failed'),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: SpotterfyTheme.primary,
+                      foregroundColor: SpotterfyTheme.onAccent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Import',
+                      style: TextStyle(
+                        color: SpotterfyTheme.onAccent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
@@ -1414,16 +1509,20 @@ class _LibraryScreenState extends State<LibraryScreen>
 
 /// Orderings offered by the library's sort buttons.
 enum _LibrarySort {
-  recent('Recently added'),
-  oldest('Oldest first'),
-  name('Name (A-Z)'),
-  artist('Artist'),
-  songs('Fewest songs'),
-  mostSongs('Most songs'),
-  length('Length');
+  recent('Recently added', Icons.schedule_rounded),
+  oldest('Oldest first', Icons.history_rounded),
+  name('Name (A-Z)', Icons.sort_by_alpha_rounded),
+  artist('Artist', Icons.person_outline_rounded),
+  songs('Fewest songs', Icons.trending_down_rounded),
+  mostSongs('Most songs', Icons.trending_up_rounded),
+  length('Length', Icons.timer_outlined);
 
-  const _LibrarySort(this.label);
+  const _LibrarySort(this.label, this.icon);
   final String label;
+
+  /// Shown beside the label in the sort sheet, so each row is scannable at a
+  /// glance instead of being a wall of identical text.
+  final IconData icon;
 }
 
 /// Thin strip under the tabs carrying the sort control for whichever list is
@@ -1479,6 +1578,7 @@ class _SortStrip extends StatelessWidget {
             options: options,
             onPicked: onPicked,
             highlighted: !isDefault,
+            scope: onImported ? 'Imported playlists' : 'Storage folders',
           ),
         ],
       ),
@@ -1494,11 +1594,16 @@ class _SortPill extends StatelessWidget {
   final ValueChanged<_LibrarySort> onPicked;
   final bool highlighted;
 
+  /// Which list the order applies to, shown as the sheet's subtitle since both
+  /// tabs keep their own sort.
+  final String scope;
+
   const _SortPill({
     required this.current,
     required this.options,
     required this.onPicked,
     required this.highlighted,
+    required this.scope,
   });
 
   @override
@@ -1553,64 +1658,133 @@ class _SortPill extends StatelessWidget {
       useRootNavigator: true,
       backgroundColor: SpotterfyTheme.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetCtx) => SafeArea(
+        top: false,
         child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: SpotterfyTheme.overlay(0.2),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Sort by',
-                style: TextStyle(
-                  color: SpotterfyTheme.text,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
-              for (final s in options)
-                ListTile(
-                  dense: true,
-                  // `s` is the loop variable, so this correctly reports which
-                  // option was tapped.
-                  onTap: () {
-                    Navigator.pop(sheetCtx);
-                    onPicked(s);
-                  },
-                  title: Row(
-                    children: [
-                      SizedBox(
-                        width: 24,
-                        child: s == current
-                            ? Icon(
-                                Icons.check,
-                                size: 18,
-                                color: SpotterfyTheme.primary,
-                              )
-                            : null,
-                      ),
-                      Text(
-                        s.label,
-                        style: TextStyle(
-                          color: SpotterfyTheme.text,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: SpotterfyTheme.overlay(0.2),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
+              ),
+              const SizedBox(height: 16),
+              // Header: an accent chip makes the sheet identifiable at a glance
+              // and the subtitle says which of the two lists is being reordered.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: SpotterfyTheme.primary.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.swap_vert_rounded,
+                        size: 18,
+                        color: SpotterfyTheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Sort by',
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            scope,
+                            style: TextStyle(
+                              color: SpotterfyTheme.mutedDark,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              // Each option is its own rounded surface; the active one is tinted
+              // green and carries a check, so the current order is obvious
+              // without comparing positions in a plain list.
+              for (final s in options) _option(sheetCtx, s),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _option(BuildContext sheetCtx, _LibrarySort s) {
+    final selected = s == current;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Material(
+        color: selected
+            ? SpotterfyTheme.primary.withValues(alpha: 0.12)
+            : SpotterfyTheme.overlay(0.04),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            Navigator.pop(sheetCtx);
+            onPicked(s);
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            child: Row(
+              children: [
+                Icon(
+                  s.icon,
+                  size: 18,
+                  color: selected
+                      ? SpotterfyTheme.primary
+                      : SpotterfyTheme.muted,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    s.label,
+                    style: TextStyle(
+                      color: selected
+                          ? SpotterfyTheme.primary
+                          : SpotterfyTheme.text,
+                      fontSize: 14,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: SpotterfyTheme.primary,
+                  ),
+              ],
+            ),
           ),
         ),
       ),

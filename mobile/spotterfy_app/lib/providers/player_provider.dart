@@ -97,7 +97,11 @@ class PlayerProvider extends ChangeNotifier {
     _syncedUid = uid;
     if (uid == null) {
       await prefs.remove('player_state_uid');
-    } else if (_queue.isNotEmpty) {
+    } else {
+      // Record the owner even when no queue is saved. The recently-played list
+      // is per-account too, and a missing uid would look like an account switch
+      // on the next launch and wipe it - which is exactly what happens when
+      // "remember queue" is off and no queue gets written.
       await prefs.setString('player_state_uid', uid);
     }
     notifyListeners();
@@ -1317,6 +1321,11 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> _loadPlayerState() async {
     try {
+      // The "remember queue" switch is stored in the same preferences and gates
+      // the queue restore below. Awaiting it first means a restart with the
+      // switch off can never restore the queue before the switch value is known.
+      final settings = PlaybackSettingsController.instance;
+      await settings.load();
       final prefs = await SharedPreferences.getInstance();
       final recentJson = prefs.getString('player_recently_played');
       if (recentJson != null) {
@@ -1331,7 +1340,7 @@ class PlayerProvider extends ChangeNotifier {
       final queueJson = prefs.getString('player_queue');
       final currentIndex = prefs.getInt('player_current_index') ?? -1;
       final positionMs = prefs.getInt('player_position_ms') ?? 0;
-      if (queueJson != null) {
+      if (queueJson != null && settings.rememberQueue) {
         final List<dynamic> queueData = jsonDecode(queueJson);
         _queue = queueData.map((data) => TrackModel.fromJson(data)).toList();
         if (currentIndex >= 0 && currentIndex < _queue.length) {
@@ -1351,6 +1360,36 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
+  /// Re-reads the persisted recently-played list, for pull-to-refresh on the
+  /// search page's landing state.
+  ///
+  /// Merges rather than replaces: a track that only just started may not have
+  /// reached SharedPreferences yet, and swapping the list out for the stored one
+  /// would make that row disappear until the next launch.
+  Future<void> reloadRecentlyPlayed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString('player_recently_played');
+      if (json == null) return;
+      final stored = (jsonDecode(json) as List<dynamic>)
+          .map(
+            (data) =>
+                TrackModel.fromJson(Map<String, dynamic>.from(data as Map)),
+          )
+          .toList();
+      if (stored.isEmpty) return;
+      final merged = <TrackModel>[..._recentlyPlayed];
+      final known = merged.map((track) => track.id).toSet();
+      merged.addAll(stored.where((track) => known.add(track.id)));
+      if (merged.length > 30) merged.removeRange(30, merged.length);
+      if (merged.length == _recentlyPlayed.length) return;
+      _recentlyPlayed = merged;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[Player] Failed to reload recent plays: $e');
+    }
+  }
+
   Future<void> _saveRecentlyPlayed() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1366,23 +1405,45 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _savePlayerState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (_queue.isNotEmpty) {
+      final remember = PlaybackSettingsController.instance.rememberQueue;
+      if (remember && _queue.isNotEmpty) {
         final queueJson = jsonEncode(_queue.map((t) => t.toJson()).toList());
         await prefs.setString('player_queue', queueJson);
         await prefs.setInt('player_current_index', _currentIndex);
         await prefs.setBool('player_was_playing', _isPlaying);
         await prefs.setInt('player_position_ms', _position.inMilliseconds);
-        final uid = _syncedUid;
-        if (uid != null) await prefs.setString('player_state_uid', uid);
       } else {
         await prefs.remove('player_queue');
         await prefs.remove('player_current_index');
         await prefs.remove('player_was_playing');
         await prefs.remove('player_position_ms');
+      }
+      // Owned independently of the queue: the recently-played list needs an
+      // owner even when no queue is being remembered.
+      final uid = _syncedUid;
+      if (uid != null) {
+        await prefs.setString('player_state_uid', uid);
+      } else {
         await prefs.remove('player_state_uid');
       }
     } catch (e) {
       debugPrint('[Player] Failed to save state: $e');
+    }
+  }
+
+  /// Drops the persisted queue without touching what is playing right now.
+  ///
+  /// Called when "remember queue" is switched off, so a copy saved while the
+  /// switch was on cannot resurface if it is turned back on later.
+  Future<void> forgetSavedState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('player_queue');
+      await prefs.remove('player_current_index');
+      await prefs.remove('player_was_playing');
+      await prefs.remove('player_position_ms');
+    } catch (e) {
+      debugPrint('[Player] Failed to forget saved state: $e');
     }
   }
 }

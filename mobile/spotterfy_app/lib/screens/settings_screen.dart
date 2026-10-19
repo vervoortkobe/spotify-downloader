@@ -20,6 +20,7 @@ import 'package:spotterfy_app/screens/terms_of_service_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playback_settings_controller.dart';
+import 'package:spotterfy_app/providers/player_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -37,124 +38,131 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return HideAppChrome(
       child: AppGradientScaffold(
-      title: 'Settings',
-      body: SingleChildScrollView(
-        // Leave a little room after the final settings row when scrolling.
-        padding: const EdgeInsets.only(bottom: 32),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Profile now leads to a sub-page that owns both fields, instead of
-              // Profile / Name / Spotify URL being three unrelated rows here.
-              _sectionLabel('Account'),
-              _settingsItem(
-                Icons.person,
-                'Profile',
-                subtitle: auth.user?.displayName ?? 'Not set',
-                onTap: () => Navigator.push(
-                  context,
-                  swipeRoute(const ProfileSettingsScreen()),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-              _sectionLabel('Appearance'),
-              _settingsItem(
-                Icons.brightness_6,
-                'Theme',
-                subtitle: 'Accent colour and OLED black',
-                onTap: () =>
-                    Navigator.push(context, swipeRoute(const ThemeScreen())),
-              ),
-
-              const SizedBox(height: 24),
-              _sectionLabel('Playback'),
-              _settingsItem(
-                Icons.graphic_eq,
-                'Equalizer',
-                onTap: () {
-                  Navigator.push(context, swipeRoute(EqualizerScreen()));
-                },
-              ),
-              const SizedBox(height: 8),
-              _crossfadeRow(),
-
-              const SizedBox(height: 24),
-              _sectionLabel('Network'),
-              _settingsItem(
-                Icons.data_usage,
-                'Data Usage',
-                onTap: () {
-                  Navigator.push(context, swipeRoute(DataUsageScreen()));
-                },
-              ),
-
-              const SizedBox(height: 24),
-              _sectionLabel('Storage'),
-              _settingsItem(
-                Icons.storage,
-                'Storage usage',
-                onTap: () {
-                  Navigator.push(
+        title: 'Settings',
+        body: SingleChildScrollView(
+          // Leave a little room after the final settings row when scrolling.
+          padding: const EdgeInsets.only(bottom: 32),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Profile now leads to a sub-page that owns both fields, instead of
+                // Profile / Name / Spotify URL being three unrelated rows here.
+                _sectionLabel('Account'),
+                _settingsItem(
+                  Icons.person,
+                  'Profile',
+                  subtitle: auth.user?.displayName ?? 'Not set',
+                  onTap: () => Navigator.push(
                     context,
-                    swipeRoute(const StorageUsageScreen()),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 24),
-              _sectionLabel('About'),
-              _settingsItem(
-                Icons.info_outline,
-                'About Spotterfy',
-                onTap: () =>
-                    Navigator.push(context, swipeRoute(const AboutScreen())),
-              ),
-              _settingsItem(
-                Icons.privacy_tip,
-                'Privacy Policy',
-                onTap: () => Navigator.push(
-                  context,
-                  swipeRoute(const PrivacyPolicyScreen()),
+                    swipeRoute(const ProfileSettingsScreen()),
+                  ),
                 ),
-              ),
-              _settingsItem(
-                Icons.description,
-                'Terms of Service',
-                onTap: () => Navigator.push(
-                  context,
-                  swipeRoute(const TermsOfServiceScreen()),
-                ),
-              ),
-              _settingsItem(
-                Icons.article_outlined,
-                'Licenses',
-                onTap: () =>
-                    Navigator.push(context, swipeRoute(const LicensesScreen())),
-              ),
-              _settingsItem(
-                Icons.feedback,
-                'Send Feedback',
-                onTap: () =>
-                    Navigator.push(context, swipeRoute(const FeedbackScreen())),
-              ),
-              const SizedBox(height: 16),
-              _settingsItem(
-                Icons.code,
-                'GitHub',
-                subtitle: 'Open source on GitHub',
-                onTap: () => _launchUrl('https://github.com/vervoortkobe/spotify-downloader'),
-              ),
 
-              // Kept last with a small scroll inset for comfortable scrolling.
-              _versionRow(context),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 24),
+                _sectionLabel('Appearance'),
+                _settingsItem(
+                  Icons.brightness_6,
+                  'Theme',
+                  subtitle: 'Accent colour and OLED black',
+                  onTap: () =>
+                      Navigator.push(context, swipeRoute(const ThemeScreen())),
+                ),
+
+                const SizedBox(height: 24),
+                _sectionLabel('Playback'),
+                _settingsItem(
+                  Icons.graphic_eq,
+                  'Equalizer',
+                  onTap: () {
+                    Navigator.push(context, swipeRoute(EqualizerScreen()));
+                  },
+                ),
+                const SizedBox(height: 8),
+                _songTransitionRow(),
+                _rememberQueueRow(),
+
+                const SizedBox(height: 24),
+                _sectionLabel('Network'),
+                _settingsItem(
+                  Icons.data_usage,
+                  'Data Usage',
+                  onTap: () {
+                    Navigator.push(context, swipeRoute(DataUsageScreen()));
+                  },
+                ),
+
+                const SizedBox(height: 24),
+                _sectionLabel('Storage'),
+                _settingsItem(
+                  Icons.storage,
+                  'Storage usage',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      swipeRoute(const StorageUsageScreen()),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 24),
+                _sectionLabel('About'),
+                _settingsItem(
+                  Icons.info_outline,
+                  'About Spotterfy',
+                  onTap: () =>
+                      Navigator.push(context, swipeRoute(const AboutScreen())),
+                ),
+                _settingsItem(
+                  Icons.privacy_tip,
+                  'Privacy Policy',
+                  onTap: () => Navigator.push(
+                    context,
+                    swipeRoute(const PrivacyPolicyScreen()),
+                  ),
+                ),
+                _settingsItem(
+                  Icons.description,
+                  'Terms of Service',
+                  onTap: () => Navigator.push(
+                    context,
+                    swipeRoute(const TermsOfServiceScreen()),
+                  ),
+                ),
+                _settingsItem(
+                  Icons.article_outlined,
+                  'Licenses',
+                  onTap: () => Navigator.push(
+                    context,
+                    swipeRoute(const LicensesScreen()),
+                  ),
+                ),
+                _settingsItem(
+                  Icons.feedback,
+                  'Send Feedback',
+                  onTap: () => Navigator.push(
+                    context,
+                    swipeRoute(const FeedbackScreen()),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _settingsItem(
+                  Icons.code,
+                  'GitHub',
+                  subtitle: 'Open source on GitHub',
+                  onTap: () => _launchUrl(
+                    'https://github.com/vervoortkobe/spotify-downloader',
+                  ),
+                ),
+
+                // Kept last with a small scroll inset for comfortable scrolling.
+                _versionRow(context),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -273,7 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Applied when a track plays out into the next one; manual skips stay
   /// instant. The value is read by PlayerProvider when a fade is scheduled,
   /// so a change takes effect on the next transition.
-  Widget _crossfadeRow() {
+  Widget _songTransitionRow() {
     // Singleton controller (like ThemeController), so listen via AnimatedBuilder
     // rather than context.watch - it is not in the provider tree.
     final controller = PlaybackSettingsController.instance;
@@ -281,14 +289,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       animation: controller,
       builder: (context, _) {
         final seconds = controller.crossfadeSeconds;
-        return _crossfadeCard(context, seconds);
+        return _songTransitionCard(context, seconds);
       },
     );
   }
 
-  Widget _crossfadeCard(BuildContext context, int seconds) {
+  Widget _songTransitionCard(BuildContext context, int seconds) {
+    final off = seconds == 0;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
         color: SpotterfyTheme.surface,
@@ -307,7 +316,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Song transition',
+                      'Song Transition',
                       style: TextStyle(
                         color: SpotterfyTheme.text,
                         fontSize: 16,
@@ -315,9 +324,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      seconds == 0
-                          ? 'Off'
-                          : '$seconds second${seconds == 1 ? '' : 's'}',
+                      'Crossfade into the next song',
                       style: TextStyle(
                         color: SpotterfyTheme.muted,
                         fontSize: 12,
@@ -326,26 +333,164 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
+              const SizedBox(width: 10),
+              // The number is the point of this control, so it sits beside the
+              // title as a pill instead of being a subtitle that is easy to miss.
+              Container(
+                constraints: const BoxConstraints(minWidth: 46),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: off
+                      ? SpotterfyTheme.card
+                      : SpotterfyTheme.primary.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: off
+                        ? SpotterfyTheme.borderColor
+                        : SpotterfyTheme.primary.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Text(
+                  off ? 'Off' : '${seconds}s',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: off ? SpotterfyTheme.muted : SpotterfyTheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
             ],
           ),
+          const SizedBox(height: 4),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              trackHeight: 3,
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              trackHeight: 4,
+              activeTrackColor: SpotterfyTheme.primary,
+              inactiveTrackColor: SpotterfyTheme.card,
+              thumbColor: SpotterfyTheme.primary,
+              overlayColor: SpotterfyTheme.primary.withValues(alpha: 0.16),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+              valueIndicatorColor: SpotterfyTheme.primary,
+              valueIndicatorTextStyle: TextStyle(
+                color: SpotterfyTheme.onAccent,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+              showValueIndicator: ShowValueIndicator.onlyForDiscrete,
             ),
             child: Slider(
               value: seconds.toDouble(),
               min: 0,
               max: PlaybackSettingsController.maxSeconds.toDouble(),
               divisions: PlaybackSettingsController.maxSeconds,
-              label: seconds == 0 ? 'Off' : '$seconds s',
-              activeColor: SpotterfyTheme.primary,
+              label: off ? 'Off' : '$seconds s',
               onChanged: (v) => PlaybackSettingsController.instance
                   .setCrossfadeSeconds(v.round()),
             ),
           ),
+          // Ends of the scale, so the range is readable without dragging first.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: [
+                Text(
+                  'Off',
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
+                    fontSize: 11,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${PlaybackSettingsController.maxSeconds}s',
+                  style: TextStyle(
+                    color: SpotterfyTheme.mutedDark,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  /// Switch for restoring the queue on the next launch (on by default).
+  Widget _rememberQueueRow() {
+    final controller = PlaybackSettingsController.instance;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final on = controller.rememberQueue;
+        void set(bool value) {
+          controller.setRememberQueue(value);
+          if (!value) {
+            // Drop the copy already on disk too, so switching this back on
+            // later cannot resurrect a queue from before it was turned off.
+            context.read<PlayerProvider>().forgetSavedState();
+          }
+        }
+
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: SpotterfyTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => set(!on),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.queue_music_rounded,
+                      color: SpotterfyTheme.muted,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Remember Queue',
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Restore your queue when you reopen the app',
+                            style: TextStyle(
+                              color: SpotterfyTheme.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Switch(value: on, onChanged: set),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

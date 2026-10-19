@@ -991,7 +991,7 @@ class _TrackDownloadButton extends StatelessWidget {
                     )
                   : Icon(
                       downloaded
-                          ? Icons.download_done_rounded
+                          ? Icons.check_rounded
                           : Icons.download_rounded,
                       color: downloaded
                           ? SpotterfyTheme.primary
@@ -1207,9 +1207,9 @@ class _PlayerCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (track.cover.isNotEmpty) {
+    if (track.artwork.isNotEmpty) {
       return CachedNetworkImage(
-        imageUrl: track.cover,
+        imageUrl: track.artwork,
         fit: BoxFit.cover,
         memCacheWidth: 560,
         fadeInDuration: const Duration(milliseconds: 200),

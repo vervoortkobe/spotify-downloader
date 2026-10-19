@@ -71,5 +71,42 @@ void main() {
       expect(track.title, '');
       expect(track.durationMs, 0);
     });
+
+    group('artwork', () {
+      test('prefers the stored cover', () {
+        final track = TrackModel(
+          id: 'yt_abc123',
+          title: 'Song',
+          artists: 'Artist',
+          cover: 'https://example.com/cover.jpg',
+        );
+
+        expect(track.artwork, 'https://example.com/cover.jpg');
+      });
+
+      test('falls back to the YouTube thumbnail for a yt_ track', () {
+        // Flat yt-dlp search results sometimes come back without thumbnails,
+        // which left the row (and the recently-played list) on the placeholder.
+        final track = TrackModel(id: 'yt_abc123', title: 'Song', artists: '');
+
+        expect(track.artwork, 'https://i.ytimg.com/vi/abc123/hqdefault.jpg');
+      });
+
+      test('stays empty for a non-YouTube track without a cover', () {
+        final track = TrackModel(
+          id: 'storage_99',
+          title: 'Local file',
+          artists: '',
+        );
+
+        expect(track.artwork, isEmpty);
+      });
+
+      test('does not invent a thumbnail for a bare yt_ id', () {
+        final track = TrackModel(id: 'yt_', title: 'Song', artists: '');
+
+        expect(track.artwork, isEmpty);
+      });
+    });
   });
 }

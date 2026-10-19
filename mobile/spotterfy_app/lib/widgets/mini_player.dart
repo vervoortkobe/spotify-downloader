@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/widgets/queue_sheet.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:flutter/services.dart';
@@ -23,11 +24,19 @@ class MiniPlayer extends StatelessWidget {
   /// from the lock screen.
   static const double _coverSize = 56;
 
+  /// Height the footer occupies above the bottom of the tab body: the card's
+  /// own padding, its 56px cover row and the 6px gap beneath it.
+  ///
+  /// Pages whose content scrolls under the footer add this to their bottom
+  /// padding, and floating buttons are lifted by it so the player never covers
+  /// them.
+  static const double footerHeight = 88;
+
   @override
   Widget build(BuildContext context) {
     final player = context.watch<PlayerProvider>();
     final track = player.currentTrack;
-    if (track == null) return const SizedBox.shrink();
+    if (track == null) return const _EmptyMiniPlayer();
 
     // Progress and elapsed time live in [_MiniProgressRow], which listens to the
     // position notifier on its own. Reading them here rebuilt the whole mini
@@ -174,6 +183,77 @@ class MiniPlayer extends StatelessWidget {
   void _openPlayer() {
     HapticFeedback.selectionClick();
     navigatorKey.currentState?.push(nowPlayingRoute(const PlayerScreen()));
+  }
+}
+
+/// The footer before anything has been played.
+///
+/// A fresh install still gets the same card, so the layout doesn't jump the
+/// first time a song starts. It shows a neutral cover and copy, and no controls
+/// because there is nothing to control.
+class _EmptyMiniPlayer extends StatelessWidget {
+  const _EmptyMiniPlayer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF121212),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Row(
+          children: [
+            Container(
+              width: MiniPlayer._coverSize,
+              height: MiniPlayer._coverSize,
+              decoration: BoxDecoration(
+                color: SpotterfyTheme.surface,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                Icons.music_note_rounded,
+                color: SpotterfyTheme.mutedDark,
+                size: 26,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Nothing playing',
+                    style: TextStyle(
+                      color: SpotterfyTheme.text,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      height: 1.15,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Pick a song to start listening',
+                    style: TextStyle(
+                      color: SpotterfyTheme.muted,
+                      fontSize: 12.5,
+                      height: 1.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -546,18 +626,21 @@ class _MiniCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (track.cover != null && (track.cover as String).isNotEmpty) {
+    final TrackModel t = track as TrackModel;
+    // `artwork` supplies YouTube's own thumbnail for songs the backend returned
+    // without one, so the mini player matches the row the song was played from.
+    if (t.artwork.isNotEmpty) {
       return Image.network(
-        track.cover as String,
+        t.artwork,
         fit: BoxFit.cover,
         gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) =>
             Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24),
       );
     }
-    final String src = track.sourceUrl as String? ?? '';
+    final String src = t.sourceUrl;
     final bool isStorage =
-        (track.id as String).startsWith('storage_') ||
+        t.id.startsWith('storage_') ||
         src.startsWith('/') ||
         src.startsWith('file://');
     if (isStorage && src.isNotEmpty) {
