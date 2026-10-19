@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/animated_equalizer.dart';
+import 'package:spotterfy_app/widgets/storage_cover.dart';
 
 /// Opens the "Up Next" queue sheet.
 ///
@@ -463,12 +465,13 @@ class _QueueRow extends StatelessWidget {
                 SizedBox(
                   width: 22,
                   child: isCurrent
-                      ? Icon(
-                          isPlaying
-                              ? Icons.graphic_eq_rounded
-                              : Icons.pause_rounded,
-                          color: SpotterfyTheme.primary,
+                      // Moving bars while it plays, the same bars standing still
+                      // while it is paused - so the indicator can never read as
+                      // "playing" for a paused track.
+                      ? AnimatedEqualizer(
                           size: 18,
+                          barWidth: 3,
+                          animating: isPlaying,
                         )
                       : Text(
                           '${index + 1}',
@@ -483,21 +486,7 @@ class _QueueRow extends StatelessWidget {
               const SizedBox(width: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: track.cover.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: track.cover,
-                          fit: BoxFit.cover,
-                          // Decode at 2x the 44px box, not the source size.
-                          memCacheWidth: 88,
-                          maxWidthDiskCache: 240,
-                          placeholder: (_, _) => _thumb(),
-                          errorWidget: (_, _, _) => _thumb(),
-                        )
-                      : _thumb(),
-                ),
+                child: SizedBox(width: 44, height: 44, child: _cover()),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -552,6 +541,42 @@ class _QueueRow extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Row artwork.
+  ///
+  /// Network cover first, then the art embedded in the file for local/storage
+  /// tracks. The queue used to handle only the network case, so a download or an
+  /// on-device song fell back to the generic note here while every other surface
+  /// could still render its embedded art.
+  Widget _cover() {
+    if (track.cover.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: track.cover,
+        width: 44,
+        height: 44,
+        fit: BoxFit.cover,
+        // Decode at 2x the 44px box, not the source size.
+        memCacheWidth: 88,
+        maxWidthDiskCache: 240,
+        placeholder: (_, _) => _thumb(),
+        errorWidget: (_, _, _) => _thumb(),
+      );
+    }
+    final src = track.sourceUrl;
+    final isStorage =
+        track.id.startsWith('storage_') ||
+        src.startsWith('/') ||
+        src.startsWith('file://');
+    if (isStorage && src.isNotEmpty) {
+      return StorageCover(
+        path: src.replaceFirst('file://', ''),
+        size: 44,
+        iconSize: 22,
+        radius: 8,
+      );
+    }
+    return _thumb();
   }
 
   Widget _thumb() => Container(

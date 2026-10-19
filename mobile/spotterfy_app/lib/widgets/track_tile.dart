@@ -4,8 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/providers/player_provider.dart';
-import 'package:spotterfy_app/widgets/playlist_play_button.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
+import 'package:spotterfy_app/widgets/animated_equalizer.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
 ButtonStyle _trackActionStyle({
@@ -61,11 +61,6 @@ class TrackTile extends StatelessWidget {
   final String? coverPath;
   final bool emphasizeActions;
 
-  /// Renders the play control as the round [PlaylistPlayButton] chip instead of
-  /// a bare play icon. Used by the downloads page so it matches the rest of the
-  /// app's transport controls.
-  final bool roundPlayButton;
-
   /// Extra metadata appended to the subtitle after the artists, e.g. a file
   /// size on the downloads page. Rendered as "Artist  •  3.4 MB".
   final String? subtitleMeta;
@@ -87,7 +82,6 @@ class TrackTile extends StatelessWidget {
     this.progress = 0,
     this.coverPath,
     this.emphasizeActions = false,
-    this.roundPlayButton = false,
     this.subtitleMeta,
   });
 
@@ -96,6 +90,26 @@ class TrackTile extends StatelessWidget {
     final bool active = isPlaying;
     final actionSize = emphasizeActions ? 38.0 : 34.0;
     final actionGap = emphasizeActions ? 7.0 : 0.0;
+    // Tints are blended ONTO the opaque surface instead of being painted as
+    // translucent fills. A translucent fill let the swipe reveal behind the row
+    // (its plate, border and play/queue glyph) show straight through the card
+    // while it was dragged, so the song box looked see-through mid-swipe.
+    final Color fill = selected
+        ? Color.alphaBlend(
+            SpotterfyTheme.primary.withValues(alpha: 0.18),
+            SpotterfyTheme.surface,
+          )
+        : active
+        ? Color.alphaBlend(
+            SpotterfyTheme.primary.withValues(alpha: 0.15),
+            SpotterfyTheme.surface,
+          )
+        : isSelected
+        ? Color.alphaBlend(
+            SpotterfyTheme.primary.withValues(alpha: 0.10),
+            SpotterfyTheme.surface,
+          )
+        : SpotterfyTheme.surface;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: _TrackSwipeShell(
@@ -137,13 +151,7 @@ class TrackTile extends StatelessWidget {
         },
         child: Container(
           decoration: BoxDecoration(
-            color: selected
-                ? SpotterfyTheme.primary.withValues(alpha: 0.18)
-                : active
-                ? SpotterfyTheme.primary.withValues(alpha: 0.15)
-                : isSelected
-                ? SpotterfyTheme.primary.withValues(alpha: 0.1)
-                : SpotterfyTheme.surface,
+            color: fill,
             borderRadius: BorderRadius.circular(12),
             border: selected || active
                 ? Border.all(
@@ -188,50 +196,67 @@ class TrackTile extends StatelessWidget {
                     )
                   : ClipRRect(
                       borderRadius: BorderRadius.circular(6),
-                      child: track.cover.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: track.cover,
-                              width: 48,
-                              height: 48,
-                              fit: BoxFit.cover,
-                              // Decode at 2x the 48px box instead of the source's
-                              // full resolution (often 640px). Without this every
-                              // row in a long list decodes ~180x more pixels than it
-                              // displays, which is a large chunk of scroll jank and
-                              // image-cache memory.
-                              memCacheWidth: 96,
-                              maxWidthDiskCache: 240,
-                              placeholder: (_, _) => Container(
-                                color: Color(0xFF1a1a2e),
-                                child: Icon(
-                                  Icons.music_note,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                              errorWidget: (_, _, _) => Container(
-                                color: Color(0xFF1a1a2e),
-                                child: Icon(
-                                  Icons.music_note,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            )
-                          : (coverPath != null
-                                ? StorageCover(
-                                    path: coverPath!,
-                                    size: 48,
-                                    iconSize: 24,
-                                    radius: 6,
-                                  )
-                                : Container(
-                                    width: 48,
-                                    height: 48,
+                      child: Stack(
+                        children: [
+                          track.cover.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: track.cover,
+                                  width: 48,
+                                  height: 48,
+                                  fit: BoxFit.cover,
+                                  // Decode at 2x the 48px box instead of the source's
+                                  // full resolution (often 640px). Without this every
+                                  // row in a long list decodes ~180x more pixels than it
+                                  // displays, which is a large chunk of scroll jank and
+                                  // image-cache memory.
+                                  memCacheWidth: 96,
+                                  maxWidthDiskCache: 240,
+                                  placeholder: (_, _) => Container(
                                     color: Color(0xFF1a1a2e),
                                     child: Icon(
                                       Icons.music_note,
                                       color: Colors.grey[600],
                                     ),
-                                  )),
+                                  ),
+                                  errorWidget: (_, _, _) => Container(
+                                    color: Color(0xFF1a1a2e),
+                                    child: Icon(
+                                      Icons.music_note,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                )
+                              : (coverPath != null
+                                    ? StorageCover(
+                                        path: coverPath!,
+                                        size: 48,
+                                        iconSize: 24,
+                                        radius: 6,
+                                      )
+                                    : Container(
+                                        width: 48,
+                                        height: 48,
+                                        color: Color(0xFF1a1a2e),
+                                        child: Icon(
+                                          Icons.music_note,
+                                          color: Colors.grey[600],
+                                        ),
+                                      )),
+                          // While this track is actually playing, the artwork
+                          // doubles as the "now playing" marker. Scrim + moving
+                          // bars only on the cover, so the title, subtitle and
+                          // row actions stay fully legible.
+                          if (active)
+                            Positioned.fill(
+                              child: ColoredBox(
+                                color: Colors.black.withValues(alpha: 0.55),
+                                child: const Center(
+                                  child: AnimatedEqualizer(size: 22),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
               title: Text(
                 track.title,
@@ -371,35 +396,27 @@ class TrackTile extends StatelessWidget {
                       ),
                     ),
                   if (!emphasizeActions && onPlay != null)
-                    roundPlayButton
-                        ? PlaylistPlayButton(
-                            onPressed: onPlay,
-                            size: 34,
-                            isPlaying: isPlaying,
-                            isActive: isSelected && !isPlaying,
-                            tooltip: isPlaying ? 'Pause' : 'Play',
-                          )
-                        : IconButton(
-                            icon: Icon(
-                              active
-                                  ? Icons.pause_circle_filled
-                                  : Icons.play_circle_filled,
-                              color: active
-                                  ? SpotterfyTheme.primary
-                                  : isSelected
-                                  ? SpotterfyTheme.primary
-                                  : SpotterfyTheme.mutedDark,
-                              size: 28,
-                            ),
-                            onPressed: onPlay,
-                            style: IconButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: const Size(36, 36),
-                              maximumSize: const Size(36, 36),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          ),
+                    IconButton(
+                      icon: Icon(
+                        active
+                            ? Icons.pause_circle_filled
+                            : Icons.play_circle_filled,
+                        color: active
+                            ? SpotterfyTheme.primary
+                            : isSelected
+                            ? SpotterfyTheme.primary
+                            : SpotterfyTheme.mutedDark,
+                        size: 28,
+                      ),
+                      onPressed: onPlay,
+                      style: IconButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(36, 36),
+                        maximumSize: const Size(36, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
                 ],
               ),
             ),

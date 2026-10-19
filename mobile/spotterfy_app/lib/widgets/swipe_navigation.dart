@@ -138,25 +138,17 @@ class NowPlayingPageRoute extends PageRouteBuilder {
         reverseTransitionDuration: pageTransitionDuration,
         pageBuilder: (_, _, _) => child,
         transitionsBuilder: (_, animation, _, child) {
-          final position =
-              Tween<Offset>(
-                begin: const Offset(0, 1),
-                end: Offset.zero,
-              ).animate(
-                CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOutCubic,
-                  reverseCurve: Curves.easeInCubic,
-                ),
-              );
-          final fade = Tween<double>(
-            begin: 0,
-            end: 1,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
-          return SlideTransition(
-            position: position,
-            child: FadeTransition(opacity: fade, child: child),
+          // The cover travels on its own via the shared Hero, so the page
+          // deliberately does NOT slide: sliding dragged the whole block of
+          // buttons up/down with it, which read as everything moving at once.
+          // Instead the page stays put and fades in only once the cover has
+          // (mostly) landed - and fades out first on the way back, so all you
+          // see then is the cover shrinking home to the mini player.
+          final fade = CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.5, 1.0, curve: Curves.easeOut),
           );
+          return FadeTransition(opacity: fade, child: child);
         },
       );
 }

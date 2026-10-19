@@ -118,6 +118,8 @@ class PlayerProvider extends ChangeNotifier {
     _recentlyPlayed = [];
     _isPlaying = false;
     _starting = false;
+    _playRequestId++;
+    _activePlayTrackId = null;
     _pauseRequested = false;
     _pendingToggles = 0;
     _completed = false;
@@ -521,25 +523,43 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> play(TrackModel track, {List<TrackModel>? queue}) {
     // A tap can arrive more than once while YouTube resolves the stream URL.
-    // Reuse the in-flight load instead of issuing concurrent setAudioSource
-    // calls, which can reset one another and leave the user tapping repeatedly.
+    // Reuse the in-flight load for the *same* track: issuing concurrent
+    // setAudioSource calls for one track can reset one another and leave the
+    // user tapping repeatedly. A load for a *different* track is stale the
+    // moment a new request arrives, so it has to be superseded instead of
+    // handed back - returning it for any request is what made swiping to the
+    // next cover and back play the song that was still loading.
     final active = _activePlay;
-    if (active != null) return active;
+    if (active != null && _activePlayTrackId == track.id) return active;
+    final request = ++_playRequestId;
     _starting = true;
-    final operation = _playTrack(track, queue: queue);
+    final operation = _playTrack(track, queue: queue, request: request);
     _activePlay = operation;
+    _activePlayTrackId = track.id;
     return operation.whenComplete(() {
       if (identical(_activePlay, operation)) {
         _activePlay = null;
+        _activePlayTrackId = null;
         _starting = false;
       }
     });
   }
 
-  Future<void> _playTrack(TrackModel track, {List<TrackModel>? queue}) async {
+  /// True once a newer [play] request - or an account switch - has taken over,
+  /// which makes the load that carries [request] stale.
+  bool _isSuperseded(int request, int generation) =>
+      request != _playRequestId || generation != _accountPlaybackGeneration;
+
+  Future<void> _playTrack(
+    TrackModel track, {
+    List<TrackModel>? queue,
+    required int request,
+  }) async {
     final generation = _accountPlaybackGeneration;
     await _cancelCrossfade();
-    if (generation != _accountPlaybackGeneration) return;
+    // Superseded while the crossfade was being torn down: the newer request
+    // owns the player now, so this one must not touch the queue or the track.
+    if (_isSuperseded(request, generation)) return;
     if (queue != null) {
       _queue = List.from(queue);
       _currentIndex = queue.indexWhere((e) => e.id == track.id);
@@ -574,7 +594,7 @@ class PlayerProvider extends ChangeNotifier {
     _handleRadioDrift();
     notifyListeners();
     await ensureAudioHandler();
-    if (generation != _accountPlaybackGeneration) return;
+    if (_isSuperseded(request, generation)) return;
     _bindHandler();
     final h = audioHandler;
     if (h != null) {
@@ -589,9 +609,18 @@ class PlayerProvider extends ChangeNotifier {
     } else {
       debugPrint('[Player] audioHandler is null — notification will not show');
     }
-    final loaded = await _loadInto(_player, track);
+    final loaded = await _loadInto(
+      _player,
+      track,
+      isCancelled: () => _isSuperseded(request, generation),
+    );
     if (generation != _accountPlaybackGeneration) {
       await _player.stop();
+      return;
+    }
+    if (request != _playRequestId) {
+      // The user moved on while this was resolving. The newer request owns the
+      // player, so bail out here instead of stopping the track they asked for.
       return;
     }
     if (!loaded) {
@@ -616,6 +645,7 @@ class PlayerProvider extends ChangeNotifier {
     AudioPlayer player,
     TrackModel track, {
     Duration startAt = Duration.zero,
+    bool Function()? isCancelled,
   }) async {
     // The app can be killed while a song is at its final position. Restoring
     // that exact playhead leaves just_audio at the completed edge, where a
@@ -626,12 +656,14 @@ class PlayerProvider extends ChangeNotifier {
         ? Duration.zero
         : startAt;
     // Local storage files: play directly from device, no backend
+    if (isCancelled?.call() ?? false) return false;
     if (_isLocalPath(track.sourceUrl)) {
       final path = track.sourceUrl.replaceFirst('file://', '');
       try {
         await player
             .setFilePath(path, initialPosition: resumeAt)
             .timeout(const Duration(seconds: 30));
+        if (isCancelled?.call() ?? false) return false;
         await _playUntilAudibleOn(player);
         return true;
       } catch (e) {
@@ -645,11 +677,13 @@ class PlayerProvider extends ChangeNotifier {
     // instantly and costs no bandwidth. Falls through to streaming when the
     // file is absent or unreadable.
     final downloaded = await _downloadedPathFor(track);
+    if (isCancelled?.call() ?? false) return false;
     if (downloaded != null) {
       try {
         await player
             .setFilePath(downloaded, initialPosition: resumeAt)
             .timeout(const Duration(seconds: 30));
+        if (isCancelled?.call() ?? false) return false;
         await _playUntilAudibleOn(player);
         return true;
       } catch (e) {
@@ -675,16 +709,21 @@ class PlayerProvider extends ChangeNotifier {
       final url = primary ?? fallback;
       // No explicit `stop()`: `setAudioSource` stops the current source itself,
       // so calling it first was a wasted platform round-trip per track.
+      if (isCancelled?.call() ?? false) return false;
       await player
           .setAudioSource(
             AudioSource.uri(Uri.parse(url)),
             initialPosition: resumeAt,
           )
           .timeout(const Duration(seconds: 30));
+      if (isCancelled?.call() ?? false) return false;
       await _playUntilAudibleOn(player);
       return true;
     } catch (e) {
       debugPrint('[Player] primary failed: $e');
+      // A superseded load must not retry: a second setAudioSource would take
+      // the player back off the track the user actually asked for.
+      if (isCancelled?.call() ?? false) return false;
       try {
         await player
             .setAudioSource(
@@ -692,6 +731,7 @@ class PlayerProvider extends ChangeNotifier {
               initialPosition: resumeAt,
             )
             .timeout(const Duration(seconds: 35));
+        if (isCancelled?.call() ?? false) return false;
         await _playUntilAudibleOn(player);
         return true;
       } catch (e2) {
@@ -890,6 +930,16 @@ class PlayerProvider extends ChangeNotifier {
   /// understood as "stop the thing that is about to start".
   bool _starting = false;
   Future<void>? _activePlay;
+
+  /// Identifies the [play] request that owns the load currently in flight. A
+  /// load whose request id is no longer current has been superseded and must
+  /// not touch player state - letting it do so is what made a swipe to the next
+  /// cover and straight back finish on the cover that was still loading.
+  int _playRequestId = 0;
+
+  /// Track the in-flight load belongs to, so a repeated tap on the *same* track
+  /// can reuse it while a different track supersedes it.
+  String? _activePlayTrackId;
 
   /// The user pressed pause before the track finished loading.
   bool _pauseRequested = false;

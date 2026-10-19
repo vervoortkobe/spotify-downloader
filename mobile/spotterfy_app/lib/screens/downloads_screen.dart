@@ -7,6 +7,7 @@ import 'package:spotterfy_app/services/download_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/playlist_play_button.dart';
+import 'package:spotterfy_app/widgets/round_icon_button.dart';
 import 'package:spotterfy_app/widgets/storage_cover.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
 
@@ -27,6 +28,19 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   /// a build that doesn't yet have a value asks at most once per path.
   final Set<String> _durationRequests = {};
 
+  final TextEditingController _searchController = TextEditingController();
+
+  /// Lower-cased search term; empty means "show everything".
+  String _query = '';
+
+  _DownloadSort _sort = _DownloadSort.recent;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -40,12 +54,55 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     });
   }
 
-  List<DownloadEntry> get _entries {
+  /// Every download, ordered by the current sort.
+  List<DownloadEntry> get _sortedEntries {
     final all = context.read<DownloadProvider>().entries.values.toList()
-      // Newest first, which is the order people expect to see.
-      ..sort((a, b) => b.downloadedAt.compareTo(a.downloadedAt));
-    if (!_selecting || _selected.isEmpty) return all;
-    return all.where((e) => _selected.contains(e.trackId)).toList();
+      ..sort(_compare);
+    return all;
+  }
+
+  int _compare(DownloadEntry a, DownloadEntry b) {
+    switch (_sort) {
+      case _DownloadSort.recent:
+        // Newest first, which is the order people expect to see.
+        return b.downloadedAt.compareTo(a.downloadedAt);
+      case _DownloadSort.oldest:
+        return a.downloadedAt.compareTo(b.downloadedAt);
+      case _DownloadSort.title:
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      case _DownloadSort.artist:
+        final byArtist = a.artists.toLowerCase().compareTo(
+          b.artists.toLowerCase(),
+        );
+        return byArtist != 0
+            ? byArtist
+            : a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      case _DownloadSort.size:
+        // Largest first: what "sort by size" is normally asked for.
+        return b.sizeBytes.compareTo(a.sizeBytes);
+    }
+  }
+
+  bool _matches(DownloadEntry e) {
+    if (_query.isEmpty) return true;
+    return e.title.toLowerCase().contains(_query) ||
+        e.artists.toLowerCase().contains(_query);
+  }
+
+  /// Sorted and search-filtered, but ignoring the selection filter - so the
+  /// count/size line reflects what is on screen without selection-mode noise.
+  List<DownloadEntry> get _searchedEntries =>
+      _sortedEntries.where(_matches).toList();
+
+  int get _searchedBytes =>
+      _searchedEntries.fold(0, (sum, e) => sum + e.sizeBytes);
+
+  /// The list actually rendered: search filter first, then (while selecting)
+  /// narrowed to the checked rows.
+  List<DownloadEntry> get _entries {
+    final list = _searchedEntries;
+    if (!_selecting || _selected.isEmpty) return list;
+    return list.where((e) => _selected.contains(e.trackId)).toList();
   }
 
   void _toggle(String id) => setState(() {
@@ -159,6 +216,189 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     return '${(mb / 1024).toStringAsFixed(2)} GB';
   }
 
+  /// Filter field for the download list. Same styling as the playlist screen's
+  /// in-list search so the two read as the same control.
+  Widget _searchField() {
+    return SizedBox(
+      height: 42,
+      child: TextField(
+        controller: _searchController,
+        style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
+        cursorColor: SpotterfyTheme.primary,
+        textInputAction: TextInputAction.search,
+        onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+        decoration: InputDecoration(
+          hintText: 'Search downloads',
+          hintStyle: TextStyle(
+            color: SpotterfyTheme.overlay(0.35),
+            fontSize: 14,
+          ),
+          prefixIcon: Icon(
+            Icons.search,
+            size: 19,
+            color: SpotterfyTheme.mutedDark,
+          ),
+          suffixIcon: _searchController.text.isEmpty
+              ? null
+              : IconButton(
+                  icon: Icon(
+                    Icons.close,
+                    size: 17,
+                    color: SpotterfyTheme.mutedDark,
+                  ),
+                  tooltip: 'Clear search',
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _query = '');
+                  },
+                ),
+          isDense: true,
+          filled: true,
+          fillColor: SpotterfyTheme.overlay(0.05),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _noMatches() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Text(
+          'No downloads match "${_searchController.text.trim()}".',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: SpotterfyTheme.muted, fontSize: 13),
+        ),
+      ),
+    );
+  }
+
+  void _showSortSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: SpotterfyTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: SpotterfyTheme.overlay(0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Sort by',
+              style: TextStyle(
+                color: SpotterfyTheme.text,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (final s in _DownloadSort.values)
+              RadioListTile<_DownloadSort>(
+                value: s,
+                // ignore: deprecated_member_use
+                groupValue: _sort,
+                // ignore: deprecated_member_use
+                onChanged: (v) {
+                  if (v == null) return;
+                  Navigator.pop(sheetCtx);
+                  setState(() => _sort = v);
+                },
+                dense: true,
+                activeColor: SpotterfyTheme.primary,
+                title: Text(
+                  s.label,
+                  style: TextStyle(color: SpotterfyTheme.text, fontSize: 14),
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The download rows. Pulled out of [build] so the empty/no-match branch stays
+  /// readable.
+  Widget _downloadsList(
+    List<DownloadEntry> entries,
+    DownloadProvider prov,
+    bool selecting,
+  ) {
+    final player = context.watch<PlayerProvider>();
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 100),
+      itemCount: entries.length,
+      itemBuilder: (_, i) {
+        final e = entries[i];
+        final path = prov.localPathFor(e.trackId) ?? '';
+        final isActive = player.currentTrack?.id == e.trackId;
+        final isPlaying = isActive && player.isPlaying;
+        return TrackTile(
+          track: TrackModel(
+            id: e.trackId,
+            title: e.title,
+            artists: e.artists,
+            sourceUrl: path,
+            durationMs: _durationMsFor(path),
+          ),
+          coverPath: path.isEmpty ? null : path,
+          isDownloaded: true,
+          subtitleMeta: _fmtBytes(e.sizeBytes),
+          // Only the downloaded check stays inline: queue and play live on the
+          // row tap / swipe, so the row reads as a download list rather than a
+          // player.
+          emphasizeActions: true,
+          isSelected: isActive,
+          isPlaying: isPlaying,
+          selectionMode: selecting,
+          selected: _selected.contains(e.trackId),
+          onLongPress: () {
+            setState(() => _selecting = true);
+            _toggle(e.trackId);
+          },
+          onPlay: selecting
+              ? () => _toggle(e.trackId)
+              : () {
+                  final p = context.read<PlayerProvider>();
+                  // The list is a player too: tapping the row that is already
+                  // playing pauses instead of restarting the track.
+                  if (p.currentTrack?.id == e.trackId && p.isPlaying) {
+                    p.pause();
+                    return;
+                  }
+                  final list = _tracksFromEntries(entries);
+                  final idx = list.indexWhere((t) => t.id == e.trackId);
+                  final start = idx < 0 ? 0 : idx;
+                  p.setQueue(list, startIndex: start);
+                  p.play(list[start], queue: list);
+                },
+          onDownload: selecting ? null : () => _confirmOne(context, e),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<DownloadProvider>();
@@ -221,7 +461,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                   ),
               ],
       ),
-      body: entries.isEmpty
+      body: prov.entries.isEmpty
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -259,83 +499,70 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
                   child: Row(
                     children: [
-                      Text(
-                        '${prov.count} ${prov.count == 1 ? 'song' : 'songs'}',
-                        style: TextStyle(
-                          color: SpotterfyTheme.muted,
-                          fontSize: 12,
-                        ),
-                      ),
+                      Expanded(child: _searchField()),
                       const SizedBox(width: 8),
-                      Text(
-                        '• ${_fmtBytes(prov.totalBytes)}',
-                        style: TextStyle(
-                          color: SpotterfyTheme.mutedDark,
-                          fontSize: 12,
-                        ),
+                      RoundIconButton(
+                        icon: Icons.sort_rounded,
+                        tooltip: 'Sort downloads',
+                        size: 42,
+                        active: _sort != _DownloadSort.recent,
+                        onTap: _showSortSheet,
                       ),
                     ],
                   ),
                 ),
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 100),
-                    itemCount: entries.length,
-                    itemBuilder: (_, i) {
-                      final e = entries[i];
-                      final path = prov.localPathFor(e.trackId) ?? '';
-                      final player = context.watch<PlayerProvider>();
-                      final isActive = player.currentTrack?.id == e.trackId;
-                      final isPlaying = isActive && player.isPlaying;
-                      return TrackTile(
-                        track: TrackModel(
-                          id: e.trackId,
-                          title: e.title,
-                          artists: e.artists,
-                          sourceUrl: path,
-                          durationMs: _durationMsFor(path),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '${_searchedEntries.length} '
+                          '${_searchedEntries.length == 1 ? 'song' : 'songs'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: SpotterfyTheme.muted,
+                            fontSize: 12,
+                          ),
                         ),
-                        coverPath: path.isEmpty ? null : path,
-                        isDownloaded: true,
-                        subtitleMeta: _fmtBytes(e.sizeBytes),
-                        roundPlayButton: true,
-                        isSelected: isActive,
-                        isPlaying: isPlaying,
-                        selectionMode: selecting,
-                        selected: _selected.contains(e.trackId),
-                        onLongPress: () {
-                          setState(() => _selecting = true);
-                          _toggle(e.trackId);
-                        },
-                        onPlay: selecting
-                            ? () => _toggle(e.trackId)
-                            : () {
-                                final p = context.read<PlayerProvider>();
-                                // The chip shows a pause glyph while the song
-                                // plays, so tapping it should pause instead of
-                                // restarting the track.
-                                if (p.currentTrack?.id == e.trackId &&
-                                    p.isPlaying) {
-                                  p.pause();
-                                  return;
-                                }
-                                final list = _tracksFromEntries(entries);
-                                final idx = list.indexWhere(
-                                  (t) => t.id == e.trackId,
-                                );
-                                final start = idx < 0 ? 0 : idx;
-                                p.setQueue(list, startIndex: start);
-                                p.play(list[start], queue: list);
-                              },
-                        onDownload: selecting
-                            ? null
-                            : () => _confirmOne(context, e),
-                      );
-                    },
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          '• ${_fmtBytes(_searchedBytes)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: SpotterfyTheme.mutedDark,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      if (_sort != _DownloadSort.recent) ...[
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            '• ${_sort.label}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: SpotterfyTheme.mutedDark,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
+                ),
+                Expanded(
+                  child: entries.isEmpty
+                      ? _noMatches()
+                      : _downloadsList(entries, prov, selecting),
                 ),
               ],
             ),
@@ -382,4 +609,16 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     await prov.remove(e.trackId);
     messenger.showSnackBar(SnackBar(content: Text('Removed "${e.title}"')));
   }
+}
+
+/// Order the downloads list can be shown in.
+enum _DownloadSort {
+  recent('Recently added'),
+  oldest('Oldest first'),
+  title('Title'),
+  artist('Artist'),
+  size('Size');
+
+  const _DownloadSort(this.label);
+  final String label;
 }

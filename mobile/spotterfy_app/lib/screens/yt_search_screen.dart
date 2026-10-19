@@ -8,6 +8,7 @@ import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/widgets/track_tile.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
 import 'package:spotterfy_app/widgets/no_results_view.dart';
+import 'package:spotterfy_app/widgets/round_icon_button.dart';
 
 class YtSearchScreen extends StatefulWidget {
   const YtSearchScreen({super.key});
@@ -105,6 +106,25 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
     super.dispose();
   }
 
+  /// Shuffles whatever the page currently offers and starts playback.
+  ///
+  /// Search results are the obvious pool; before a query is submitted the
+  /// recently-played list is shuffled instead, so the button is never dead on
+  /// the landing state.
+  void _shufflePlay() {
+    final player = context.read<PlayerProvider>();
+    final pool = _results.isNotEmpty ? _results : player.recentlyPlayed;
+    if (pool.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Search for songs, then shuffle')),
+      );
+      return;
+    }
+    final shuffled = [...pool]..shuffle();
+    player.setQueue(shuffled, startIndex: 0);
+    player.play(shuffled.first, queue: shuffled);
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasQuery = _controller.text.trim().isNotEmpty;
@@ -120,6 +140,14 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
         _results = [];
       }),
       onSearchSubmitted: _searchYT,
+      // Shuffle sits beside the search bar, so a query can be turned into
+      // playback without scrolling into the results.
+      action: RoundIconButton(
+        icon: Icons.shuffle_rounded,
+        tooltip: 'Shuffle play',
+        size: 34,
+        onTap: _shufflePlay,
+      ),
       body: Column(
         children: [
           if (_loading)
@@ -159,6 +187,10 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
                         track: t,
                         isSelected: player.currentTrack?.id == t.id,
                         isPlaying: isPlaying,
+                        // Queue and play live on the swipe (right = play now,
+                        // left = add to queue), so the row carries no inline
+                        // transport buttons.
+                        emphasizeActions: true,
                         onPlay: () {
                           final p = context.read<PlayerProvider>();
                           p.setQueue(_results, startIndex: i);
@@ -208,6 +240,7 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
           track: track,
           isSelected: player.currentTrack?.id == track.id,
           isPlaying: isPlaying,
+          emphasizeActions: true,
           onPlay: () => context.read<PlayerProvider>().play(track),
         );
       },

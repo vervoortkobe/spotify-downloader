@@ -35,6 +35,11 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _thresholdHapticDone = false;
   bool _dismissing = false;
 
+  /// Fractional page position of the cover carousel, shared with the title
+  /// block so the name/artist move in step with the cover instead of snapping
+  /// once the page settles. Owned here; the carousel writes it, the labels read.
+  final ValueNotifier<double> _carouselPosition = ValueNotifier<double>(0);
+
   static const double _dismissDistance = 110;
 
   @override
@@ -50,6 +55,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   void dispose() {
     _springCtrl.dispose();
     _dragProgress.dispose();
+    _carouselPosition.dispose();
     super.dispose();
   }
 
@@ -186,6 +192,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                           ),
                           tracks: queue,
                           currentIndex: currentIndex,
+                          position: _carouselPosition,
                           onPageSelected: (i) {
                             if (i != player.currentIndex) {
                               player.playFromQueue(i);
@@ -197,36 +204,17 @@ class _PlayerScreenState extends State<PlayerScreen>
                       const Spacer(flex: 2),
                       // Title block in a fixed-width column so the text stays
                       // centred and never collides with the controls below.
+                      // With the carousel on screen the labels follow its
+                      // fractional position, so the name and artist slide with
+                      // the cover rather than snapping after the page settles.
                       SizedBox(
                         width: double.infinity,
-                        child: Column(
-                          children: [
-                            Text(
-                              track.title,
-                              style: TextStyle(
-                                color: SpotterfyTheme.text,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.3,
-                                height: 1.2,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              track.artists,
-                              style: TextStyle(
-                                color: SpotterfyTheme.muted,
-                                fontSize: 15,
-                                height: 1.3,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
+                        child: _TrackLabels(
+                          track: track,
+                          tracks: queue,
+                          position: (!isRadio && queue.length > 1)
+                              ? _carouselPosition
+                              : null,
                         ),
                       ),
                       const SizedBox(height: 28),
@@ -611,15 +599,126 @@ class _StaticCover extends StatelessWidget {
   }
 }
 
+/// Title + artist for the now-playing page.
+///
+/// When [position] is supplied (the cover carousel is on screen) the labels
+/// follow its fractional page position: the outgoing name/artist slide left and
+/// fade while the incoming pair slides in from the right, so the text moves in
+/// lock-step with the cover instead of snapping once the page settles.
+class _TrackLabels extends StatelessWidget {
+  final TrackModel track;
+  final List<TrackModel> tracks;
+  final ValueListenable<double>? position;
+
+  const _TrackLabels({
+    required this.track,
+    this.tracks = const [],
+    this.position,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = position;
+    if (pos == null || tracks.length < 2) {
+      return _TrackLabel(track: track);
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return ClipRect(
+          child: ValueListenableBuilder<double>(
+            valueListenable: pos,
+            builder: (context, raw, _) {
+              final last = tracks.length - 1;
+              final p = raw.clamp(0.0, last.toDouble());
+              final i = p.floor();
+              final frac = p - i;
+              final next = i + 1 <= last ? tracks[i + 1] : null;
+              return Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  Opacity(
+                    opacity: (1 - frac).clamp(0.0, 1.0),
+                    child: Transform.translate(
+                      offset: Offset(-width * frac, 0),
+                      child: _TrackLabel(track: tracks[i]),
+                    ),
+                  ),
+                  if (next != null)
+                    Positioned.fill(
+                      child: Opacity(
+                        opacity: frac.clamp(0.0, 1.0),
+                        child: Transform.translate(
+                          offset: Offset(width * (1 - frac), 0),
+                          child: _TrackLabel(track: next),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One track's name and artist, stacked and centred.
+class _TrackLabel extends StatelessWidget {
+  final TrackModel track;
+  const _TrackLabel({required this.track});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          track.title,
+          style: TextStyle(
+            color: SpotterfyTheme.text,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+            height: 1.2,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          track.artists,
+          style: TextStyle(
+            color: SpotterfyTheme.muted,
+            fontSize: 15,
+            height: 1.3,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
+
 class _CoverCarousel extends StatefulWidget {
   final List<TrackModel> tracks;
   final int currentIndex;
   final ValueChanged<int> onPageSelected;
+
+  /// Fractional page position, written here as the user drags and read by the
+  /// title block so the labels track the cover. Owned by the parent screen.
+  final ValueNotifier<double> position;
+
   const _CoverCarousel({
     super.key,
     required this.tracks,
     required this.currentIndex,
     required this.onPageSelected,
+    required this.position,
   });
 
   @override
@@ -648,15 +747,11 @@ class _CoverCarouselState extends State<_CoverCarousel> {
   /// How far a neighbour shrinks once it is a full page away.
   static const double _inactiveScale = 0.84;
 
-  /// Fractional scroll position. Tracked continuously while dragging so covers
-  /// grow/shrink in step with the finger rather than snapping on page change.
-  final ValueNotifier<double> _position = ValueNotifier(0);
-
   @override
   void initState() {
     super.initState();
     _current = widget.currentIndex.clamp(0, widget.tracks.length - 1);
-    _position.value = _current.toDouble();
+    widget.position.value = _current.toDouble();
     _ctrl = PageController(
       viewportFraction: _viewportFraction,
       initialPage: _current,
@@ -667,8 +762,8 @@ class _CoverCarouselState extends State<_CoverCarousel> {
     final page = _ctrl.page;
     if (page == null) return;
     // Skip sub-pixel noise so we don't rebuild every frame when idle.
-    if ((_position.value - page).abs() < 0.001) return;
-    _position.value = page;
+    if ((widget.position.value - page).abs() < 0.001) return;
+    widget.position.value = page;
   }
 
   @override
@@ -692,7 +787,6 @@ class _CoverCarouselState extends State<_CoverCarousel> {
   void dispose() {
     _ctrl.removeListener(_onScroll);
     _ctrl.dispose();
-    _position.dispose();
     super.dispose();
   }
 
@@ -724,7 +818,7 @@ class _CoverCarouselState extends State<_CoverCarousel> {
                 child: _PlayerCover(track: track),
               );
               return _CarouselPage(
-                position: _position,
+                position: widget.position,
                 index: i,
                 inactiveScale: _inactiveScale,
                 // Only the centered cover shares the mini-player's Hero tag.

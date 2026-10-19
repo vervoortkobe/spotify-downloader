@@ -181,11 +181,10 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     playbackState.add(
       PlaybackState(
         controls: [MediaControl.play],
-        systemActions: const {
-          MediaAction.seek,
-          MediaAction.seekForward,
-          MediaAction.seekBackward,
-        },
+        // Deliberately no seekForward/seekBackward system actions: Android Auto
+        // renders those as -10s/+10s buttons, which crowd out the skip
+        // controls. Transport comes from `controls` instead.
+        systemActions: const {MediaAction.seek},
         androidCompactActionIndices: const [0],
         processingState: AudioProcessingState.idle,
         playing: false,
@@ -392,12 +391,13 @@ class SpotterfyAudioHandler extends BaseAudioHandler
   void _doBroadcast() {
     final isRadio =
         _tracks.isNotEmpty && _index >= 0 && _isRadioTrack(_tracks[_index]);
-    // Radio: no next/prev, only play/pause and seek back (system seek)
+    // Radio: no next/prev - just play/pause. The seek bar stays (MediaAction
+    // .seek) but the -10s/+10s system buttons are left out.
     if (isRadio) {
       playbackState.add(
         PlaybackState(
           controls: [_isPlaying ? MediaControl.pause : MediaControl.play],
-          systemActions: const {MediaAction.seek, MediaAction.seekBackward},
+          systemActions: const {MediaAction.seek},
           androidCompactActionIndices: const [0],
           processingState: AudioProcessingState.ready,
           playing: _isPlaying,
@@ -424,11 +424,10 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     playbackState.add(
       PlaybackState(
         controls: controls,
-        systemActions: const {
-          MediaAction.seek,
-          MediaAction.seekForward,
-          MediaAction.seekBackward,
-        },
+        // No seekForward/seekBackward system actions: Android Auto renders
+        // those as the -10s/+10s buttons, which crowd out the skip controls.
+        // Prev/next come from `controls` instead; `seek` keeps the scrubber.
+        systemActions: const {MediaAction.seek},
         androidCompactActionIndices: [
           if (prevIdx != -1) prevIdx,
           if (playIdx != -1) playIdx,
