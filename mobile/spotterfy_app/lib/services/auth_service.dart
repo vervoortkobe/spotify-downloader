@@ -83,6 +83,17 @@ class AuthService {
     return _decodeAndMigrateUser(doc.reference, doc.data()!, uid);
   }
 
+  /// Watches the account profile so moderation changes take effect while the
+  /// user is signed in, not only after their next login.
+  Stream<UserModel?> watchUserData(String uid) => _firestore
+      .collection('users')
+      .doc(uid)
+      .snapshots()
+      .asyncMap((doc) async {
+        if (!doc.exists || doc.data() == null) return null;
+        return _decodeAndMigrateUser(doc.reference, doc.data()!, uid);
+      });
+
   Future<UserModel> _decodeAndMigrateUser(
     DocumentReference<Map<String, dynamic>> reference,
     Map<String, dynamic> data,

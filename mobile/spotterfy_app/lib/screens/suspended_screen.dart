@@ -5,6 +5,7 @@ import 'package:spotterfy_app/providers/social_provider.dart';
 import 'package:spotterfy_app/services/feedback_service.dart';
 import 'package:spotterfy_app/services/network_stats_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/app_background.dart';
 
 /// Shown instead of the app when the signed-in account has been suspended.
 class SuspendedScreen extends StatefulWidget {
@@ -47,9 +48,10 @@ class _SuspendedScreenState extends State<SuspendedScreen> {
 
   Future<void> _signOut() async {
     final auth = context.read<AuthProvider>();
+    final social = context.read<SocialProvider>();
     await NetworkStatsService.instance?.setUserId(null);
     // Stop social listeners before the token is revoked.
-    context.read<SocialProvider>().syncUid(null);
+    social.syncUid(null);
     await auth.signOut();
     // The splash screen is the auth gate and swaps this screen for LoginScreen.
   }
@@ -61,17 +63,30 @@ class _SuspendedScreenState extends State<SuspendedScreen> {
         ? 'Breach of Terms and Conditions'
         : auth.suspendedReason.trim();
 
-    return Scaffold(
-      backgroundColor: SpotterfyTheme.pageBackground,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+    return AppBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, viewport) => RefreshIndicator(
+              onRefresh: auth.refreshUserData,
+              color: SpotterfyTheme.primary,
+              backgroundColor: SpotterfyTheme.surface,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(28),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (viewport.maxHeight - 56)
+                        .clamp(0.0, double.infinity)
+                        .toDouble(),
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 460),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Center(
                     child: Container(
@@ -118,10 +133,11 @@ class _SuspendedScreenState extends State<SuspendedScreen> {
                       border: Border.all(color: SpotterfyTheme.borderColor),
                     ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
                           'Reason for suspension',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             color: SpotterfyTheme.text,
                             fontWeight: FontWeight.w700,
@@ -130,6 +146,7 @@ class _SuspendedScreenState extends State<SuspendedScreen> {
                         const SizedBox(height: 8),
                         Text(
                           reason,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             color: SpotterfyTheme.mutedDark,
                             fontSize: 14,
@@ -155,46 +172,38 @@ class _SuspendedScreenState extends State<SuspendedScreen> {
                         _sendingAppeal ? 'Sending...' : 'Submit an appeal',
                       ),
                       style: FilledButton.styleFrom(
-                        backgroundColor: SpotterfyTheme.primary,
+                        backgroundColor: SpotterfyTheme.primaryDark,
                         foregroundColor: SpotterfyTheme.onAccent,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 7,
+                        shadowColor: SpotterfyTheme.primary.withValues(alpha: 0.55),
+                        minimumSize: const Size.fromHeight(48),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        shape: const StadiumBorder(),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
                   ),
                   const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: _signOut,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
+                  OutlinedButton.icon(
+                    onPressed: _signOut,
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: const Text('Sign Out'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFEF4444),
+                      backgroundColor: SpotterfyTheme.surface,
+                      side: BorderSide(
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.5),
                       ),
-                      decoration: BoxDecoration(
-                        color: SpotterfyTheme.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.red.withValues(alpha: 0.5),
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.logout, color: Colors.red, size: 20),
-                          SizedBox(width: 12),
-                          Text(
-                            'Sign Out',
-                            style: TextStyle(
-                              color: Colors.red,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Spacer(),
-                          Icon(Icons.chevron_right, color: Colors.red, size: 20),
+                      minimumSize: const Size.fromHeight(48),
+                      shape: const StadiumBorder(),
+                      textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
                         ],
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -255,10 +264,7 @@ class _AppealDialogState extends State<_AppealDialog> {
             }
             Navigator.pop(context, appeal);
           },
-          child: Text(
-            'Send',
-            style: TextStyle(color: SpotterfyTheme.primary, fontWeight: FontWeight.w700),
-          ),
+          child: Text('Send', style: TextStyle(color: SpotterfyTheme.primary, fontWeight: FontWeight.w700)),
         ),
       ],
     );

@@ -6,10 +6,12 @@ import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/social_provider.dart';
 import 'package:spotterfy_app/services/polling_service.dart';
 import 'package:spotterfy_app/services/social_service.dart';
+import 'package:spotterfy_app/screens/profile_screen.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/app_chrome.dart';
 import 'package:spotterfy_app/widgets/presence_avatar.dart';
+import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 
 /// One-to-one conversation with a friend.
 ///
@@ -120,7 +122,18 @@ class _ChatScreenState extends State<ChatScreen> {
           titleSpacing: 0,
           title: Row(
             children: [
-              PresenceAvatar(uid: widget.peer.uid, photoUrl: widget.peer.photoUrl, radius: 17),
+              InkWell(
+                onTap: () => Navigator.push(
+                  context,
+                  swipeRoute(ProfileScreen(uid: widget.peer.uid)),
+                ),
+                customBorder: const CircleBorder(),
+                child: PresenceAvatar(
+                  uid: widget.peer.uid,
+                  photoUrl: widget.peer.photoUrl,
+                  radius: 17,
+                ),
+              ),
               const SizedBox(width: 10),
               Flexible(
                 child: Text(
@@ -246,7 +259,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(width: 8),
           Material(
-            color: SpotterfyTheme.primary,
+            color: SpotterfyTheme.background,
             shape: const CircleBorder(),
             child: InkWell(
               onTap: _send,
@@ -254,7 +267,11 @@ class _ChatScreenState extends State<ChatScreen> {
               child: const SizedBox(
                 width: 44,
                 height: 44,
-                child: Icon(Icons.send, color: Colors.black, size: 20),
+                child: Icon(
+                  Icons.send_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
             ),
           ),

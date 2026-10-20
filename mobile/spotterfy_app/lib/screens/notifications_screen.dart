@@ -115,22 +115,41 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   size: 9,
                                 ))
                         : Wrap(
-                            spacing: 2,
+                            spacing: 6,
                             children: [
-                              IconButton(
-                                tooltip: 'Accept friendship',
+                              FilledButton.icon(
                                 onPressed: () => _respond(request, true),
-                                icon: Icon(
-                                  Icons.check_circle,
-                                  color: SpotterfyTheme.primary,
+                                icon: const Icon(Icons.check_rounded, size: 16),
+                                label: const Text('Accept'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: SpotterfyTheme.primaryDark,
+                                  foregroundColor: SpotterfyTheme.onAccent,
+                                  elevation: 5,
+                                  shadowColor: SpotterfyTheme.primary.withValues(alpha: 0.5),
+                                  minimumSize: const Size(0, 36),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  shape: const StadiumBorder(),
+                                  textStyle: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                              IconButton(
-                                tooltip: 'Deny friendship',
+                              OutlinedButton.icon(
                                 onPressed: () => _respond(request, false),
-                                icon: Icon(
-                                  Icons.cancel_outlined,
-                                  color: SpotterfyTheme.muted,
+                                icon: const Icon(Icons.close_rounded, size: 16),
+                                label: const Text('Deny'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: SpotterfyTheme.muted,
+                                  backgroundColor: SpotterfyTheme.surface,
+                                  minimumSize: const Size(0, 36),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  side: BorderSide(color: SpotterfyTheme.borderColor),
+                                  shape: const StadiumBorder(),
+                                  textStyle: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ],

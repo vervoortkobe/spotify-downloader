@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/user_avatar.dart';
 import 'package:spotterfy_app/widgets/presence_dot.dart';
 
@@ -33,14 +34,11 @@ class PresenceAvatar extends StatelessWidget {
             lastActive != null &&
             DateTime.now().difference(lastActive) < const Duration(minutes: 3);
         return SizedBox(
-          width: radius * 2 + 6,
-          height: radius * 2 + 6,
+          width: radius * 2,
+          height: radius * 2,
           child: Stack(
-            clipBehavior: Clip.none,
             children: [
-              Positioned(
-                left: 3,
-                top: 3,
+              Positioned.fill(
                 child: UserAvatar(photoUrl: photoUrl, radius: radius),
               ),
               Positioned(
@@ -48,7 +46,7 @@ class PresenceAvatar extends StatelessWidget {
                 bottom: 0,
                 child: PresenceDot(
                   isOnline: online,
-                  borderColor: const Color(0xFF121212),
+                  borderColor: SpotterfyTheme.surface,
                 ),
               ),
             ],

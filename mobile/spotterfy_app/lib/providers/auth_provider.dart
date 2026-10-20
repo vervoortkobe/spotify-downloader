@@ -45,6 +45,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _isSigningIn = false;
   int _authEventGeneration = 0;
   StreamSubscription? _authSubscription;
+  StreamSubscription<UserModel?>? _userProfileSubscription;
   Timer? _presenceHeartbeat;
   String? _presenceUid;
   bool _presenceOnline = false;
@@ -161,6 +162,9 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
       firebaseUser,
     ) async {
       final generation = ++_authEventGeneration;
+      await _userProfileSubscription?.cancel();
+      _userProfileSubscription = null;
+      if (generation != _authEventGeneration) return;
       try {
         if (firebaseUser != null) {
           UserModel? userData;
@@ -197,6 +201,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
               spotifyProfileUrl: '',
             );
           }
+          _watchUserProfile(firebaseUser.uid, generation);
         } else {
           _user = null;
         }
@@ -217,6 +222,23 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
       _isLoading = false;
       notifyListeners();
     });
+  }
+
+  void _watchUserProfile(String uid, int generation) {
+    _userProfileSubscription = _authService.watchUserData(uid).listen(
+      (freshUser) {
+        if (generation != _authEventGeneration ||
+            freshUser == null ||
+            _user?.uid != uid) {
+          return;
+        }
+        _user = freshUser;
+        unawaited(_saveCachedUser());
+        notifyListeners();
+      },
+      onError: (Object error) =>
+          debugPrint('Profile watch failed for $uid: $error'),
+    );
   }
 
   Future<void> _saveCachedUser() async {
@@ -267,6 +289,8 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
     _presenceUid = null;
     _authSubscription?.cancel();
+    unawaited(_userProfileSubscription?.cancel() ?? Future<void>.value());
+    _userProfileSubscription = null;
     super.dispose();
   }
 
@@ -326,6 +350,8 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> signOut() async {
     // Invalidate any profile read still running for the previous account.
     _authEventGeneration++;
+    await _userProfileSubscription?.cancel();
+    _userProfileSubscription = null;
     try {
       await _authService.signOut();
     } catch (e) {
@@ -419,6 +445,19 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     _user!.currentTrackTitle = trackTitle;
     _user!.currentTrackArtist = trackArtist;
     _user!.currentTrackArtwork = trackArtwork;
+    notifyListeners();
+  }
+
+  /// Reloads the signed-in profile from Firestore (for example, after a
+  /// suspended user pulls to refresh to check for a status change).
+  Future<void> refreshUserData() async {
+    final current = _user;
+    if (current == null) return;
+    final generation = _authEventGeneration;
+    final refreshed = await _authService.getUserData(current.uid);
+    if (generation != _authEventGeneration || refreshed == null) return;
+    _user = refreshed;
+    await _saveCachedUser();
     notifyListeners();
   }
 

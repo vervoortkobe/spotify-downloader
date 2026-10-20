@@ -410,27 +410,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     const label = TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
     if (filled) {
       return FilledButton.styleFrom(
-        backgroundColor: SpotterfyTheme.primary,
+        backgroundColor: SpotterfyTheme.primaryDark,
         foregroundColor: SpotterfyTheme.onAccent,
         minimumSize: const Size(0, 46),
         padding: const EdgeInsets.symmetric(horizontal: 16),
         shape: shape,
         textStyle: label,
-        elevation: 0,
+        elevation: 7,
+        shadowColor: SpotterfyTheme.primary.withValues(alpha: 0.55),
       );
     }
     return OutlinedButton.styleFrom(
-      foregroundColor: quiet ? SpotterfyTheme.muted : SpotterfyTheme.primary,
-      backgroundColor: quiet ? Colors.transparent : SpotterfyTheme.primaryBg,
+      foregroundColor: quiet ? SpotterfyTheme.muted : SpotterfyTheme.primaryDark,
+      backgroundColor: quiet ? Colors.transparent : SpotterfyTheme.accentSurface,
       side: BorderSide(
         color: quiet
             ? SpotterfyTheme.overlay(0.18)
-            : SpotterfyTheme.primary.withValues(alpha: 0.45),
+            : SpotterfyTheme.primaryDark.withValues(alpha: 0.65),
       ),
       minimumSize: const Size(0, 46),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       shape: shape,
       textStyle: label,
+      elevation: quiet ? 0 : 2,
+      shadowColor: SpotterfyTheme.primary.withValues(alpha: 0.28),
     );
   }
 

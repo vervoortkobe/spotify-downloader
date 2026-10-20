@@ -516,9 +516,10 @@ class _JamScreenState extends State<JamScreen> {
                 if (context.mounted) showJamSessionSheet(context);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: SpotterfyTheme.primary,
+                backgroundColor: SpotterfyTheme.primaryDark,
                 foregroundColor: SpotterfyTheme.onAccent,
-                elevation: 0,
+                elevation: 5,
+                shadowColor: SpotterfyTheme.primary.withValues(alpha: 0.5),
                 minimumSize: const Size(0, 32),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -846,8 +847,10 @@ class _JamScreenState extends State<JamScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             style: ElevatedButton.styleFrom(
-              backgroundColor: SpotterfyTheme.primary,
+              backgroundColor: SpotterfyTheme.primaryDark,
               foregroundColor: SpotterfyTheme.onAccent,
+              elevation: 5,
+              shadowColor: SpotterfyTheme.primary.withValues(alpha: 0.5),
             ),
             child: const Text('Send'),
           ),
@@ -985,11 +988,14 @@ class _JamScreenState extends State<JamScreen> {
               if (context.mounted) showJamSessionSheet(context);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: SpotterfyTheme.primary,
+              backgroundColor: SpotterfyTheme.primaryDark,
               foregroundColor: SpotterfyTheme.onAccent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+              elevation: 5,
+              shadowColor: SpotterfyTheme.primary.withValues(alpha: 0.5),
+              minimumSize: const Size(0, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              shape: const StadiumBorder(),
+              textStyle: const TextStyle(fontWeight: FontWeight.w700),
             ),
             child: const Text('Create'),
           ),
@@ -1080,8 +1086,13 @@ class _FriendPickerState extends State<_FriendPicker> {
                             .toList(),
                       ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: SpotterfyTheme.primary,
+                  backgroundColor: SpotterfyTheme.primaryDark,
                   foregroundColor: SpotterfyTheme.onAccent,
+                  elevation: 5,
+                  shadowColor: SpotterfyTheme.primary.withValues(alpha: 0.5),
+                  minimumSize: const Size.fromHeight(46),
+                  shape: const StadiumBorder(),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 child: Text(
                   _selected.isEmpty
