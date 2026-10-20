@@ -17,6 +17,7 @@ import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/jam_session_sheet.dart';
 import 'package:spotterfy_app/widgets/profile_playlist_tile.dart';
+import 'package:spotterfy_app/widgets/presence_dot.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/chat_screen.dart';
 import 'package:spotterfy_app/screens/downloads_screen.dart';
@@ -705,14 +706,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Positioned(
               right: 0,
               bottom: 0,
-              child: Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: isOnline ? const Color(0xFF22C55E) : const Color(0xFF71717A),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: SpotterfyTheme.surface, width: 3),
-                ),
+              child: PresenceDot(
+                isOnline: isOnline,
+                borderColor: SpotterfyTheme.surface,
               ),
             ),
             ],

@@ -96,40 +96,39 @@ class AdminService {
 
   /// How many users have something loaded right now.
   ///
-  /// Derived from the already-loaded list rather than a second query, because
-  /// [UserModel.currentListeningTo] is a field on the same document - the
-  /// previous separate `where('currentListeningTo', isNull: false)` query cost a
-  /// full extra read and could disagree with the list it was meant to describe.
+  /// Derived from the already-loaded list, which merges each user's live
+  /// `presence/current` document into the corresponding user model.
   int activeCount(List<UserModel> users) =>
       users.where((u) => u.isActiveNow).length;
 
+  Future<int> getPlaylistCount() async {
+    final result = await _firestore.collection('playlists').count().get();
+    return result.count ?? 0;
+  }
+
   /// Suspends [uid], recording when and why.
   ///
-  /// The reason is written alongside the flag because a silent ban is
+  /// The reason is written alongside the flag because a silent suspension is
   /// indistinguishable from a bug to the person on the receiving end.
-  Future<void> banUser(String uid, String reason) async {
+  Future<void> suspendUser(String uid, String reason) async {
     await _firestore.collection('users').doc(uid).update({
-      'isBanned': true,
-      'bannedAt': FieldValue.serverTimestamp(),
-      'bannedReason': reason,
+      'isSuspended': true,
+      'suspendedAt': FieldValue.serverTimestamp(),
+      'suspendedReason': reason,
     });
   }
 
-  /// Lifts a ban and clears the reason so a stale one cannot resurface.
-  Future<void> unbanUser(String uid) async {
+  /// Restores an account and clears the reason so stale text cannot resurface.
+  Future<void> restoreUser(String uid) async {
     await _firestore.collection('users').doc(uid).update({
-      'isBanned': false,
-      'bannedAt': null,
-      'bannedReason': '',
+      'isSuspended': false,
+      'suspendedAt': null,
+      'suspendedReason': '',
     });
   }
 
   Future<void> setAdmin(String uid, bool value) async {
     await _firestore.collection('users').doc(uid).update({'isAdmin': value});
-  }
-
-  Future<void> setApproved(String uid, bool value) async {
-    await _firestore.collection('users').doc(uid).update({'isApproved': value});
   }
 
   Future<void> setDisplayName(String uid, String name) async {
@@ -141,7 +140,7 @@ class AdminService {
   /// Deliberately not exposed in the panel UI: it is irreversible and the
   /// related playlists, friendships and notifications in other collections are
   /// not removed with it, so "delete" here would silently orphan data rather
-  /// than clean up. Ban is the reversible option.
+  /// than clean up. Suspension is the reversible option.
   Future<void> deleteUser(String uid) async {
     await _firestore.collection('users').doc(uid).delete();
   }

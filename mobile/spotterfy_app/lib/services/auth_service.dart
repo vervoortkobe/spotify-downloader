@@ -38,7 +38,11 @@ class AuthService {
       try {
         final doc = await _firestore.collection('users').doc(user.uid).get();
         if (doc.exists) {
-          return UserModel.fromFirestore(doc.data()!, user.uid);
+          return await _decodeAndMigrateUser(
+            doc.reference,
+            doc.data()!,
+            user.uid,
+          );
         }
       } on FirebaseException catch (e) {
         if (e.code != 'permission-denied') rethrow;
@@ -50,7 +54,6 @@ class AuthService {
         displayName: user.displayName ?? '',
         photoUrl: user.photoURL ?? '',
         isAdmin: false,
-        isApproved: true,
       );
       try {
         await _firestore
@@ -77,7 +80,27 @@ class AuthService {
   Future<UserModel?> getUserData(String uid) async {
     final doc = await _firestore.collection('users').doc(uid).get();
     if (!doc.exists) return null;
-    return UserModel.fromFirestore(doc.data()!, uid);
+    return _decodeAndMigrateUser(doc.reference, doc.data()!, uid);
+  }
+
+  Future<UserModel> _decodeAndMigrateUser(
+    DocumentReference<Map<String, dynamic>> reference,
+    Map<String, dynamic> data,
+    String uid,
+  ) async {
+    final user = UserModel.fromFirestore(data, uid);
+    final migration = <String, dynamic>{};
+    if (data.containsKey('isApproved')) {
+      migration['isApproved'] = FieldValue.delete();
+    }
+    if (migration.isNotEmpty) {
+      try {
+        await reference.update(migration);
+      } catch (e) {
+        debugPrint('Could not migrate user profile fields for $uid: $e');
+      }
+    }
+    return user;
   }
 
   Future<void> updateSpotifyUrl(String uid, String url) async {
@@ -98,7 +121,6 @@ class AuthService {
     await _firestore.collection('users').doc(uid).update({
       'displayName': displayName,
       'spotifyProfileUrl': spotifyUrl,
-      'hasCompletedOnboarding': true,
     });
   }
 
@@ -143,11 +165,4 @@ class AuthService {
         .toList();
   }
 
-  Future<int> getActiveUserCount() async {
-    final snap = await _firestore
-        .collection('users')
-        .where('currentListeningTo', isNull: false)
-        .get();
-    return snap.docs.length;
-  }
 }

@@ -9,7 +9,7 @@ import 'package:spotterfy_app/services/social_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
 import 'package:spotterfy_app/widgets/app_chrome.dart';
-import 'package:spotterfy_app/widgets/user_avatar.dart';
+import 'package:spotterfy_app/widgets/presence_avatar.dart';
 
 /// One-to-one conversation with a friend.
 ///
@@ -120,7 +120,7 @@ class _ChatScreenState extends State<ChatScreen> {
           titleSpacing: 0,
           title: Row(
             children: [
-              UserAvatar(photoUrl: widget.peer.photoUrl, radius: 17),
+              PresenceAvatar(uid: widget.peer.uid, photoUrl: widget.peer.photoUrl, radius: 17),
               const SizedBox(width: 10),
               Flexible(
                 child: Text(

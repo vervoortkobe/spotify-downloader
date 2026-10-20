@@ -433,7 +433,8 @@ class _AuthGateState extends State<_AuthGate> {
     if (!context.mounted) return;
     final remote = latest?['version']?.trim() ?? '';
     if (latest == null || remote.isEmpty) return;
-    if (ApiService.isNewerVersion(remote, ApiService.appVersion)) {
+    final installed = ApiService.appVersion.trim();
+    if (remote != installed && ApiService.isNewerVersion(remote, installed)) {
       if (!context.mounted) return;
       await showUpdateModal(context, latest);
     }
@@ -441,9 +442,9 @@ class _AuthGateState extends State<_AuthGate> {
 
   Widget _targetFor(AuthProvider auth) {
     if (!auth.isLoggedIn) return const LoginScreen();
-    // Suspension outranks everything else, including onboarding and admin: a
-    // banned account must not reach the app by any route.
-    if (auth.needsModeration) return const SuspendedScreen();
+    // Suspension outranks everything else, including onboarding and admin.
+    // A suspended account must not reach the app by any route.
+    if (auth.isSuspended) return const SuspendedScreen();
     if (auth.needsOnboarding) return const OnboardingScreen();
     // Admins get the normal app, not a separate panel. The admin tools live in
     // Settings, because routing admins *into* the panel meant they could not use

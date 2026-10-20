@@ -5,8 +5,6 @@ class UserModel {
   String photoUrl;
   String spotifyProfileUrl;
   bool isAdmin;
-  bool isApproved;
-  bool hasCompletedOnboarding;
   final DateTime createdAt;
   String? currentListeningTo;
   String? currentJamSession;
@@ -15,17 +13,16 @@ class UserModel {
   String currentTrackTitle;
   String currentTrackArtist;
   String currentTrackArtwork;
-  DateTime? lastSpotifySync;
 
   /// Moderation block set from the admin panel.
   ///
   /// Absent in older documents, which is why it defaults to false rather than
   /// being required. Enforced in [AuthProvider.needsModeration] on the way in.
-  bool isBanned;
-  DateTime? bannedAt;
+  bool isSuspended;
+  DateTime? suspendedAt;
 
-  /// Why the account was suspended, shown to the user so a ban is never silent.
-  String bannedReason;
+  /// Why the account was suspended, shown to the user.
+  String suspendedReason;
 
   UserModel({
     required this.uid,
@@ -34,8 +31,6 @@ class UserModel {
     this.photoUrl = '',
     this.spotifyProfileUrl = '',
     this.isAdmin = false,
-    this.isApproved = false,
-    this.hasCompletedOnboarding = false,
     DateTime? createdAt,
     this.currentListeningTo,
     this.currentJamSession,
@@ -44,10 +39,9 @@ class UserModel {
     this.currentTrackTitle = '',
     this.currentTrackArtist = '',
     this.currentTrackArtwork = '',
-    this.lastSpotifySync,
-    this.isBanned = false,
-    this.bannedAt,
-    this.bannedReason = '',
+    this.isSuspended = false,
+    this.suspendedAt,
+    this.suspendedReason = '',
   }) : createdAt = createdAt ?? DateTime.now();
 
   factory UserModel.fromFirestore(
@@ -60,8 +54,6 @@ class UserModel {
     photoUrl: data['photoUrl'] as String? ?? '',
     spotifyProfileUrl: data['spotifyProfileUrl'] as String? ?? '',
     isAdmin: data['isAdmin'] as bool? ?? false,
-    isApproved: data['isApproved'] as bool? ?? false,
-    hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
     createdAt: (data['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
     currentListeningTo: data['currentListeningTo'] as String?,
     currentJamSession: data['currentJamSession'] as String?,
@@ -70,12 +62,11 @@ class UserModel {
     currentTrackTitle: data['currentTrackTitle'] as String? ?? '',
     currentTrackArtist: data['currentTrackArtist'] as String? ?? '',
     currentTrackArtwork: data['currentTrackArtwork'] as String? ?? '',
-    lastSpotifySync: (data['lastSpotifySync'] as dynamic)?.toDate(),
     // Read through a helper: a hand-edited doc with a non-bool here must not
     // throw and wipe out the whole user list the admin is looking at.
-    isBanned: _bool(data['isBanned']),
-    bannedAt: (data['bannedAt'] as dynamic)?.toDate(),
-    bannedReason: data['bannedReason'] as String? ?? '',
+    isSuspended: _bool(data['isSuspended']),
+    suspendedAt: (data['suspendedAt'] as dynamic)?.toDate(),
+    suspendedReason: data['suspendedReason'] as String? ?? '',
   );
 
   static bool _bool(dynamic v) {
@@ -91,13 +82,10 @@ class UserModel {
     'photoUrl': photoUrl,
     'spotifyProfileUrl': spotifyProfileUrl,
     'isAdmin': isAdmin,
-    'isApproved': isApproved,
-    'hasCompletedOnboarding': hasCompletedOnboarding,
     'createdAt': createdAt,
-    'lastSpotifySync': lastSpotifySync,
-    'isBanned': isBanned,
-    'bannedAt': bannedAt,
-    'bannedReason': bannedReason,
+    'isSuspended': isSuspended,
+    'suspendedAt': suspendedAt,
+    'suspendedReason': suspendedReason,
   };
 
   /// True while something is playing for this user.

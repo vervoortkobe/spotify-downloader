@@ -9,13 +9,14 @@ import 'package:spotterfy_app/services/social_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
 import 'package:spotterfy_app/widgets/mini_player.dart';
-import 'package:spotterfy_app/widgets/user_avatar.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/chat_screen.dart';
-import 'package:spotterfy_app/screens/profile_screen.dart';
+import 'package:spotterfy_app/screens/notifications_screen.dart';
 import 'package:spotterfy_app/widgets/jam_session_sheet.dart';
+import 'package:spotterfy_app/widgets/presence_avatar.dart';
+import 'package:spotterfy_app/widgets/user_avatar.dart';
 
-/// The Chat tab: notifications, friend conversations, and live jam sessions.
+/// The Chat tab: friend conversations and live jam sessions.
 ///
 /// The search box filters *friends* (and their conversations), not jam session
 /// names, because with a friend graph in place "who can I talk to" is the useful
@@ -77,12 +78,6 @@ class _JamScreenState extends State<JamScreen> {
         .where((f) => matches(f.displayName))
         .toList();
     final chats = social.chats.where((c) => matches(c.peerName)).toList();
-    // Only surface notifications worth acting on; accepted/friend-request rows
-    // are actionable, message notifications are noise once the chat is listed.
-    final notifications = social.notifications
-        .where((n) => n.type != 'message')
-        .where((n) => matches(n.fromName))
-        .toList();
     final unread = social.unreadNotifications;
 
     return BasePageScaffold(
@@ -90,13 +85,27 @@ class _JamScreenState extends State<JamScreen> {
       searchHint: 'Search friends',
       query: _query,
       action: IconButton(
-        icon: Icon(
-          Icons.group_add_rounded,
-          color: SpotterfyTheme.muted,
-          size: 20,
+        tooltip: 'Notifications',
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
         ),
-        onPressed: () => _createSession(context),
-        tooltip: 'New jam',
+        icon: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(Icons.notifications_none_rounded, color: SpotterfyTheme.muted, size: 21),
+            if (unread > 0)
+              Positioned(
+                right: -7,
+                top: -6,
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(color: SpotterfyTheme.primary, borderRadius: BorderRadius.circular(10)),
+                  child: Text(unread > 99 ? '99+' : '$unread', textAlign: TextAlign.center, style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.w800)),
+                ),
+              ),
+          ],
+        ),
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(),
       ),
@@ -104,13 +113,28 @@ class _JamScreenState extends State<JamScreen> {
       // button is lifted by the footer's height instead of sitting underneath it.
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: MiniPlayer.footerHeight),
-        child: FloatingActionButton(
-          onPressed: () => _startMessage(context),
-          backgroundColor: SpotterfyTheme.accentSurface,
-          foregroundColor: SpotterfyTheme.text,
-          elevation: 2,
-          tooltip: 'New message',
-          child: const Icon(Icons.chat_bubble_outline_rounded),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FloatingActionButton(
+              heroTag: 'newJam',
+              onPressed: () => _createSession(context),
+              backgroundColor: SpotterfyTheme.accentSurface,
+              foregroundColor: SpotterfyTheme.text,
+              tooltip: 'New jam',
+              child: const Icon(Icons.group_add_rounded),
+            ),
+            const SizedBox(height: 10),
+            FloatingActionButton(
+              heroTag: 'newMessage',
+              onPressed: () => _startMessage(context),
+              backgroundColor: SpotterfyTheme.accentSurface,
+              foregroundColor: SpotterfyTheme.text,
+              elevation: 2,
+              tooltip: 'New message',
+              child: const Icon(Icons.chat_bubble_outline_rounded),
+            ),
+          ],
         ),
       ),
       body: ListView(
@@ -119,24 +143,10 @@ class _JamScreenState extends State<JamScreen> {
         padding: EdgeInsets.only(bottom: MiniPlayer.footerHeight + 56),
         children: [
           if (jam.inJam) _jamBanner(context, jam.currentSession!),
-          if (notifications.isNotEmpty) ...[
-            _sectionHeader(
-              'Notifications',
-              badge: unread,
-              onTap: social.markNotificationsRead,
-            ),
-            _group([
-              for (final n in notifications.take(20))
-                _notificationRow(context, n),
-            ]),
-            const SizedBox(height: 6),
-          ],
-
           if (chats.isNotEmpty) ...[
             _sectionHeader('Chats', count: chats.length),
             _group([for (final c in chats) _chatRow(context, c)]),
-          ] else if (notifications.isEmpty &&
-              friends.isEmpty &&
+          ] else if (friends.isEmpty &&
               sessions.isEmpty &&
               !jam.inJam &&
               _query.isEmpty) ...[
@@ -292,140 +302,6 @@ class _JamScreenState extends State<JamScreen> {
     );
   }
 
-  /// Compact notification row: 30px avatar, one line of body text, and small
-  /// accept/decline actions. The previous row was an 80px avatar inside a
-  /// full card, which made three notifications fill the screen.
-  Widget _notificationRow(BuildContext context, AppNotification n) {
-    final isRequest = n.type == 'friendRequest';
-    return Material(
-      color: n.read
-          ? Colors.transparent
-          : SpotterfyTheme.primary.withValues(alpha: 0.06),
-      child: InkWell(
-        onTap: isRequest ? null : () => _openProfile(context, n.fromUid),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 9, 6, 9),
-          child: Row(
-            children: [
-              _avatar(n.photoUrl, 15),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            n.fromName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: SpotterfyTheme.text,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        if (!n.read) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: SpotterfyTheme.primary,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      n.body,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: SpotterfyTheme.mutedDark,
-                        fontSize: 11.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isRequest) ...[
-                _compactIcon(
-                  Icons.check_rounded,
-                  SpotterfyTheme.primary,
-                  'Accept',
-                  () => _acceptRequest(context, n.fromUid),
-                ),
-                _compactIcon(
-                  Icons.close_rounded,
-                  SpotterfyTheme.mutedDark,
-                  'Decline',
-                  () => _declineRequest(context, n.fromUid),
-                ),
-              ] else
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: SpotterfyTheme.mutedDark,
-                  size: 18,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Small tap target for the inline notification/friend actions.
-  ///
-  /// Deliberately smaller than the 48px default: a notification row with two of
-  /// those was taller than the content it carried.
-  Widget _compactIcon(
-    IconData icon,
-    Color color,
-    String tooltip,
-    VoidCallback onTap,
-  ) {
-    return IconButton(
-      icon: Icon(icon, color: color, size: 18),
-      tooltip: tooltip,
-      onPressed: onTap,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-    );
-  }
-
-  Future<void> _acceptRequest(BuildContext context, String otherUid) async {
-    final auth = context.read<AuthProvider>();
-    final social = context.read<SocialProvider>();
-    final req = social.requests.where(
-      (r) => r.otherUid == otherUid && r.isPending,
-    );
-    if (req.isEmpty) return;
-    await social.acceptRequest(
-      myName: auth.user?.displayName ?? 'Me',
-      myPhoto: auth.user?.photoUrl ?? '',
-      request: req.first,
-    );
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Friend added')));
-  }
-
-  Future<void> _declineRequest(BuildContext context, String otherUid) async {
-    final social = context.read<SocialProvider>();
-    final req = social.requests.where(
-      (r) => r.otherUid == otherUid && r.isPending,
-    );
-    if (req.isEmpty) return;
-    await social.declineRequest(req.first);
-  }
-
   Widget _chatRow(BuildContext context, ChatThread c) {
     return Material(
       color: Colors.transparent,
@@ -435,7 +311,7 @@ class _JamScreenState extends State<JamScreen> {
           padding: const EdgeInsets.fromLTRB(12, 9, 10, 9),
           child: Row(
             children: [
-              _avatar(c.peerPhoto, 17),
+              PresenceAvatar(uid: c.peerUid, photoUrl: c.peerPhoto, radius: 17),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -478,7 +354,7 @@ class _JamScreenState extends State<JamScreen> {
     );
   }
 
-  /// Friend avatar in the horizontal row, with a soft accent ring.
+  /// Friend avatar in the horizontal row, with a live presence dot.
   Widget _friendBubble(BuildContext context, SocialUser f) {
     return GestureDetector(
       onTap: () => _openChat(context, f),
@@ -487,17 +363,7 @@ class _JamScreenState extends State<JamScreen> {
         margin: const EdgeInsets.only(right: 10),
         child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: SpotterfyTheme.primary.withValues(alpha: 0.32),
-                  width: 1.4,
-                ),
-              ),
-              child: _avatar(f.photoUrl, 22),
-            ),
+            PresenceAvatar(uid: f.uid, photoUrl: f.photoUrl, radius: 22),
             const SizedBox(height: 6),
             Text(
               f.displayName,
@@ -516,7 +382,7 @@ class _JamScreenState extends State<JamScreen> {
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 18),
-      leading: _avatar(f.photoUrl, 18),
+      leading: PresenceAvatar(uid: f.uid, photoUrl: f.photoUrl, radius: 18),
       title: Text(
         f.displayName,
         style: TextStyle(
@@ -544,6 +410,21 @@ class _JamScreenState extends State<JamScreen> {
         ],
       ),
       onTap: () => _openChat(context, f),
+    );
+  }
+
+  Widget _compactIcon(
+    IconData icon,
+    Color color,
+    String tooltip,
+    VoidCallback onTap,
+  ) {
+    return IconButton(
+      icon: Icon(icon, color: color, size: 18),
+      tooltip: tooltip,
+      onPressed: onTap,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
     );
   }
 
@@ -654,14 +535,7 @@ class _JamScreenState extends State<JamScreen> {
     );
   }
 
-  /// Shared by the friend rows and the jam picker.
-  ///
-  /// [radius] is the circle's radius: callers pass the size they want, since the
-  /// old call sites passed diameters here and every avatar came out double size.
-  Widget _avatar(String photoUrl, double radius) =>
-      UserAvatar(photoUrl: photoUrl, radius: radius);
-
-  /// Nothing at all yet: no notifications, chats, friends or jams.
+  /// Nothing at all yet: no chats, friends or jams.
   Widget _emptyEverything() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 24),
@@ -777,10 +651,6 @@ class _JamScreenState extends State<JamScreen> {
         ),
       ),
     );
-  }
-
-  void _openProfile(BuildContext context, String uid) {
-    Navigator.push(context, swipeRoute(ProfileScreen(uid: uid)));
   }
 
   /// Persistent "you are in a jam" strip. Tapping it opens the session sheet.
@@ -911,7 +781,7 @@ class _JamScreenState extends State<JamScreen> {
                 itemBuilder: (_, i) {
                   final f = friends[i];
                   return ListTile(
-                    leading: _avatar(f.photoUrl, 20),
+                    leading: PresenceAvatar(uid: f.uid, photoUrl: f.photoUrl, radius: 20),
                     title: Text(
                       f.displayName,
                       style: TextStyle(color: SpotterfyTheme.text),
@@ -1172,7 +1042,11 @@ class _FriendPickerState extends State<_FriendPicker> {
                 final f = widget.friends[i];
                 final on = _selected.contains(f.uid);
                 return ListTile(
-                  leading: UserAvatar(photoUrl: f.photoUrl, radius: 20),
+                  leading: PresenceAvatar(
+                    uid: f.uid,
+                    photoUrl: f.photoUrl,
+                    radius: 20,
+                  ),
                   title: Text(
                     f.displayName,
                     style: TextStyle(color: SpotterfyTheme.text),

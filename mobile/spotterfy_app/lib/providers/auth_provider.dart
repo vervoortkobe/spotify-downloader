@@ -19,14 +19,14 @@ UserModel? _parseUserIsolate(String cached) {
       photoUrl: data['photoUrl'] as String? ?? '',
       spotifyProfileUrl: data['spotifyProfileUrl'] as String? ?? '',
       isAdmin: data['isAdmin'] as bool? ?? false,
-      isApproved: data['isApproved'] as bool? ?? false,
-      hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
+      isSuspended: data['isSuspended'] as bool? ?? false,
+      suspendedAt: data['suspendedAt'] != null
+          ? DateTime.parse(data['suspendedAt'] as String)
+          : null,
+      suspendedReason: data['suspendedReason'] as String? ?? '',
       createdAt: data['createdAt'] != null
           ? DateTime.parse(data['createdAt'] as String)
           : DateTime.now(),
-      lastSpotifySync: data['lastSpotifySync'] != null
-          ? DateTime.parse(data['lastSpotifySync'] as String)
-          : null,
     );
   } catch (_) {
     return null;
@@ -54,28 +54,25 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool get isSigningIn => _isSigningIn;
   bool get isLoggedIn => _user != null;
   bool get isAdmin => _user?.isAdmin ?? false;
-  bool get isApproved => _user?.isApproved ?? false;
   bool get isProfileCompleted =>
-      _user != null &&
-      _user!.displayName.trim().length >= 3 &&
-      _user!.hasCompletedOnboarding;
+      _user != null && _user!.displayName.trim().length >= 3;
   bool get needsOnboarding => _user != null && !isProfileCompleted;
 
   /// Account suspended from the admin panel.
   ///
   /// Checked before everything else on the way in, including onboarding, so a
-  /// banned account cannot skip the block by never finishing onboarding.
-  bool get isBanned => _user?.isBanned ?? false;
+  /// suspended account cannot skip the block by never finishing onboarding.
+  bool get isSuspended => _user?.isSuspended ?? false;
 
   /// Reason shown on the suspended screen, when one was recorded.
-  String get bannedReason => _user?.bannedReason ?? '';
+  String get suspendedReason => _user?.suspendedReason ?? '';
 
   /// True when this account must be stopped at the door.
   ///
   /// A suspended admin is *not* let past: `isAdmin` is a separate field and
-  /// could otherwise be left set on a banned account, which would keep granting
+  /// could otherwise be left set on a suspended account, which would keep granting
   /// access to the admin panel.
-  bool get needsModeration => isBanned;
+  bool get needsModeration => isSuspended;
 
   AuthProvider() {
     WidgetsBinding.instance.addObserver(this);
@@ -169,8 +166,8 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
           UserModel? userData;
           // A failed read is *not* the same as "no profile document". The two
           // used to be conflated, so any transient Firestore error (offline,
-          // rules, timeout) invented an empty, auto-approved account and the
-          // user ended up "logged in" with a blank profile.
+          // rules, timeout) invented an empty account and left the user logged
+          // in with a blank profile.
           var readFailed = false;
           try {
             userData = await _authService.getUserData(firebaseUser.uid);
@@ -197,7 +194,6 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
               displayName: firebaseUser.displayName ?? '',
               photoUrl: firebaseUser.photoURL ?? '',
               isAdmin: false,
-              isApproved: true,
               spotifyProfileUrl: '',
             );
           }
@@ -245,10 +241,10 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
           'photoUrl': user.photoUrl,
           'spotifyProfileUrl': user.spotifyProfileUrl,
           'isAdmin': user.isAdmin,
-          'isApproved': user.isApproved,
-          'hasCompletedOnboarding': user.hasCompletedOnboarding,
+          'isSuspended': user.isSuspended,
+          'suspendedAt': user.suspendedAt?.toIso8601String(),
+          'suspendedReason': user.suspendedReason,
           'createdAt': user.createdAt.toIso8601String(),
-          'lastSpotifySync': user.lastSpotifySync?.toIso8601String(),
         }),
       );
     } catch (e) {
@@ -393,13 +389,12 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
     _user!.displayName = trimmed;
     _user!.spotifyProfileUrl = spotifyUrl;
-    _user!.hasCompletedOnboarding = true;
     await _saveCachedUser();
     notifyListeners();
   }
 
   Future<void> skipOnboarding() async {
-    // do not mark completed, so it will show again next launch if profile incomplete
+    // Spotify linking is optional; the display name remains the required field.
     notifyListeners();
   }
 

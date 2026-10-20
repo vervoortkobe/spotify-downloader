@@ -9,6 +9,7 @@ import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/widgets/app_chrome.dart';
 import 'package:spotterfy_app/widgets/sort_sheet.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
+import 'package:spotterfy_app/widgets/presence_dot.dart';
 
 /// Admin tools: user stats, search across every account, moderation, and feedback.
 ///
@@ -26,26 +27,28 @@ class _AdminScreenState extends State<AdminScreen>
   late final TabController _tabCtrl;
   final _searchCtrl = TextEditingController();
   final _feedbackSearchCtrl = TextEditingController();
+  late final AdminProvider _adminProvider;
 
   @override
   void initState() {
     super.initState();
+    _adminProvider = context.read<AdminProvider>();
     _tabCtrl = TabController(length: 2, vsync: this);
     _tabCtrl.addListener(() {
       if (mounted) setState(() {});
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        final prov = context.read<AdminProvider>();
-        prov.watchUsers();
-        prov.loadFeedback();
+        _adminProvider.watchUsers();
+        _adminProvider.loadFeedback();
+        _adminProvider.loadPlaylistCount();
       }
     });
   }
 
   @override
   void dispose() {
-    context.read<AdminProvider>().stopWatchingUsers();
+    _adminProvider.stopWatchingUsers();
     _tabCtrl.dispose();
     _searchCtrl.dispose();
     _feedbackSearchCtrl.dispose();
@@ -168,23 +171,15 @@ class _AdminScreenState extends State<AdminScreen>
 
   Widget _statsGrid(AdminStats s) {
     final tiles = <(String, String, IconData, Color)>[
-      ('Total', '${s.total}', Icons.people, SpotterfyTheme.primary),
       (
-        'Online clients',
-        '${s.onlineClients}',
-        Icons.graphic_eq,
-        const Color(0xFF38bdf8),
-      ),
-      (
-        'New (7d)',
-        '${s.newThisWeek}',
+        'New (30d)',
+        '${s.newLast30Days}',
         Icons.fiber_new,
         const Color(0xFFa3e635),
       ),
-      ('Admins', '${s.admins}', Icons.shield, const Color(0xFFc084fc)),
-      ('Suspended', '${s.banned}', Icons.gpp_maybe, const Color(0xFFef4444)),
-      ('Spotify', '${s.spotifyLinked}', Icons.link, SpotterfyTheme.primary),
+      ('Playlists', '${s.playlists}', Icons.queue_music, SpotterfyTheme.primary),
       ('In a jam', '${s.inJam}', Icons.groups, const Color(0xFFf472b6)),
+      ('Suspended', '${s.suspended}', Icons.gpp_maybe, const Color(0xFFef4444)),
     ];
 
     return Padding(
@@ -515,19 +510,9 @@ class _AdminScreenState extends State<AdminScreen>
                   Positioned(
                     right: 0,
                     bottom: 0,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: u.isOnlineNow
-                            ? const Color(0xFF22C55E)
-                            : const Color(0xFF71717A),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: SpotterfyTheme.surface,
-                          width: 2,
-                        ),
-                      ),
+                    child: PresenceDot(
+                      isOnline: u.isOnlineNow,
+                      borderColor: SpotterfyTheme.surface,
                     ),
                   ),
                 ],
@@ -558,7 +543,7 @@ class _AdminScreenState extends State<AdminScreen>
                           const SizedBox(width: 6),
                           const _Tag('Admin', Color(0xFFc084fc)),
                         ],
-                        if (u.isBanned) ...[
+                        if (u.isSuspended) ...[
                           const SizedBox(width: 6),
                           const _Tag('Suspended', Color(0xFFef4444)),
                         ],
@@ -729,22 +714,22 @@ class _AdminScreenState extends State<AdminScreen>
                             },
                     ),
                     _action(
-                      icon: target.isBanned ? Icons.lock_open : Icons.gpp_bad,
+                      icon: target.isSuspended ? Icons.lock_open : Icons.gpp_bad,
                       color: const Color(0xFFef4444),
-                      label: target.isBanned ? 'Lift suspension' : 'Suspend',
-                      subtitle: target.isBanned
+                      label: target.isSuspended ? 'Lift suspension' : 'Suspend',
+                      subtitle: target.isSuspended
                           ? 'Restore their access'
                           : 'Blocks the app on their next launch',
-                      danger: !target.isBanned,
+                      danger: !target.isSuspended,
                       onTap: busy
                           ? null
                           : () {
-                              if (target.isBanned) {
+                              if (target.isSuspended) {
                                 Navigator.pop(sheetCtx);
-                                admin.unbanUser(target.uid);
+                                admin.restoreUser(target.uid);
                               } else {
                                 Navigator.pop(sheetCtx);
-                                _promptBan(target, admin);
+                                _promptSuspension(target, admin);
                               }
                             },
                     ),
@@ -800,13 +785,11 @@ class _AdminScreenState extends State<AdminScreen>
         _kv('UID', u.uid),
         _kv('Joined', _plainDate(u.createdAt)),
         _kv('Spotify', u.spotifyProfileUrl.isEmpty ? 'Not linked' : 'Linked'),
-        _kv('Onboarding', u.hasCompletedOnboarding ? 'Complete' : 'Incomplete'),
-        if (u.isBanned) ...[
-          _kv('Suspended', _agoOrDate(u.bannedAt)),
-          if (u.bannedReason.isNotEmpty) _kv('Reason', u.bannedReason),
+        _kv('Onboarding', u.displayName.trim().length >= 3 ? 'Complete' : 'Incomplete'),
+        if (u.isSuspended) ...[
+          _kv('Suspended', _agoOrDate(u.suspendedAt)),
+          if (u.suspendedReason.isNotEmpty) _kv('Reason', u.suspendedReason),
         ],
-        if (u.lastSpotifySync != null)
-          _kv('Last sync', _agoOrDate(u.lastSpotifySync)),
       ],
     );
   }
@@ -879,16 +862,16 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   /// Suspends [u] after capturing a reason, which is shown to them.
-  Future<void> _promptBan(UserModel u, AdminProvider admin) async {
+  Future<void> _promptSuspension(UserModel u, AdminProvider admin) async {
     final reason = await showDialog<String>(
       context: context,
       builder: (ctx) => const _SuspendDialog(),
     );
     if (reason == null) return;
-    await admin.banUser(
+    await admin.suspendUser(
       u.uid,
       reason.isEmpty
-          ? 'This account has been suspended. Contact support if you think this is a mistake.'
+          ? 'Breach of Terms and Conditions'
           : reason,
     );
   }
@@ -1188,6 +1171,10 @@ class _AdminScreenState extends State<AdminScreen>
                                 ),
                               ),
                             ),
+                            if (f.type == 'appeal') ...[
+                              const SizedBox(width: 6),
+                              const _Tag('APPEAL', Color(0xFFf59e0b)),
+                            ],
                             if (f.platform.isNotEmpty) ...[
                               const SizedBox(width: 6),
                               Container(
@@ -1471,7 +1458,9 @@ class _SuspendDialog extends StatefulWidget {
 }
 
 class _SuspendDialogState extends State<_SuspendDialog> {
-  final TextEditingController _controller = TextEditingController();
+  final TextEditingController _controller = TextEditingController(
+    text: 'Breach of Terms and Conditions',
+  );
 
   @override
   void dispose() {

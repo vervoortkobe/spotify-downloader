@@ -8,6 +8,7 @@ class FeedbackModel {
   final String userName;
   final String userPhotoUrl;
   final String message;
+  final String type;
   final DateTime createdAt;
   bool isRead;
   final String platform;
@@ -19,6 +20,7 @@ class FeedbackModel {
     required this.userName,
     this.userPhotoUrl = '',
     required this.message,
+    this.type = 'feedback',
     required this.createdAt,
     this.isRead = false,
     this.platform = '',
@@ -42,6 +44,7 @@ class FeedbackModel {
       userName: data['userName'] as String? ?? '',
       userPhotoUrl: data['userPhotoUrl'] as String? ?? '',
       message: data['message'] as String? ?? '',
+      type: data['type'] as String? ?? 'feedback',
       createdAt: parsedDate,
       isRead: data['isRead'] as bool? ?? false,
       platform: data['platform'] as String? ?? '',
@@ -54,6 +57,7 @@ class FeedbackModel {
     'userName': userName,
     'userPhotoUrl': userPhotoUrl,
     'message': message,
+    'type': type,
     'createdAt': Timestamp.fromDate(createdAt),
     'isRead': isRead,
     'platform': platform,

@@ -6,6 +6,12 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
+    // Collection-group queries cannot infer the parent user's id from the
+    // query, so grant the admin list an explicit rule for presence browsing.
+    match /{path=**}/presence/{presenceId} {
+      allow read: if request.auth != null && isAdmin();
+    }
+
     // ---- Users ----
     // Any signed-in user can read profiles so Discover can look people up by
     // name. Writes stay owner/admin-only.

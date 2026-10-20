@@ -4,12 +4,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
-/// Shows an update-available modal with Dismiss and Download buttons.
+/// Shows an update-available modal with Later and Update buttons.
 ///
 /// `data` must contain at least `version`, `label`, `notes` and `url` as
 /// returned by [ApiService.checkForUpdates].
 ///
-/// Returns `true` if the user tapped Download, `false` if dismissed.
+/// Returns `true` if the user chose Update, `false` if they chose Later.
 Future<bool> showUpdateModal(BuildContext context, Map<String, String> data) async {
   final url = data['url'] ?? '';
   final label = data['label'] ?? '';
@@ -51,7 +51,7 @@ Future<bool> showUpdateModal(BuildContext context, Map<String, String> data) asy
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
           child: Text(
-            'Dismiss',
+            'Later',
             style: TextStyle(color: SpotterfyTheme.muted, fontSize: 14),
           ),
         ),
@@ -59,7 +59,7 @@ Future<bool> showUpdateModal(BuildContext context, Map<String, String> data) asy
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Download',
+              'Update',
               style: TextStyle(color: SpotterfyTheme.primary, fontSize: 14, fontWeight: FontWeight.w600),
             ),
           ),

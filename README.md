@@ -36,7 +36,7 @@
 [ ] Download link on frontend/update frontend
 [ ] GitHub link on frontend
 [ ] Playlists private/public/on profile?
-[ ] Admin panel: should view everything: transferred bytes (monthly data usage), all playlists (public/private), online status, which song listening to, friends list etc
+[ ] Admin panel: should view everything: transferred bytes (monthly data usage), all playlists (public/private), online status, which song listening to, friends list, app version etc
 [ ] Chat: notifications android en msg indicator, read/received
 [ ] Share songs and playlists in chat
 [ ] Chat: notifications android en msg indicator, read/received

@@ -9,9 +9,7 @@ UserModel _user({
   String name = 'Test',
   String email = 'test@example.com',
   bool admin = false,
-  bool approved = true,
-  bool banned = false,
-  bool onboarded = true,
+  bool suspended = false,
   String? listeningTo,
   String? jam,
   String spotify = '',
@@ -21,9 +19,7 @@ UserModel _user({
   email: email,
   displayName: name,
   isAdmin: admin,
-  isApproved: approved,
-  isBanned: banned,
-  hasCompletedOnboarding: onboarded,
+  isSuspended: suspended,
   currentListeningTo: listeningTo,
   currentJamSession: jam,
   spotifyProfileUrl: spotify,
@@ -47,8 +43,8 @@ void main() {
     test('counts each category across the whole user base', () async {
       final admin = await _providerWith([
         _user(uid: 'a', name: 'Ada', ageDays: 1),
-        _user(uid: 'b', name: 'Bob', admin: true, banned: true),
-        _user(uid: 'c', name: 'Cleo', approved: false),
+        _user(uid: 'b', name: 'Bob', admin: true, suspended: true),
+        _user(uid: 'c', name: 'Cleo'),
         _user(
           uid: 'd',
           name: 'Dan',
@@ -60,12 +56,9 @@ void main() {
       ]);
 
       final s = admin.stats;
-      expect(s.total, 6);
-      expect(s.admins, 1);
-      expect(s.banned, 1);
-            expect(s.activeNow, 1);
-      expect(s.newThisWeek, 5); // only 'f' is older than 7 days
-      expect(s.spotifyLinked, 1);
+      expect(s.suspended, 1);
+      expect(s.newLast30Days, 5);
+      expect(s.playlists, 0);
       expect(s.inJam, 1);
     });
 
@@ -74,14 +67,13 @@ void main() {
       () async {
         final admin = await _providerWith([
           _user(uid: 'a'),
-          _user(uid: 'b', banned: true),
+          _user(uid: 'b', suspended: true),
           _user(uid: 'c'),
         ]);
-        admin.setFilter(AdminFilter.banned);
+        admin.setFilter(AdminFilter.suspended);
         expect(admin.visibleUsers.length, 1);
         // The grid is an overview, not a view of the current filter.
-        expect(admin.stats.total, 3);
-        expect(admin.stats.banned, 1);
+        expect(admin.stats.suspended, 1);
       },
     );
   });
@@ -92,7 +84,7 @@ void main() {
     setUp(() async {
       admin = await _providerWith([
         _user(uid: 'u1', name: 'Alpha', email: 'alpha@x.com'),
-        _user(uid: 'u2', name: 'Beta', email: 'beta@x.com', banned: true),
+        _user(uid: 'u2', name: 'Beta', email: 'beta@x.com', suspended: true),
         _user(uid: 'u3', name: 'Gamma', listeningTo: 'song-9'),
         _user(uid: 'u4', name: 'Delta', admin: true),
       ]);
@@ -120,7 +112,7 @@ void main() {
     });
 
     test('filter chips narrow to the right set', () {
-      admin.setFilter(AdminFilter.banned);
+      admin.setFilter(AdminFilter.suspended);
       expect(admin.visibleUsers.map((u) => u.uid), ['u2']);
       admin.setFilter(AdminFilter.admins);
       expect(admin.visibleUsers.map((u) => u.uid), ['u4']);
@@ -129,7 +121,7 @@ void main() {
     });
 
     test('search and filter combine rather than replacing each other', () {
-      admin.setFilter(AdminFilter.banned);
+      admin.setFilter(AdminFilter.suspended);
       admin.search('beta');
       expect(admin.visibleUsers.single.uid, 'u2');
       admin.search('gamma');
@@ -138,7 +130,7 @@ void main() {
 
     test('counts stay accurate per filter', () {
       expect(admin.countFor(AdminFilter.all), 4);
-      expect(admin.countFor(AdminFilter.banned), 1);
+      expect(admin.countFor(AdminFilter.suspended), 1);
       expect(admin.countFor(AdminFilter.admins), 1);
       expect(admin.countFor(AdminFilter.active), 1);
     });
@@ -163,27 +155,27 @@ void main() {
 
   group('AdminProvider moderation', () {
     test(
-      'ban writes through to Firestore and updates the cached list',
+      'suspension writes through to Firestore and updates the cached list',
       () async {
         final admin = await _providerWith([_user(uid: 'a', name: 'Ada')]);
-        await admin.banUser('a', 'Spamming playlists');
+        await admin.suspendUser('a', 'Spamming playlists');
 
         final doc = admin.userByUid('a');
-        expect(doc!.isBanned, isTrue);
-        expect(doc.bannedReason, 'Spamming playlists');
-        expect(doc.bannedAt, isNotNull);
+        expect(doc!.isSuspended, isTrue);
+        expect(doc.suspendedReason, 'Spamming playlists');
+        expect(doc.suspendedAt, isNotNull);
       },
     );
 
-    test('unban clears the flag, timestamp and stale reason', () async {
-      final admin = await _providerWith([_user(uid: 'a', banned: true)]);
-      admin.userByUid('a')!.bannedReason = 'old reason';
-      await admin.unbanUser('a');
+    test('restoring clears the flag, timestamp and stale reason', () async {
+      final admin = await _providerWith([_user(uid: 'a', suspended: true)]);
+      admin.userByUid('a')!.suspendedReason = 'old reason';
+      await admin.restoreUser('a');
 
       final doc = admin.userByUid('a');
-      expect(doc!.isBanned, isFalse);
-      expect(doc.bannedAt, isNull);
-      expect(doc.bannedReason, isEmpty);
+      expect(doc!.isSuspended, isFalse);
+      expect(doc.suspendedAt, isNull);
+      expect(doc.suspendedReason, isEmpty);
     });
 
     test('promote and demote admin', () async {
@@ -192,12 +184,6 @@ void main() {
       expect(admin.userByUid('a')!.isAdmin, isTrue);
       await admin.setAdmin('a', false);
       expect(admin.userByUid('a')!.isAdmin, isFalse);
-    });
-
-    test('approve toggle', () async {
-      final admin = await _providerWith([_user(uid: 'a', approved: false)]);
-      await admin.setApproved('a', true);
-      expect(admin.userByUid('a')!.isApproved, isTrue);
     });
 
     test('rename', () async {
@@ -214,30 +200,30 @@ void main() {
     });
 
     test(
-      'a banned user still shows their stats in the filtered view',
+      'a suspended user still appears in the filtered view',
       () async {
         final admin = await _providerWith([_user(uid: 'a')]);
-        await admin.banUser('a', 'abuse');
-        admin.setFilter(AdminFilter.banned);
+        await admin.suspendUser('a', 'abuse');
+        admin.setFilter(AdminFilter.suspended);
         expect(admin.visibleUsers.single.uid, 'a');
       },
     );
   });
 
   group('UserModel moderation fields', () {
-    test('defaults are safe for documents written before bans existed', () {
+    test('suspension fields default safely when absent', () {
       final u = UserModel.fromFirestore(const {'email': 'a@b.c'}, 'uid');
-      expect(u.isBanned, isFalse);
-      expect(u.bannedAt, isNull);
-      expect(u.bannedReason, isEmpty);
+      expect(u.isSuspended, isFalse);
+      expect(u.suspendedAt, isNull);
+      expect(u.suspendedReason, isEmpty);
     });
 
-    test('a non-bool isBanned does not throw the whole list away', () {
+    test('a non-bool isSuspended value does not throw the whole list away', () {
       // A hand-edited document must not take the admin panel down with it.
-      final u = UserModel.fromFirestore(const {'isBanned': 'true'}, 'uid');
-      expect(u.isBanned, isTrue);
-      final n = UserModel.fromFirestore(const {'isBanned': 1}, 'uid');
-      expect(n.isBanned, isTrue);
+      final u = UserModel.fromFirestore(const {'isSuspended': 'true'}, 'uid');
+      expect(u.isSuspended, isTrue);
+      final n = UserModel.fromFirestore(const {'isSuspended': 1}, 'uid');
+      expect(n.isSuspended, isTrue);
     });
 
     test('isActiveNow treats an empty listening-to as inactive', () {

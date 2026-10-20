@@ -8,9 +8,9 @@ import 'package:spotterfy_app/services/admin_service.dart';
 /// Which accounts the list is showing.
 enum AdminFilter {
   all('All'),
-  banned('Banned'),
-  admins('Admins'),
-  active('Online');
+  active('Online'),
+  suspended('Suspended'),
+  admins('Admins');
 
   const AdminFilter(this.label);
   final String label;
@@ -39,21 +39,15 @@ enum FeedbackFilter {
 
 /// Aggregate counts for the stats grid.
 class AdminStats {
-  final int total;
-  final int admins;
-  final int banned;
-  final int onlineClients;
-  final int newThisWeek;
-  final int spotifyLinked;
+  final int suspended;
+  final int newLast30Days;
+  final int playlists;
   final int inJam;
 
   const AdminStats({
-    this.total = 0,
-    this.admins = 0,
-    this.banned = 0,
-    this.onlineClients = 0,
-    this.newThisWeek = 0,
-    this.spotifyLinked = 0,
+    this.suspended = 0,
+    this.newLast30Days = 0,
+    this.playlists = 0,
     this.inJam = 0,
   });
 }
@@ -68,6 +62,7 @@ class AdminProvider extends ChangeNotifier {
   String? _error;
   StreamSubscription<List<UserModel>>? _usersSubscription;
   Timer? _onlineRefreshTimer;
+  int _playlistCount = 0;
 
   String _query = '';
   AdminFilter _filter = AdminFilter.all;
@@ -110,16 +105,11 @@ class AdminProvider extends ChangeNotifier {
   /// Stats over the whole list, not the filtered view - the grid is an overview
   /// of the user base, not of the current search.
   AdminStats get stats {
-    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
+    final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
     return AdminStats(
-      total: _users.length,
-      admins: _users.where((u) => u.isAdmin).length,
-      banned: _users.where((u) => u.isBanned).length,
-      onlineClients: _users.where((u) => u.isOnlineNow).length,
-      newThisWeek: _users.where((u) => u.createdAt.isAfter(weekAgo)).length,
-      spotifyLinked: _users
-          .where((u) => u.spotifyProfileUrl.trim().isNotEmpty)
-          .length,
+      suspended: _users.where((u) => u.isSuspended).length,
+      newLast30Days: _users.where((u) => u.createdAt.isAfter(thirtyDaysAgo)).length,
+      playlists: _playlistCount,
       inJam: _users.where((u) => (u.currentJamSession ?? '').isNotEmpty).length,
     );
   }
@@ -131,8 +121,8 @@ class AdminProvider extends ChangeNotifier {
       switch (_filter) {
         case AdminFilter.all:
           return true;
-        case AdminFilter.banned:
-          return u.isBanned;
+        case AdminFilter.suspended:
+          return u.isSuspended;
         case AdminFilter.admins:
           return u.isAdmin;
         case AdminFilter.active:
@@ -171,14 +161,14 @@ class AdminProvider extends ChangeNotifier {
     return list;
   }
 
-  /// Counts per filter chip, so a chip can show "Banned (2)" instead of
+  /// Counts per filter chip, so a chip can show "Suspended (2)" instead of
   /// hiding the reason the list is short.
   int countFor(AdminFilter f) {
     switch (f) {
       case AdminFilter.all:
         return _users.length;
-      case AdminFilter.banned:
-        return _users.where((u) => u.isBanned).length;
+      case AdminFilter.suspended:
+        return _users.where((u) => u.isSuspended).length;
       case AdminFilter.admins:
         return _users.where((u) => u.isAdmin).length;
       case AdminFilter.active:
@@ -205,7 +195,8 @@ class AdminProvider extends ChangeNotifier {
         return f.message.toLowerCase().contains(q) ||
             f.userName.toLowerCase().contains(q) ||
             f.userEmail.toLowerCase().contains(q) ||
-            f.userId.toLowerCase().contains(q);
+            f.userId.toLowerCase().contains(q) ||
+            f.type.toLowerCase().contains(q);
       }).toList();
     }
 
@@ -329,32 +320,36 @@ class AdminProvider extends ChangeNotifier {
     await Future.wait([
       loadUsers(),
       loadFeedback(),
+      loadPlaylistCount(),
     ]);
   }
 
-  /// Suspends [uid] and mirrors the change locally.
-  Future<void> banUser(String uid, String reason) => _mutate(uid, (u) {
-    u.isBanned = true;
-    u.bannedAt = DateTime.now();
-    u.bannedReason = reason;
-  }, () => _service.banUser(uid, reason));
+  Future<void> loadPlaylistCount() async {
+    try {
+      _playlistCount = await _service.getPlaylistCount();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[Admin] loadPlaylistCount failed: $e');
+    }
+  }
 
-  Future<void> unbanUser(String uid) => _mutate(uid, (u) {
-    u.isBanned = false;
-    u.bannedAt = null;
-    u.bannedReason = '';
-  }, () => _service.unbanUser(uid));
+  /// Suspends [uid] and mirrors the change locally.
+  Future<void> suspendUser(String uid, String reason) => _mutate(uid, (u) {
+    u.isSuspended = true;
+    u.suspendedAt = DateTime.now();
+    u.suspendedReason = reason;
+  }, () => _service.suspendUser(uid, reason));
+
+  Future<void> restoreUser(String uid) => _mutate(uid, (u) {
+    u.isSuspended = false;
+    u.suspendedAt = null;
+    u.suspendedReason = '';
+  }, () => _service.restoreUser(uid));
 
   Future<void> setAdmin(String uid, bool value) => _mutate(
     uid,
     (u) => u.isAdmin = value,
     () => _service.setAdmin(uid, value),
-  );
-
-  Future<void> setApproved(String uid, bool value) => _mutate(
-    uid,
-    (u) => u.isApproved = value,
-    () => _service.setApproved(uid, value),
   );
 
   Future<void> setDisplayName(String uid, String name) => _mutate(

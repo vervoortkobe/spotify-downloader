@@ -204,6 +204,21 @@ class SocialProvider extends ChangeNotifier {
     final uid = _uid;
     if (uid == null) return;
     await _service.markNotificationsRead(uid);
+    _notifications = _notifications
+        .map(
+          (n) => AppNotification(
+            id: n.id,
+            type: n.type,
+            fromUid: n.fromUid,
+            fromName: n.fromName,
+            photoUrl: n.photoUrl,
+            body: n.body,
+            at: n.at,
+            read: true,
+          ),
+        )
+        .toList();
+    notifyListeners();
   }
 
   Future<void> sendMessage({

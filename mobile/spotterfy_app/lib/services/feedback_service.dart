@@ -14,6 +14,7 @@ class FeedbackService {
   Future<void> submitFeedback({
     required String message,
     UserModel? user,
+    String type = 'feedback',
   }) async {
     final authUser = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? authUser?.uid ?? 'anonymous';
@@ -31,6 +32,7 @@ class FeedbackService {
       'userName': name,
       'userPhotoUrl': photo,
       'message': message.trim(),
+      'type': type,
       'isRead': false,
       'createdAt': FieldValue.serverTimestamp(),
       'platform': defaultTargetPlatform.name,
