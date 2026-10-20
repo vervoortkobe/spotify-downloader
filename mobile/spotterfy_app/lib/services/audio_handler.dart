@@ -426,10 +426,9 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     playbackState.add(
       PlaybackState(
         controls: controls,
-        // Prev/next come from `controls`; `seek` keeps the scrubber. Android
-        // Auto still sometimes renders -10s/+10s because audio_service
-        // unconditionally advertises rewind/fast-forward on Android. There is
-        // no AudioServiceConfig switch for that; it requires a plugin patch.
+        // Prev/next come from `controls`; `seek` keeps the scrubber. The local
+        // audio_service Android implementation omits rewind/fast-forward from
+        // its default session actions so Android Auto uses track navigation.
         systemActions: const {MediaAction.seek},
         androidCompactActionIndices: [
           if (prevIdx != -1) prevIdx,
