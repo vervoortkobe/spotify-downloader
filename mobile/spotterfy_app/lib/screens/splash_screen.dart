@@ -32,15 +32,15 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-enum _Phase { starting, ready, failed }
+enum _Phase { starting, completing, ready, failed }
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   _Phase _phase = _Phase.starting;
   Object? _error;
 
-  /// Determinate progress: 0.06 while Firebase boots, 0.72 once it is up, and
-  /// it fills the rest as we navigate away.
+  /// Determinate progress: 0.06 while Firebase boots, then visibly fills to
+  /// 100% before the auth gate is allowed to replace the splash.
   double _progress = 0.06;
 
   late final AnimationController _intro;
@@ -141,10 +141,21 @@ class _SplashScreenState extends State<SplashScreen>
     // permission prompt must not hold up the rest of boot.
     unawaited(NotificationService().initialize());
     if (!mounted) return;
-    // Firebase boot is complete. Fill the bar as the auth gate takes over.
+    // Firebase boot is complete. Animate to 100% first; the auth gate must not
+    // cover the splash until the completed bar has been painted for a frame.
     setState(() {
-      _phase = _Phase.ready;
+      _phase = _Phase.completing;
       _progress = 1.0;
+    });
+  }
+
+  void _onProgressAnimationEnd() {
+    if (!mounted || _phase != _Phase.completing || _progress < 1) return;
+    // TweenAnimationBuilder reports completion during the frame that reaches
+    // its endpoint. Move to the next screen only after that frame has painted.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _phase != _Phase.completing) return;
+      setState(() => _phase = _Phase.ready);
     });
   }
 
@@ -344,6 +355,7 @@ class _SplashScreenState extends State<SplashScreen>
         tween: Tween(begin: 0, end: _progress),
         duration: const Duration(milliseconds: 420),
         curve: Curves.easeOutCubic,
+        onEnd: _onProgressAnimationEnd,
         builder: (context, value, child) => ClipRRect(
           borderRadius: BorderRadius.circular(99),
           child: LinearProgressIndicator(
