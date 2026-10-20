@@ -105,12 +105,35 @@ class AuthService {
   Future<void> updateListeningStatus(
     String uid,
     String? trackId,
-    String? jamSessionId,
-  ) async {
-    await _firestore.collection('users').doc(uid).update({
+    String? jamSessionId, {
+    String trackTitle = '',
+    String trackArtist = '',
+    String trackArtwork = '',
+  }) async {
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('presence')
+        .doc('current')
+        .set({
       'currentListeningTo': trackId,
       'currentJamSession': jamSessionId,
-    });
+      'currentTrackTitle': trackTitle,
+      'currentTrackArtist': trackArtist,
+      'currentTrackArtwork': trackArtwork,
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> setOnlineStatus(String uid, bool isOnline) async {
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('presence')
+        .doc('current')
+        .set({
+          'isOnline': isOnline,
+          'lastActiveAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
   }
 
   Future<List<UserModel>> getAllUsers() async {

@@ -1457,7 +1457,7 @@ export default function SpotifyDownloaderApp({ initialJobId }: { initialJobId?: 
                 <Search className="h-5 w-5 shrink-0 text-[var(--clr-primary)]" />
                 <input
                   type="text"
-                  placeholder="https://open.spotify.com/playlist/... (Spotify share links work too)"
+                  placeholder="https://open.spotify.com/playlist/..."
                   value={playlistLink}
                   onChange={(e) => {
                     const val = e.target.value

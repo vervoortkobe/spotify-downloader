@@ -27,17 +27,17 @@
 [x] Adding playlists to your library (also other users' playlists)
 [x] Add version & check for updates button in settings & autocheck on launch[ ] Add Flutter app Discord friends status integration
 [x] Version numbering in app
-[ ] Connected clients count + status
+[x] Connected clients count + status
+[x] User online status icons on profile picture (visible for friends and admin panel)
+[x] Friends can view each others status (profile pic), when in profile, they can view which song theyre listening to
 [ ] Listening amount & stats (spotify wrapped)
 [ ] Chat for songs & messages to profiles
 [ ] Check if playing/downloading from SoundCloud still works!
 [ ] Download link on frontend/update frontend
 [ ] GitHub link on frontend
 [ ] Playlists private/public/on profile?
-[ ] Friends can view each others status (profile pic), when in profile, they can view which song theyre listening to
 [ ] Admin panel: should view everything: transferred bytes (monthly data usage), all playlists (public/private), online status, which song listening to, friends list etc
 [ ] Chat: notifications android en msg indicator, read/received
 [ ] Share songs and playlists in chat
-[ ] User online status icons on profile picture (visible for friends and admin panel)
 [ ] Chat: notifications android en msg indicator, read/received
 [ ] Share songs and playlists in chat

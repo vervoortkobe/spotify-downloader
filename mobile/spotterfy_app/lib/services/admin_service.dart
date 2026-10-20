@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:spotterfy_app/models/feedback_model.dart';
 import 'package:spotterfy_app/models/user_model.dart';
@@ -20,18 +22,76 @@ class AdminService {
   /// [AdminProvider] rather than in the query. Fine at current scale; revisit
   /// with pagination if the user count grows into the thousands.
   Future<List<UserModel>> getAllUsers() async {
-    final snap = await _firestore.collection('users').get();
+    final results = await Future.wait([
+      _firestore.collection('users').get(),
+      _firestore.collectionGroup('presence').get(),
+    ]);
+    final userSnap = results[0] as QuerySnapshot<Map<String, dynamic>>;
+    final presenceSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
+    return _decodeUsers(userSnap.docs, _presenceByUid(presenceSnap));
+  }
+
+  Map<String, Map<String, dynamic>> _presenceByUid(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final presence = <String, Map<String, dynamic>>{};
+    for (final doc in snapshot.docs) {
+      if (doc.id != 'current') continue;
+      final uid = doc.reference.parent.parent?.id;
+      if (uid != null) presence[uid] = doc.data();
+    }
+    return presence;
+  }
+
+  List<UserModel> _decodeUsers(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    Map<String, Map<String, dynamic>> presence,
+  ) {
     final out = <UserModel>[];
-    for (final doc in snap.docs) {
+    for (final doc in docs) {
       // One malformed document must not take down the entire list.
       try {
-        out.add(UserModel.fromFirestore(doc.data(), doc.id));
+        final data = {...doc.data(), ...?presence[doc.id]};
+        out.add(UserModel.fromFirestore(data, doc.id));
       } catch (_) {
         continue;
       }
     }
     out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return out;
+  }
+
+  /// Keeps the admin user list and online totals current while the panel is open.
+  Stream<List<UserModel>> watchAllUsers() {
+    final controller = StreamController<List<UserModel>>();
+    List<QueryDocumentSnapshot<Map<String, dynamic>>>? users;
+    var presence = <String, Map<String, dynamic>>{};
+    void emit() {
+      final currentUsers = users;
+      if (currentUsers == null || controller.isClosed) return;
+      final result = _decodeUsers(currentUsers, presence);
+      controller.add(result);
+    }
+
+    final usersSub = _firestore.collection('users').snapshots().listen(
+      (snapshot) {
+        users = snapshot.docs;
+        emit();
+      },
+      onError: controller.addError,
+    );
+    final presenceSub = _firestore.collectionGroup('presence').snapshots().listen(
+      (snapshot) {
+        presence = _presenceByUid(snapshot);
+        emit();
+      },
+      onError: controller.addError,
+    );
+    controller.onCancel = () async {
+      await usersSub.cancel();
+      await presenceSub.cancel();
+    };
+    return controller.stream;
   }
 
   /// How many users have something loaded right now.

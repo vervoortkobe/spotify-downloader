@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
@@ -79,11 +81,86 @@ class SpotterfyApp extends StatelessWidget {
               title: 'Spotterfy',
               debugShowCheckedModeBanner: false,
               theme: SpotterfyTheme.darkTheme,
-              home: const SplashScreen(),
+              home: const _PlaybackPresenceSync(child: SplashScreen()),
             ),
           );
         },
       ),
     );
   }
+}
+
+/// Mirrors the current player selection to the signed-in user's Firestore
+/// presence record. It watches provider notifications but writes only when the
+/// selected playing track changes, never on position ticks.
+class _PlaybackPresenceSync extends StatefulWidget {
+  final Widget child;
+
+  const _PlaybackPresenceSync({required this.child});
+
+  @override
+  State<_PlaybackPresenceSync> createState() => _PlaybackPresenceSyncState();
+}
+
+class _PlaybackPresenceSyncState extends State<_PlaybackPresenceSync> {
+  AuthProvider? _auth;
+  PlayerProvider? _player;
+  String? _lastSignature;
+  Timer? _retryTimer;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = context.read<AuthProvider>();
+    final player = context.read<PlayerProvider>();
+    if (_auth != auth || _player != player) {
+      _auth?.removeListener(_sync);
+      _player?.removeListener(_sync);
+      _auth = auth;
+      _player = player;
+      auth.addListener(_sync);
+      player.addListener(_sync);
+      _lastSignature = null;
+      _sync();
+    }
+  }
+
+  void _sync() {
+    final auth = _auth;
+    final player = _player;
+    final user = auth?.user;
+    if (auth == null || player == null || user == null) return;
+
+    final track = player.isPlaying ? player.currentTrack : null;
+    final signature = '${user.uid}:${track?.id ?? ''}';
+    if (signature == _lastSignature) return;
+    _retryTimer?.cancel();
+    _lastSignature = signature;
+    unawaited(
+      auth
+          .updateListeningStatus(
+            track?.id,
+            trackTitle: track?.title ?? '',
+            trackArtist: track?.artists ?? '',
+            trackArtwork: track?.artwork ?? '',
+          )
+          .catchError((Object error) {
+            debugPrint('[Presence] now-playing update failed: $error');
+            _lastSignature = null;
+            _retryTimer?.cancel();
+            _retryTimer = Timer(const Duration(seconds: 15), _sync);
+          }),
+    );
+  }
+
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    _auth?.removeListener(_sync);
+    _player?.removeListener(_sync);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

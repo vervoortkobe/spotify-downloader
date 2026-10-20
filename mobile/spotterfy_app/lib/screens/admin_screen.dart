@@ -37,7 +37,7 @@ class _AdminScreenState extends State<AdminScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final prov = context.read<AdminProvider>();
-        prov.loadUsers();
+        prov.watchUsers();
         prov.loadFeedback();
       }
     });
@@ -45,6 +45,7 @@ class _AdminScreenState extends State<AdminScreen>
 
   @override
   void dispose() {
+    context.read<AdminProvider>().stopWatchingUsers();
     _tabCtrl.dispose();
     _searchCtrl.dispose();
     _feedbackSearchCtrl.dispose();
@@ -169,8 +170,8 @@ class _AdminScreenState extends State<AdminScreen>
     final tiles = <(String, String, IconData, Color)>[
       ('Total', '${s.total}', Icons.people, SpotterfyTheme.primary),
       (
-        'Active now',
-        '${s.activeNow}',
+        'Online clients',
+        '${s.onlineClients}',
         Icons.graphic_eq,
         const Color(0xFF38bdf8),
       ),
@@ -493,21 +494,43 @@ class _AdminScreenState extends State<AdminScreen>
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: SpotterfyTheme.borderColor,
-                backgroundImage: u.photoUrl.isNotEmpty
-                    ? NetworkImage(u.photoUrl)
-                    : null,
-                child: u.photoUrl.isEmpty
-                    ? Text(
-                        initial.toUpperCase(),
-                        style: TextStyle(
-                          color: SpotterfyTheme.text,
-                          fontWeight: FontWeight.w700,
+              Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: SpotterfyTheme.borderColor,
+                    backgroundImage: u.photoUrl.isNotEmpty
+                        ? NetworkImage(u.photoUrl)
+                        : null,
+                    child: u.photoUrl.isEmpty
+                        ? Text(
+                            initial.toUpperCase(),
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          )
+                        : null,
+                  ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: u.isOnlineNow
+                            ? const Color(0xFF22C55E)
+                            : const Color(0xFF71717A),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: SpotterfyTheme.surface,
+                          width: 2,
                         ),
-                      )
-                    : null,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -539,9 +562,12 @@ class _AdminScreenState extends State<AdminScreen>
                           const SizedBox(width: 6),
                           const _Tag('Suspended', Color(0xFFef4444)),
                         ],
-                        if (u.isActiveNow) ...[
+                        if (u.isOnlineNow) ...[
                           const SizedBox(width: 6),
-                          _Tag('Active', SpotterfyTheme.primary),
+                          _Tag('Online', const Color(0xFF22C55E)),
+                        ] else ...[
+                          const SizedBox(width: 6),
+                          const _Tag('Offline', Color(0xFF71717A)),
                         ],
                       ],
                     ),
@@ -554,6 +580,18 @@ class _AdminScreenState extends State<AdminScreen>
                         fontSize: 11,
                       ),
                     ),
+                    if (u.currentTrackTitle.isNotEmpty &&
+                        u.isActiveNow &&
+                        u.isOnlineNow)
+                      Text(
+                        'Listening to ${u.currentTrackTitle}${u.currentTrackArtist.isEmpty ? '' : ' · ${u.currentTrackArtist}'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF22C55E),
+                          fontSize: 10,
+                        ),
+                      ),
                     Text(
                       'Joined ${_ago(u.createdAt)}',
                       style: const TextStyle(

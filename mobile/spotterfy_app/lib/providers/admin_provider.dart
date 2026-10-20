@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:spotterfy_app/models/feedback_model.dart';
 import 'package:spotterfy_app/models/user_model.dart';
@@ -8,7 +10,7 @@ enum AdminFilter {
   all('All'),
   banned('Banned'),
   admins('Admins'),
-  active('Active now');
+  active('Online');
 
   const AdminFilter(this.label);
   final String label;
@@ -19,7 +21,7 @@ enum AdminSort {
   newest('Newest'),
   oldest('Oldest'),
   name('Name'),
-  active('Active first');
+  active('Online first');
 
   const AdminSort(this.label);
   final String label;
@@ -40,7 +42,7 @@ class AdminStats {
   final int total;
   final int admins;
   final int banned;
-  final int activeNow;
+  final int onlineClients;
   final int newThisWeek;
   final int spotifyLinked;
   final int inJam;
@@ -49,7 +51,7 @@ class AdminStats {
     this.total = 0,
     this.admins = 0,
     this.banned = 0,
-    this.activeNow = 0,
+    this.onlineClients = 0,
     this.newThisWeek = 0,
     this.spotifyLinked = 0,
     this.inJam = 0,
@@ -64,6 +66,8 @@ class AdminProvider extends ChangeNotifier {
   List<UserModel> _users = [];
   bool _isLoading = false;
   String? _error;
+  StreamSubscription<List<UserModel>>? _usersSubscription;
+  Timer? _onlineRefreshTimer;
 
   String _query = '';
   AdminFilter _filter = AdminFilter.all;
@@ -111,7 +115,7 @@ class AdminProvider extends ChangeNotifier {
       total: _users.length,
       admins: _users.where((u) => u.isAdmin).length,
       banned: _users.where((u) => u.isBanned).length,
-      activeNow: _users.where((u) => u.isActiveNow).length,
+      onlineClients: _users.where((u) => u.isOnlineNow).length,
       newThisWeek: _users.where((u) => u.createdAt.isAfter(weekAgo)).length,
       spotifyLinked: _users
           .where((u) => u.spotifyProfileUrl.trim().isNotEmpty)
@@ -132,7 +136,7 @@ class AdminProvider extends ChangeNotifier {
         case AdminFilter.admins:
           return u.isAdmin;
         case AdminFilter.active:
-          return u.isActiveNow;
+          return u.isOnlineNow;
       }
     }).toList();
 
@@ -159,8 +163,8 @@ class AdminProvider extends ChangeNotifier {
         );
       case AdminSort.active:
         list.sort((a, b) {
-          // Playing users first, then newest within each group.
-          if (a.isActiveNow != b.isActiveNow) return a.isActiveNow ? -1 : 1;
+          // Online users first, then newest within each group.
+          if (a.isOnlineNow != b.isOnlineNow) return a.isOnlineNow ? -1 : 1;
           return b.createdAt.compareTo(a.createdAt);
         });
     }
@@ -178,7 +182,7 @@ class AdminProvider extends ChangeNotifier {
       case AdminFilter.admins:
         return _users.where((u) => u.isAdmin).length;
       case AdminFilter.active:
-        return _users.where((u) => u.isActiveNow).length;
+        return _users.where((u) => u.isOnlineNow).length;
     }
   }
 
@@ -267,6 +271,44 @@ class AdminProvider extends ChangeNotifier {
     }
     _isLoading = false;
     notifyListeners();
+  }
+
+  void watchUsers() {
+    if (_usersSubscription == null) {
+      _isLoading = true;
+      notifyListeners();
+    }
+    _usersSubscription ??= _service.watchAllUsers().listen(
+      (users) {
+        _users = users;
+        _isLoading = false;
+        _error = null;
+        notifyListeners();
+      },
+      onError: (Object error) {
+        _error = '$error';
+        _isLoading = false;
+        debugPrint('[Admin] watchUsers failed: $error');
+        notifyListeners();
+      },
+    );
+    _onlineRefreshTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      notifyListeners();
+    });
+  }
+
+  void stopWatchingUsers() {
+    _usersSubscription?.cancel();
+    _usersSubscription = null;
+    _onlineRefreshTimer?.cancel();
+    _onlineRefreshTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _usersSubscription?.cancel();
+    _onlineRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> loadFeedback() async {

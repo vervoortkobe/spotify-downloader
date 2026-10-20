@@ -27,10 +27,10 @@ void showQueueSheet(BuildContext context, PlayerProvider player) {
     // Explicit timing/curve instead of relying on the defaults, so opening the
     // queue and opening the player page feel like the same surface.
     sheetAnimationStyle: const AnimationStyle(
-      duration: Duration(milliseconds: 250),
-      reverseDuration: Duration(milliseconds: 200),
-      curve: Curves.decelerate,
-      reverseCurve: Curves.decelerate,
+      duration: Duration(milliseconds: 420),
+      reverseDuration: Duration(milliseconds: 340),
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
     ),
     builder: (_) => const QueueSheet(),
   );
@@ -49,10 +49,20 @@ class QueueSheet extends StatefulWidget {
 }
 
 class _QueueSheetState extends State<QueueSheet> {
+  static const double _rowExtent = 64;
+
   /// Selected row indices, held as indices into the queue.
   final Set<int> _selected = {};
+  final ScrollController _scrollController = ScrollController();
+  String? _lastAutoScrolledTrackId;
 
   bool get _selecting => _selected.isNotEmpty;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   void _toggle(int index) {
     HapticFeedback.selectionClick();
@@ -88,6 +98,26 @@ class _QueueSheetState extends State<QueueSheet> {
     final queue = player.queue;
     final currentIndex = player.currentIndex;
     final totalMs = queue.fold<int>(0, (sum, t) => sum + t.durationMs);
+    final currentTrackId = currentIndex >= 0 && currentIndex < queue.length
+        ? queue[currentIndex].id
+        : null;
+    if (currentTrackId != null && currentTrackId != _lastAutoScrolledTrackId) {
+      _lastAutoScrolledTrackId = currentTrackId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        final latestPlayer = context.read<PlayerProvider>();
+        final latestIndex = latestPlayer.currentIndex;
+        if (latestIndex < 0) return;
+        final target = (latestIndex * _rowExtent + 8)
+            .clamp(0.0, _scrollController.position.maxScrollExtent)
+            .toDouble();
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 360),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -135,54 +165,67 @@ class _QueueSheetState extends State<QueueSheet> {
             )
           else
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                itemCount: queue.length,
-                itemBuilder: (_, index) {
-                  final track = queue[index];
-                  final isCurrent = index == currentIndex;
-                  return _SwipeToRemove(
-                    key: ValueKey('queue-${track.id}-$index'),
-                    enabled: !_selecting,
-                    onRemove: () {
-                      HapticFeedback.lightImpact();
-                      player.removeFromQueue(index);
-                      _afterChange('Removed "${track.title}"');
-                    },
-                    child: _QueueRow(
-                      track: track,
-                      index: index,
-                      isCurrent: isCurrent,
-                      isPlaying: isCurrent && player.isPlaying,
-                      selectionMode: _selecting,
-                      selected: _selected.contains(index),
-                      canMoveUp: _selected.isEmpty || index > 0,
-                      canMoveDown:
-                          _selected.isEmpty || index < queue.length - 1,
-                      onTap: () {
-                        if (_selecting) {
-                          _toggle(index);
-                          return;
-                        }
-                        player.playFromQueue(index);
-                        Navigator.pop(context);
+              child: LayoutBuilder(
+                builder: (context, constraints) => ListView.builder(
+                  controller: _scrollController,
+                  itemExtent: _rowExtent,
+                  // Leave enough scroll room for even the final track to sit at
+                  // the top when playback is near the end of a long queue.
+                  padding: EdgeInsets.fromLTRB(
+                    12,
+                    8,
+                    12,
+                    (constraints.maxHeight - _rowExtent)
+                        .clamp(16.0, constraints.maxHeight)
+                        .toDouble(),
+                  ),
+                  itemCount: queue.length,
+                  itemBuilder: (_, index) {
+                    final track = queue[index];
+                    final isCurrent = index == currentIndex;
+                    return _SwipeToRemove(
+                      key: ValueKey('queue-${track.id}-$index'),
+                      enabled: !_selecting,
+                      onRemove: () {
+                        HapticFeedback.lightImpact();
+                        player.removeFromQueue(index);
+                        _afterChange('Removed "${track.title}"');
                       },
-                      onLongPress: () => _toggle(index),
-                      onRemove: _selecting
-                          ? null
-                          : () {
-                              player.removeFromQueue(index);
-                              _afterChange('Removed "${track.title}"');
-                            },
-                      onMoveUp: _selecting
-                          ? null
-                          : () => player.moveQueueUp(index),
-                      onMoveDown: _selecting
-                          ? null
-                          : () => player.moveQueueDown(index),
-                    ),
-                  );
-                },
+                      child: _QueueRow(
+                        track: track,
+                        index: index,
+                        isCurrent: isCurrent,
+                        isPlaying: isCurrent && player.isPlaying,
+                        selectionMode: _selecting,
+                        selected: _selected.contains(index),
+                        canMoveUp: _selected.isEmpty || index > 0,
+                        canMoveDown:
+                            _selected.isEmpty || index < queue.length - 1,
+                        onTap: () {
+                          if (_selecting) {
+                            _toggle(index);
+                            return;
+                          }
+                          player.playFromQueue(index);
+                          Navigator.pop(context);
+                        },
+                        onLongPress: () => _toggle(index),
+                        onRemove: _selecting
+                            ? null
+                            : () {
+                                player.removeFromQueue(index);
+                                _afterChange('Removed "${track.title}"');
+                              },
+                        onMoveUp: _selecting
+                            ? null
+                            : () => player.moveQueueUp(index),
+                        onMoveDown: _selecting
+                            ? null
+                            : () => player.moveQueueDown(index),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
         ],
@@ -454,29 +497,40 @@ class _QueueRow extends StatelessWidget {
               else
                 SizedBox(
                   width: 22,
-                  child: isCurrent
-                      // Moving bars while it plays, the same bars standing still
-                      // while it is paused - so the indicator can never read as
-                      // "playing" for a paused track.
-                      ? AnimatedEqualizer(
-                          size: 18,
-                          barWidth: 3,
-                          animating: isPlaying,
-                        )
-                      : Text(
-                          '${index + 1}',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: SpotterfyTheme.mutedDark,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                  child: Text(
+                    '${index + 1}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: SpotterfyTheme.mutedDark,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               const SizedBox(width: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: SizedBox(width: 44, height: 44, child: _cover()),
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _cover(),
+                      if (isPlaying)
+                        ColoredBox(
+                          color: Colors.black.withValues(alpha: 0.48),
+                          child: Center(
+                            child: AnimatedEqualizer(
+                              size: 22,
+                              barWidth: 3,
+                              color: SpotterfyTheme.primary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(

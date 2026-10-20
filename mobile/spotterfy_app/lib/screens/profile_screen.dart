@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
@@ -47,6 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<PlaylistModel> _theirPlaylists = const [];
   bool _loading = false;
   bool _loadFailed = false;
+  Timer? _presenceRefreshTimer;
 
   String? get _targetUid => widget.uid;
 
@@ -59,6 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     if (_targetUid != null) {
       _loadUser();
+      _startPresenceRefresh();
     }
   }
 
@@ -67,7 +72,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.didUpdateWidget(oldWidget);
     if (widget.uid != oldWidget.uid && widget.uid != null) {
       _loadUser();
+      _startPresenceRefresh();
     }
+  }
+
+  void _startPresenceRefresh() {
+    _presenceRefreshTimer?.cancel();
+    _presenceRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _presenceRefreshTimer?.cancel();
+    super.dispose();
   }
 
   /// Loads the other user's profile fields and their playlists.
@@ -295,8 +314,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final p = _profile;
-    final player = context.watch<PlayerProvider>();
-    return AppGradientScaffold(
+    final uid = _targetUid!;
+    final isFriend = context.watch<SocialProvider>().isFriend(uid);
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: isFriend
+          ? FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .collection('presence')
+                .doc('current')
+                .snapshots()
+          : null,
+      builder: (context, snapshot) {
+        final presence = snapshot.data?.data() ?? const <String, dynamic>{};
+        final online = isFriend &&
+            presence['isOnline'] == true &&
+            (presence['lastActiveAt'] as Timestamp?)?.toDate().isAfter(
+                  DateTime.now().subtract(const Duration(minutes: 3)),
+                ) ==
+                true;
+        final player = context.watch<PlayerProvider>();
+        return AppGradientScaffold(
       title: p?['displayName'] ?? 'Profile',
       body: SingleChildScrollView(
         child: Padding(
@@ -308,7 +346,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 displayName: p?['displayName'] ?? 'User',
                 email: p?['email'] ?? '',
                 photoUrl: p?['photoUrl'] ?? '',
+                showOnlineDot: isFriend,
+                isOnline: online,
               ),
+              if (isFriend &&
+                  online &&
+                  (presence['currentListeningTo'] as String?)?.isNotEmpty ==
+                      true) ...[
+                const SizedBox(height: 12),
+                _nowPlayingCard(presence),
+              ],
               const SizedBox(height: 24),
               // Relationship actions: request -> accept -> message / jam.
               _socialActions(context),
@@ -346,6 +393,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ),
+    );
+      },
     );
   }
 
@@ -605,6 +654,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String displayName,
     required String email,
     required String photoUrl,
+    bool showOnlineDot = false,
+    bool isOnline = false,
   }) {
     return Container(
       width: double.infinity,
@@ -619,6 +670,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Centred avatar over centred text, rather than a left-aligned row.
           // A profile reads as a portrait, and the centred stack keeps long
           // names from colliding with the edge on a narrow screen.
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
           Container(
             width: 80,
             height: 80,
@@ -647,6 +701,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 34)
                 : null,
           ),
+          if (showOnlineDot)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: isOnline ? const Color(0xFF22C55E) : const Color(0xFF71717A),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: SpotterfyTheme.surface, width: 3),
+                ),
+              ),
+            ),
+            ],
+          ),
           const SizedBox(height: 14),
           Text(
             displayName,
@@ -669,6 +739,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
           const SizedBox(height: 14),
+        ],
+      ),
+    );
+  }
+
+  Widget _nowPlayingCard(Map<String, dynamic> presence) {
+    final title = presence['currentTrackTitle'] as String? ?? '';
+    final artist = presence['currentTrackArtist'] as String? ?? '';
+    final artwork = presence['currentTrackArtwork'] as String? ?? '';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: SpotterfyTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: SpotterfyTheme.overlay(0.08)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(9),
+            child: artwork.isEmpty
+                ? Container(
+                    width: 48,
+                    height: 48,
+                    color: SpotterfyTheme.overlay(0.12),
+                    child: Icon(Icons.music_note, color: SpotterfyTheme.muted),
+                  )
+                : Image.network(
+                    artwork,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 48,
+                      height: 48,
+                      color: SpotterfyTheme.overlay(0.12),
+                      child: Icon(Icons.music_note, color: SpotterfyTheme.muted),
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Listening to', style: TextStyle(color: SpotterfyTheme.muted, fontSize: 11)),
+                const SizedBox(height: 3),
+                Text(title.isEmpty ? 'A track' : title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: SpotterfyTheme.text, fontSize: 14, fontWeight: FontWeight.w700)),
+                if (artist.isNotEmpty)
+                  Text(artist, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: SpotterfyTheme.muted, fontSize: 12)),
+              ],
+            ),
+          ),
+          Icon(Icons.graphic_eq, color: SpotterfyTheme.primary, size: 20),
         ],
       ),
     );

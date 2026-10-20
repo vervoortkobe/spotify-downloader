@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
-/// Three swaying bars that read as "this is the track playing now".
-///
-/// The centre bar is the long one and the outer two are short, so the shape is
-/// recognisable at a glance even when the bars happen to be at the same height.
-/// All three still change length as they move.
+/// Three staggered bouncing bars, matching the frontend's smooth-bounce
+/// playing indicator.
 class AnimatedEqualizer extends StatefulWidget {
   const AnimatedEqualizer({
     super.key,
@@ -22,17 +19,9 @@ class AnimatedEqualizer extends StatefulWidget {
   /// same bars in the same place instead of animating as if it were playing.
   final bool animating;
 
-  /// Fractions of [size] each bar sits at, and how far it swings from there.
-  ///
-  /// The centre's *lowest* point (0.74 - 0.24 = 0.50) stays above the outer
-  /// bars' *highest* (0.32 + 0.14 = 0.46), so the middle bar is always the long
-  /// one no matter where the three are in their cycle.
-  static const List<double> _base = [0.32, 0.74, 0.32];
-  static const List<double> _swing = [0.14, 0.24, 0.14];
-
-  /// Phase offsets, so the bars rise and fall out of step with each other
-  /// instead of pulsing as one block.
-  static const List<double> _phase = [0.0, 0.35, 0.7];
+  /// Heights and start delays match the frontend's three-bar bounce.
+  static const List<double> _height = [0.72, 1.0, 0.58];
+  static const List<double> _delay = [0.0, 0.167, 0.333];
 
   /// One full cycle. Deliberately slow: this is mood, not a progress spinner.
   static const Duration _cycle = Duration(milliseconds: 900);
@@ -84,21 +73,24 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(3, (i) {
-              final phase =
-                  (_c.value + AnimatedEqualizer._phase[i]) % 1.0;
-              // Triangle wave: up over the first half of the cycle, back down
-              // over the second.
-              final tri = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-              final h =
-                  AnimatedEqualizer._base[i] +
-                  AnimatedEqualizer._swing[i] * tri;
-              return Container(
-                width: widget.barWidth,
-                height: widget.size * h,
-                margin: const EdgeInsets.symmetric(horizontal: 1.2),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(99),
+              final phase = (_c.value - AnimatedEqualizer._delay[i]) % 1.0;
+              final bounce = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+              return Transform.translate(
+                offset: Offset(
+                  0,
+                  -widget.size * 0.44 * Curves.easeInOut.transform(bounce),
+                ),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    width: widget.barWidth,
+                    height: widget.size * AnimatedEqualizer._height[i],
+                    margin: const EdgeInsets.symmetric(horizontal: 1.2),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
                 ),
               );
             }),

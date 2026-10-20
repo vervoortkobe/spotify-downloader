@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/models/user_model.dart';
 import 'package:spotterfy_app/services/auth_service.dart';
@@ -32,7 +33,7 @@ UserModel? _parseUserIsolate(String cached) {
   }
 }
 
-class AuthProvider extends ChangeNotifier {
+class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Created on first use: [AuthService] touches `FirebaseAuth.instance` and
   /// `FirebaseFirestore.instance` in its field initializers, both of which
   /// throw before `Firebase.initializeApp()` has run.
@@ -44,6 +45,9 @@ class AuthProvider extends ChangeNotifier {
   bool _isSigningIn = false;
   int _authEventGeneration = 0;
   StreamSubscription? _authSubscription;
+  Timer? _presenceHeartbeat;
+  String? _presenceUid;
+  bool _presenceOnline = false;
 
   UserModel? get user => _user;
   bool get isLoading => _isLoading;
@@ -74,7 +78,74 @@ class AuthProvider extends ChangeNotifier {
   bool get needsModeration => isBanned;
 
   AuthProvider() {
+    WidgetsBinding.instance.addObserver(this);
     _init();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final online = state == AppLifecycleState.resumed;
+    if (_presenceUid != null && _presenceOnline != online) {
+      unawaited(_writeOnlineStatus(online));
+    }
+  }
+
+  void _startPresence(String uid) {
+    if (_presenceUid != uid) {
+      final previousUid = _presenceUid;
+      if (previousUid != null) {
+        unawaited(() async {
+          try {
+            await _authService.setOnlineStatus(previousUid, false);
+            await _authService.updateListeningStatus(previousUid, null, null);
+          } catch (e) {
+            debugPrint('[Presence] could not clear previous account: $e');
+          }
+        }());
+      }
+      _presenceHeartbeat?.cancel();
+      _presenceUid = uid;
+      _presenceOnline = false;
+      _presenceHeartbeat = Timer.periodic(const Duration(minutes: 1), (_) {
+        if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+          unawaited(_writeOnlineStatus(true));
+        }
+      });
+    }
+    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      unawaited(_writeOnlineStatus(true));
+    }
+  }
+
+  Future<void> _writeOnlineStatus(bool online) async {
+    final uid = _presenceUid;
+    if (uid == null) return;
+    try {
+      await _authService.setOnlineStatus(uid, online);
+      _presenceOnline = online;
+      if (_user?.uid == uid) {
+        _user!.isOnline = online;
+        _user!.lastActiveAt = DateTime.now();
+      }
+    } catch (e) {
+      debugPrint('[Presence] online status update failed: $e');
+    }
+  }
+
+  Future<void> _stopPresence() async {
+    final uid = _presenceUid;
+    _presenceHeartbeat?.cancel();
+    _presenceHeartbeat = null;
+    _presenceUid = null;
+    _presenceOnline = false;
+    if (uid != null) {
+      try {
+        await _authService.setOnlineStatus(uid, false);
+        await _authService.updateListeningStatus(uid, null, null);
+      } catch (e) {
+        debugPrint('[Presence] could not mark signed-out user offline: $e');
+      }
+    }
   }
 
   Future<void> _init() async {
@@ -137,6 +208,11 @@ class AuthProvider extends ChangeNotifier {
         debugPrint('Auth state listener error: $e');
       }
       if (generation != _authEventGeneration) return;
+      if (firebaseUser != null) {
+        _startPresence(firebaseUser.uid);
+      } else {
+        await _stopPresence();
+      }
       // Keep the navbar portrait on disk for offline launches. Fire-and-forget:
       // a slow image download must not hold up the signed-in state.
       if (_user != null) unawaited(AvatarCache.warm(_user!.photoUrl));
@@ -183,6 +259,17 @@ class AuthProvider extends ChangeNotifier {
   @override
   void dispose() {
     _authEventGeneration++;
+    WidgetsBinding.instance.removeObserver(this);
+    _presenceHeartbeat?.cancel();
+    final uid = _presenceUid;
+    if (uid != null) {
+      unawaited(
+        _authService.setOnlineStatus(uid, false).catchError((Object error) {
+          debugPrint('[Presence] could not mark disposed user offline: $error');
+        }),
+      );
+    }
+    _presenceUid = null;
     _authSubscription?.cancel();
     super.dispose();
   }
@@ -319,11 +406,24 @@ class AuthProvider extends ChangeNotifier {
   Future<void> updateListeningStatus(
     String? trackId, {
     String? jamSessionId,
+    String trackTitle = '',
+    String trackArtist = '',
+    String trackArtwork = '',
   }) async {
     if (_user == null) return;
-    await _authService.updateListeningStatus(_user!.uid, trackId, jamSessionId);
+    await _authService.updateListeningStatus(
+      _user!.uid,
+      trackId,
+      jamSessionId,
+      trackTitle: trackTitle,
+      trackArtist: trackArtist,
+      trackArtwork: trackArtwork,
+    );
     _user!.currentListeningTo = trackId;
     _user!.currentJamSession = jamSessionId;
+    _user!.currentTrackTitle = trackTitle;
+    _user!.currentTrackArtist = trackArtist;
+    _user!.currentTrackArtwork = trackArtwork;
     notifyListeners();
   }
 
