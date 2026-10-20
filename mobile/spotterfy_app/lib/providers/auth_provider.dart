@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/models/user_model.dart';
 import 'package:spotterfy_app/services/auth_service.dart';
+import 'package:spotterfy_app/services/avatar_cache.dart';
 import 'package:spotterfy_app/services/firebase_service.dart';
 
 // Top-level for compute() - must not be inside class
@@ -136,6 +137,9 @@ class AuthProvider extends ChangeNotifier {
         debugPrint('Auth state listener error: $e');
       }
       if (generation != _authEventGeneration) return;
+      // Keep the navbar portrait on disk for offline launches. Fire-and-forget:
+      // a slow image download must not hold up the signed-in state.
+      if (_user != null) unawaited(AvatarCache.warm(_user!.photoUrl));
       await _saveCachedUser();
       if (generation != _authEventGeneration) return;
       _isLoading = false;
@@ -205,7 +209,12 @@ class AuthProvider extends ChangeNotifier {
       final parsed = await compute(_parseUserIsolate, cached);
       // An identity without a uid is not a usable account; treating it as one
       // is how a blank "logged in" state could appear before Firebase replied.
-      if (parsed != null && parsed.uid.isNotEmpty) _user = parsed;
+      if (parsed != null && parsed.uid.isNotEmpty) {
+        _user = parsed;
+        // Warm the cached portrait now; this also gives an offline launch a
+        // chance to reuse it while Firebase is still catching up.
+        unawaited(AvatarCache.warm(parsed.photoUrl));
+      }
     } catch (e) {
       debugPrint('Failed to load cached user: $e');
     }
@@ -217,7 +226,10 @@ class AuthProvider extends ChangeNotifier {
     try {
       final user = await _authService.signInWithGoogle();
       _user = user;
-      if (user != null) await _saveCachedUser();
+      if (user != null) {
+        unawaited(AvatarCache.warm(user.photoUrl));
+        await _saveCachedUser();
+      }
       return user != null;
     } catch (e) {
       debugPrint('AuthProvider sign-in error: $e');

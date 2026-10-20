@@ -442,7 +442,7 @@ class _OwnerProfileButton extends StatelessWidget {
             ),
             image: photoUrl.isNotEmpty
                 ? DecorationImage(
-                    image: NetworkImage(photoUrl),
+                    image: CachedNetworkImageProvider(photoUrl),
                     fit: BoxFit.cover,
                   )
                 : null,

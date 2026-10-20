@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
@@ -113,7 +114,10 @@ class ProfileSettingsScreen extends StatelessWidget {
         color: SpotterfyTheme.card,
         border: Border.all(color: SpotterfyTheme.mutedDark, width: 2),
         image: photoUrl.isNotEmpty
-            ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
+            ? DecorationImage(
+                image: CachedNetworkImageProvider(photoUrl),
+                fit: BoxFit.cover,
+              )
             : null,
       ),
       child: photoUrl.isEmpty

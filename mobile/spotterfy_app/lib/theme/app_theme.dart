@@ -98,14 +98,9 @@ class SpotterfyTheme {
   /// not one.
   static const List<AppPalette> palettes = [
     AppPalette(
-      name: 'Spotify Green',
+      name: 'Emerald',
       primary: Color(0xFF1DB954),
       primaryDark: Color(0xFF1ED760),
-    ),
-    AppPalette(
-      name: 'Emerald',
-      primary: Color(0xFF10B981),
-      primaryDark: Color(0xFF34D399),
     ),
     AppPalette(
       name: 'Sky',

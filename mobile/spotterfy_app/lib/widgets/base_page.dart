@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:spotterfy_app/providers/theme_controller.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/widgets/user_avatar.dart';
 
 /// Base scaffold for all main tab pages.
 /// Provides a uniform AppBar with:
@@ -55,6 +57,16 @@ class BasePageScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The gradient and the static accent colours are read during this build.
+    // ThemeData rebuilding does not necessarily rebuild this scaffold, so listen
+    // to the controller directly and repaint as soon as the accent changes.
+    return ListenableBuilder(
+      listenable: ThemeController.instance,
+      builder: (context, _) => _buildPage(context),
+    );
+  }
+
+  Widget _buildPage(BuildContext context) {
     final bool isSearch = searchController != null;
     // Unified dark gradient like Jam/Chat page + Onboarding waves base
     final gradientBg = LinearGradient(
@@ -107,19 +119,9 @@ class BasePageScaffold extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: CircleAvatar(
+                    child: UserAvatar(
+                      photoUrl: auth.user?.photoUrl,
                       radius: 16,
-                      backgroundColor: SpotterfyTheme.surface,
-                      backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false)
-                          ? NetworkImage(auth.user!.photoUrl)
-                          : null,
-                      child: (auth.user?.photoUrl.isEmpty ?? true)
-                          ? Icon(
-                              Icons.person,
-                              color: SpotterfyTheme.muted,
-                              size: 18,
-                            )
-                          : null,
                     ),
                   ),
                 ),

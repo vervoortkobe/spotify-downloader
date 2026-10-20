@@ -744,6 +744,7 @@ class _SearchScreenState extends State<SearchScreen> {
     const cardW = 110.0;
     const listH = 110.0;
     final list = _searchPlaylistResults;
+    final player = context.watch<PlayerProvider>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -770,6 +771,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 width: cardW,
                 coverUrl: p.coverUrl,
                 title: p.name,
+                isActive: player.isActivePlaylist(p.id),
                 margin: EdgeInsets.only(right: i == list.length - 1 ? 0 : 10),
                 onTap: () => Navigator.push(
                   context,
@@ -819,6 +821,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }) {
     // Square cards; title overlays the cover bottom on a blur
     const cardW = 110.0;
+    final player = context.watch<PlayerProvider>();
     if (isLoading && data.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -926,6 +929,7 @@ class _SearchScreenState extends State<SearchScreen> {
               coverUrl: p.coverUrl,
               spotifyUrl: p.spotifyUrl,
               title: p.name,
+              isActive: player.isActivePlaylist(p.id),
               // Same 10px gap the other sections use - without it the covers
               // sit flush against each other.
               margin: EdgeInsets.only(right: i == filtered.length - 1 ? 0 : 10),
@@ -1118,12 +1122,16 @@ class _DiscoverCard extends StatelessWidget {
   final EdgeInsets margin;
   final VoidCallback onTap;
 
+  /// True for the one playlist that owns the mini-player's current track.
+  final bool isActive;
+
   const _DiscoverCard({
     required this.width,
     required this.coverUrl,
     this.spotifyUrl = '',
     required this.title,
     this.margin = EdgeInsets.zero,
+    this.isActive = false,
     required this.onTap,
   });
 
@@ -1135,6 +1143,19 @@ class _DiscoverCard extends StatelessWidget {
         child: Container(
           width: width,
           margin: margin,
+          foregroundDecoration: isActive
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: SpotterfyTheme.primary, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: SpotterfyTheme.primary.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                )
+              : null,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: AspectRatio(
@@ -1163,7 +1184,9 @@ class _DiscoverCard extends StatelessWidget {
                           child: Text(
                             title,
                             style: TextStyle(
-                              color: SpotterfyTheme.text,
+                              color: isActive
+                                  ? SpotterfyTheme.primary
+                                  : SpotterfyTheme.text,
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                             ),
@@ -1362,6 +1385,7 @@ class _SectionPageState extends State<_SectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final player = context.watch<PlayerProvider>();
     return SwipeBackWrapper(
       child: Scaffold(
         backgroundColor: SpotterfyTheme.background,
@@ -1405,6 +1429,7 @@ class _SectionPageState extends State<_SectionPage> {
               coverUrl: p.coverUrl,
               spotifyUrl: p.spotifyUrl,
               title: p.name,
+              isActive: player.isActivePlaylist(p.id),
               onTap: () async {
                 if (widget.onTap != null) {
                   await widget.onTap!(p);

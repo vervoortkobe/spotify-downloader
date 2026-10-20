@@ -12,10 +12,15 @@ class ProfilePlaylistTile extends StatelessWidget {
   final PlaylistModel playlist;
   final VoidCallback onTap;
 
+  /// Marks the playlist the current track was started from. At most one row
+  /// can have this set, because the player records a single source id.
+  final bool isActive;
+
   const ProfilePlaylistTile({
     super.key,
     required this.playlist,
     required this.onTap,
+    this.isActive = false,
   });
 
   @override
@@ -23,27 +28,59 @@ class ProfilePlaylistTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: SpotterfyTheme.surface,
+        color: isActive
+            ? SpotterfyTheme.primary.withValues(alpha: 0.12)
+            : SpotterfyTheme.surface,
         borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
-          child: Padding(
+          child: Container(
             padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: isActive
+                  ? Border.all(
+                      color: SpotterfyTheme.primary.withValues(alpha: 0.55),
+                      width: 1.2,
+                    )
+                  : null,
+            ),
             child: Row(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox(
-                    width: 52,
-                    height: 52,
-                    child: playlist.coverUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: playlist.coverUrl,
-                            fit: BoxFit.cover,
-                            placeholder: (_, _) =>
-                                Container(color: SpotterfyTheme.card),
-                            errorWidget: (_, _, _) => Container(
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: isActive
+                        ? Border.all(
+                            color: SpotterfyTheme.primary.withValues(
+                              alpha: 0.6,
+                            ),
+                          )
+                        : null,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: playlist.coverUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: playlist.coverUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (_, _) =>
+                                  Container(color: SpotterfyTheme.card),
+                              errorWidget: (_, _, _) => Container(
+                                color: SpotterfyTheme.card,
+                                child: Icon(
+                                  Icons.music_note,
+                                  color: SpotterfyTheme.muted,
+                                  size: 22,
+                                ),
+                              ),
+                            )
+                          : Container(
                               color: SpotterfyTheme.card,
                               child: Icon(
                                 Icons.music_note,
@@ -51,15 +88,7 @@ class ProfilePlaylistTile extends StatelessWidget {
                                 size: 22,
                               ),
                             ),
-                          )
-                        : Container(
-                            color: SpotterfyTheme.card,
-                            child: Icon(
-                              Icons.music_note,
-                              color: SpotterfyTheme.muted,
-                              size: 22,
-                            ),
-                          ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -72,7 +101,9 @@ class ProfilePlaylistTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: SpotterfyTheme.text,
+                          color: isActive
+                              ? SpotterfyTheme.primary
+                              : SpotterfyTheme.text,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
@@ -90,7 +121,12 @@ class ProfilePlaylistTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right, color: SpotterfyTheme.mutedDark),
+                Icon(
+                  Icons.chevron_right,
+                  color: isActive
+                      ? SpotterfyTheme.primary
+                      : SpotterfyTheme.mutedDark,
+                ),
               ],
             ),
           ),

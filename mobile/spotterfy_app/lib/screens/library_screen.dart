@@ -427,8 +427,7 @@ class _LibraryScreenState extends State<LibraryScreen>
           // Asking which playlists merely contain the current track lit up
           // every row that shared a song with it - an imported playlist holding
           // the track you are playing turned green next to the real one.
-          final isSource =
-              player.currentTrack != null && player.sourceId == p.id;
+          final isSource = player.isActivePlaylist(p.id);
           return PlaylistCard(
             playlist: p,
             showOwner: false,

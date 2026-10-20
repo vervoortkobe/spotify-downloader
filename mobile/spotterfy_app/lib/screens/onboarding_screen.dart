@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
@@ -114,8 +115,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _skip() async {
     final auth = context.read<AuthProvider>();
-await auth.skipOnboarding();
-      // No navigation - see _finish above.
+    await auth.skipOnboarding();
+    // No navigation - see _finish above.
   }
 
   @override
@@ -166,7 +167,7 @@ await auth.skipOnboarding();
                         radius: 36,
                         backgroundColor: SpotterfyTheme.surface,
                         backgroundImage: photo.isNotEmpty
-                            ? NetworkImage(photo)
+                            ? CachedNetworkImageProvider(photo)
                             : null,
                         child: photo.isEmpty
                             ? Icon(

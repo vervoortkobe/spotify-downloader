@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
+import 'package:spotterfy_app/widgets/user_avatar.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
 
 class DiscoverScreen extends StatelessWidget {
@@ -34,20 +35,7 @@ class DiscoverScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: SpotterfyTheme.card, width: 1.5),
                 ),
-                child: CircleAvatar(
-                  radius: 16,
-                  backgroundColor: SpotterfyTheme.surface,
-                  backgroundImage: (auth.user?.photoUrl.isNotEmpty ?? false)
-                      ? NetworkImage(auth.user!.photoUrl)
-                      : null,
-                  child: (auth.user?.photoUrl.isEmpty ?? true)
-                      ? Icon(
-                          Icons.person,
-                          color: SpotterfyTheme.muted,
-                          size: 18,
-                        )
-                      : null,
-                ),
+                child: UserAvatar(photoUrl: auth.user?.photoUrl, radius: 16),
               ),
             ),
           ),

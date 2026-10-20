@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
 import 'package:spotterfy_app/providers/auth_provider.dart';
 import 'package:spotterfy_app/providers/playlist_provider.dart';
+import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/providers/jam_provider.dart';
 import 'package:spotterfy_app/providers/social_provider.dart';
 import 'package:spotterfy_app/services/network_stats_service.dart';
@@ -109,6 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildOwnProfile(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final playlistProv = context.watch<PlaylistProvider>();
+    final player = context.watch<PlayerProvider>();
     final user = auth.user;
 
     // "Your playlists" means playlists this account owns. Filtering here rather
@@ -156,7 +158,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               else
                 ...own
                     .take(_playlistPreviewCount)
-                    .map((playlist) => _playlistItem(context, playlist)),
+                    .map(
+                      (playlist) => _playlistItem(
+                        context,
+                        playlist,
+                        isActive: player.isActivePlaylist(playlist.id),
+                      ),
+                    ),
               if (own.length > _playlistPreviewCount)
                 _viewAllPlaylistsButton(
                   context,
@@ -287,6 +295,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final p = _profile;
+    final player = context.watch<PlayerProvider>();
     return AppGradientScaffold(
       title: p?['displayName'] ?? 'Profile',
       body: SingleChildScrollView(
@@ -312,7 +321,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               else
                 ..._theirPlaylists
                     .take(_playlistPreviewCount)
-                    .map((playlist) => _playlistItem(context, playlist)),
+                    .map(
+                      (playlist) => _playlistItem(
+                        context,
+                        playlist,
+                        isActive: player.isActivePlaylist(playlist.id),
+                      ),
+                    ),
               if (_theirPlaylists.length > _playlistPreviewCount)
                 _viewAllPlaylistsButton(
                   context,
@@ -754,9 +769,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _playlistItem(BuildContext context, PlaylistModel playlist) {
+  Widget _playlistItem(
+    BuildContext context,
+    PlaylistModel playlist, {
+    required bool isActive,
+  }) {
     return ProfilePlaylistTile(
       playlist: playlist,
+      isActive: isActive,
       onTap: () => Navigator.push(
         context,
         swipeRoute(PlaylistDetailScreen(playlist: playlist)),

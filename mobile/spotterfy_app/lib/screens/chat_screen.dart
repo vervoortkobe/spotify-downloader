@@ -8,6 +8,8 @@ import 'package:spotterfy_app/services/polling_service.dart';
 import 'package:spotterfy_app/services/social_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
+import 'package:spotterfy_app/widgets/app_chrome.dart';
+import 'package:spotterfy_app/widgets/user_avatar.dart';
 
 /// One-to-one conversation with a friend.
 ///
@@ -108,102 +110,97 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final myUid = _myUid;
-    return AppGradientScaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 17,
-              backgroundColor: SpotterfyTheme.surface,
-              backgroundImage: widget.peer.photoUrl.isNotEmpty
-                  ? NetworkImage(widget.peer.photoUrl)
-                  : null,
-              child: widget.peer.photoUrl.isEmpty
-                  ? Icon(Icons.person, color: SpotterfyTheme.muted, size: 18)
-                  : null,
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                widget.peer.displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: SpotterfyTheme.text,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
+    // A conversation fills the screen like the settings pages; the mini player
+    // would otherwise float over the composer and the newest messages.
+    return HideAppChrome(
+      child: AppGradientScaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          titleSpacing: 0,
+          title: Row(
+            children: [
+              UserAvatar(photoUrl: widget.peer.photoUrl, radius: 17),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  widget.peer.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: SpotterfyTheme.text,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<List<ChatMessage>>(
-              stream: _messages,
-              builder: (context, snap) {
-                final messages = snap.data ?? const <ChatMessage>[];
-                if (messages.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'No messages yet. Say hello!',
-                        style: TextStyle(color: SpotterfyTheme.muted),
-                      ),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  itemCount: messages.length,
-                  itemBuilder: (_, i) {
-                    final m = messages[i];
-                    final mine = m.senderUid == myUid;
-                    return Align(
-                      alignment: mine
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        constraints: const BoxConstraints(maxWidth: 280),
-                        decoration: BoxDecoration(
-                          color: mine
-                              ? SpotterfyTheme.primary
-                              : SpotterfyTheme.surface,
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(16),
-                            topRight: const Radius.circular(16),
-                            bottomLeft: Radius.circular(mine ? 16 : 4),
-                            bottomRight: Radius.circular(mine ? 4 : 16),
-                          ),
-                        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: StreamBuilder<List<ChatMessage>>(
+                stream: _messages,
+                builder: (context, snap) {
+                  final messages = snap.data ?? const <ChatMessage>[];
+                  if (messages.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
                         child: Text(
-                          m.text,
-                          style: TextStyle(
-                            color: mine ? Colors.black : SpotterfyTheme.text,
-                            fontSize: 14,
-                          ),
+                          'No messages yet. Say hello!',
+                          style: TextStyle(color: SpotterfyTheme.muted),
                         ),
                       ),
                     );
-                  },
-                );
-              },
+                  }
+                  return ListView.builder(
+                    controller: _scroll,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    itemCount: messages.length,
+                    itemBuilder: (_, i) {
+                      final m = messages[i];
+                      final mine = m.senderUid == myUid;
+                      return Align(
+                        alignment: mine
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          constraints: const BoxConstraints(maxWidth: 280),
+                          decoration: BoxDecoration(
+                            color: mine
+                                ? SpotterfyTheme.primary
+                                : SpotterfyTheme.surface,
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(16),
+                              topRight: const Radius.circular(16),
+                              bottomLeft: Radius.circular(mine ? 16 : 4),
+                              bottomRight: Radius.circular(mine ? 4 : 16),
+                            ),
+                          ),
+                          child: Text(
+                            m.text,
+                            style: TextStyle(
+                              color: mine ? Colors.black : SpotterfyTheme.text,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-          _composer(),
-        ],
+            _composer(),
+          ],
+        ),
       ),
     );
   }

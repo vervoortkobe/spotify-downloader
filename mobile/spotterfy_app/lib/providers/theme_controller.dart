@@ -21,7 +21,10 @@ class ThemeController extends ChangeNotifier {
   /// "Spotify green" would fall back to the same palette but leave no tile
   /// selected, because the theme page compares the raw stored name.
   static const _legacyNames = {
-    'Spotify green': 'Spotify Green',
+    // The original green palette was renamed when the near-identical
+    // "Emerald" entry was removed.
+    'Spotify green': 'Emerald',
+    'Spotify Green': 'Emerald',
     'Blood': 'Crimson',
   };
 
@@ -79,15 +82,18 @@ class ThemeController extends ChangeNotifier {
   Future<void> setAccent(String name) async {
     if (_accent == name) return;
     _accent = name;
-    await _persist();
+    // Apply and repaint first: SharedPreferences is a platform channel and can
+    // take a frame or two, which used to leave the old background on screen
+    // until the selection was written to disk.
     _publish();
+    await _persist();
   }
 
   Future<void> setOled(bool value) async {
     if (_oled == value) return;
     _oled = value;
-    await _persist();
     _publish();
+    await _persist();
   }
 
   Future<void> _persist() async {

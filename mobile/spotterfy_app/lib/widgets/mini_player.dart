@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:spotterfy_app/models/track_model.dart';
 import 'package:spotterfy_app/widgets/queue_sheet.dart';
@@ -381,7 +382,10 @@ class _MiniProgressRow extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(formatDurationMs(pos.inMilliseconds), style: timeStyle),
+                    Text(
+                      formatDurationMs(pos.inMilliseconds),
+                      style: timeStyle,
+                    ),
                     Text(formatDurationMs(durMs), style: timeStyle),
                   ],
                 ),
@@ -625,11 +629,16 @@ class _MiniCover extends StatelessWidget {
     // `artwork` supplies YouTube's own thumbnail for songs the backend returned
     // without one, so the mini player matches the row the song was played from.
     if (t.artwork.isNotEmpty) {
-      return Image.network(
-        t.artwork,
+      // Use the same on-disk cache as the now-playing page. A plain Image.network
+      // only survives in memory, which is why the large cover came back offline
+      // while this one fell back to the note icon.
+      return CachedNetworkImage(
+        imageUrl: t.artwork,
         fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) =>
+        memCacheWidth: (MiniPlayer._coverSize * 3).round(),
+        fadeInDuration: const Duration(milliseconds: 150),
+        placeholder: (_, _) => Container(color: SpotterfyTheme.surface),
+        errorWidget: (_, _, _) =>
             Icon(Icons.music_note, color: SpotterfyTheme.muted, size: 24),
       );
     }

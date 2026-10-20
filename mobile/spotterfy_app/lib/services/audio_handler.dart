@@ -181,9 +181,11 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     playbackState.add(
       PlaybackState(
         controls: [MediaControl.play],
-        // Deliberately no seekForward/seekBackward system actions: Android Auto
-        // renders those as -10s/+10s buttons, which crowd out the skip
-        // controls. Transport comes from `controls` instead.
+        // Skip comes from `controls`, not a seek action. Note that
+        // audio_service's Android service always advertises rewind/fast-forward
+        // (see AUTO_ENABLED_ACTIONS in the plugin), so Android Auto can still
+        // choose its -10s/+10s buttons over prev/next; that is not switchable
+        // from the app without patching the plugin.
         systemActions: const {MediaAction.seek},
         androidCompactActionIndices: const [0],
         processingState: AudioProcessingState.idle,
@@ -424,9 +426,10 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     playbackState.add(
       PlaybackState(
         controls: controls,
-        // No seekForward/seekBackward system actions: Android Auto renders
-        // those as the -10s/+10s buttons, which crowd out the skip controls.
-        // Prev/next come from `controls` instead; `seek` keeps the scrubber.
+        // Prev/next come from `controls`; `seek` keeps the scrubber. Android
+        // Auto still sometimes renders -10s/+10s because audio_service
+        // unconditionally advertises rewind/fast-forward on Android. There is
+        // no AudioServiceConfig switch for that; it requires a plugin patch.
         systemActions: const {MediaAction.seek},
         androidCompactActionIndices: [
           if (prevIdx != -1) prevIdx,

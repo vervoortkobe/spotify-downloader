@@ -64,6 +64,14 @@ class PlayerProvider extends ChangeNotifier {
   /// come from one (search results, downloads, a folder, a jam session).
   String? get sourceId => _sourceId;
 
+  /// Whether [playlistId] is the one playlist tied to the current track.
+  ///
+  /// A paused mini-player selection still counts, so the highlight does not
+  /// disappear just because playback is paused. A null [sourceId] means the
+  /// track came from outside a playlist, so no playlist is highlighted.
+  bool isActivePlaylist(String playlistId) =>
+      _currentTrack != null && _sourceId == playlistId;
+
   /// Playhead, ticking several times a second while playing.
   ///
   /// Deliberately a separate Listenable rather than part of [notifyListeners].

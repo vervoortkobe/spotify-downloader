@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:spotterfy_app/services/avatar_cache.dart';
 import 'package:spotterfy_app/services/social_service.dart';
 import 'package:spotterfy_app/services/polling_service.dart';
 
@@ -65,10 +66,15 @@ class SocialProvider extends ChangeNotifier {
         .poll(
           fetch: () => _service.friendsOnce(uid),
           interval: PollingService.socialInterval,
-          signature: (list) => list.map((f) => f.uid).join(','),
+          signature: (list) => list
+              .map((f) => '${f.uid}:${f.displayName}:${f.photoUrl}')
+              .join(','),
         )
         .listen((v) {
           _friends = v;
+          for (final f in v) {
+            unawaited(AvatarCache.warm(f.photoUrl));
+          }
           notifyListeners();
         });
 
@@ -81,6 +87,9 @@ class SocialProvider extends ChangeNotifier {
         )
         .listen((v) {
           _requests = v;
+          for (final r in v) {
+            unawaited(AvatarCache.warm(r.otherPhoto));
+          }
           notifyListeners();
         });
 
@@ -94,6 +103,9 @@ class SocialProvider extends ChangeNotifier {
         )
         .listen((v) {
           _notifications = v;
+          for (final n in v) {
+            unawaited(AvatarCache.warm(n.photoUrl));
+          }
           notifyListeners();
         });
 
@@ -105,12 +117,15 @@ class SocialProvider extends ChangeNotifier {
               .map(
                 (c) =>
                     '${c.id}:${c.updatedAt.millisecondsSinceEpoch}:'
-                    '${c.lastMessage}',
+                    '${c.lastMessage}:${c.peerPhoto}',
               )
               .join('|'),
         )
         .listen((v) {
           _chats = v;
+          for (final c in v) {
+            unawaited(AvatarCache.warm(c.peerPhoto));
+          }
           notifyListeners();
         });
   }

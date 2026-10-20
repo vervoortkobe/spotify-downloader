@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// A person as shown in friend lists, pickers and chat headers.
 class SocialUser {
@@ -355,48 +358,190 @@ class SocialService {
 
   /// Friends you have a conversation with, newest activity first. A one-shot
   /// read for the polling chat list.
+  ///
+  /// The last successful list is mirrored to SharedPreferences so the chat tab
+  /// still has conversations to open after a cold, offline launch. Firestore's
+  /// own cache helps, but a query that has never completed on this device has
+  /// nothing to serve and throws instead.
   Future<List<ChatThread>> chatsOnce(String uid) async {
-    final snap = await _db
-        .collection('chats')
-        .where('members', arrayContains: uid)
-        .get();
-    return snap.docs.map((DocumentSnapshot<Map<String, dynamic>> d) {
-      final data = d.data() ?? const <String, dynamic>{};
-      final members = (data['members'] as List?)?.cast<String>() ?? [];
-      final peer = members.firstWhere((m) => m != uid, orElse: () => uid);
-      final names = (data['memberNames'] as Map?)?.cast<String, String>();
-      return ChatThread(
-        id: d.id,
-        peerUid: peer,
-        peerName: names?[peer] ?? 'User',
-        peerPhoto: '',
-        lastMessage: (data['lastMessage'] as String?) ?? '',
-        updatedAt:
-            (data['updatedAt'] as Timestamp?)?.toDate() ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-      );
-    }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    try {
+      final snap = await _db
+          .collection('chats')
+          .where('members', arrayContains: uid)
+          .get();
+      final threads = snap.docs.map((DocumentSnapshot<Map<String, dynamic>> d) {
+        final data = d.data() ?? const <String, dynamic>{};
+        final members = (data['members'] as List?)?.cast<String>() ?? [];
+        final peer = members.firstWhere((m) => m != uid, orElse: () => uid);
+        final names = (data['memberNames'] as Map?)?.cast<String, String>();
+        final photos = (data['memberPhotos'] as Map?)?.cast<String, String>();
+        return ChatThread(
+          id: d.id,
+          peerUid: peer,
+          peerName: names?[peer] ?? 'User',
+          peerPhoto: photos?[peer] ?? '',
+          lastMessage: (data['lastMessage'] as String?) ?? '',
+          updatedAt:
+              (data['updatedAt'] as Timestamp?)?.toDate() ??
+              DateTime.fromMillisecondsSinceEpoch(0),
+        );
+      }).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      if (threads.isNotEmpty) await _saveCachedThreads(uid, threads);
+      return threads;
+    } catch (_) {
+      final cached = await _loadCachedThreads(uid);
+      if (cached.isNotEmpty) return cached;
+      rethrow;
+    }
   }
 
   /// The full conversation, oldest first. A one-shot read for polling.
+  ///
+  /// Messages are also written to a small per-chat disk cache. If the network
+  /// read fails (the usual case on a cold offline start) the last transcript is
+  /// returned so the thread is readable instead of blank.
   Future<List<ChatMessage>> messagesOnce(String chatId) async {
-    final snap = await _db
-        .collection('chats')
-        .doc(chatId)
-        .collection('messages')
-        .orderBy('at')
-        .get();
-    return snap.docs.map((DocumentSnapshot<Map<String, dynamic>> d) {
-      final data = d.data() ?? const <String, dynamic>{};
-      return ChatMessage(
-        id: d.id,
-        senderUid: (data['senderUid'] as String?) ?? '',
-        text: (data['text'] as String?) ?? '',
-        at:
-            (data['at'] as Timestamp?)?.toDate() ??
-            DateTime.fromMillisecondsSinceEpoch(0),
+    try {
+      final snap = await _db
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .orderBy('at')
+          .get();
+      final messages = snap.docs.map((
+        DocumentSnapshot<Map<String, dynamic>> d,
+      ) {
+        final data = d.data() ?? const <String, dynamic>{};
+        return ChatMessage(
+          id: d.id,
+          senderUid: (data['senderUid'] as String?) ?? '',
+          text: (data['text'] as String?) ?? '',
+          at:
+              (data['at'] as Timestamp?)?.toDate() ??
+              DateTime.fromMillisecondsSinceEpoch(0),
+        );
+      }).toList();
+      await _saveCachedMessages(chatId, messages);
+      return messages;
+    } catch (_) {
+      final cached = await _loadCachedMessages(chatId);
+      if (cached.isNotEmpty) return cached;
+      rethrow;
+    }
+  }
+
+  // ---------------------------------------------------------- offline cache
+
+  static const _threadsCachePrefix = 'chat_threads_cache_';
+  static const _messagesCachePrefix = 'chat_messages_cache_';
+  static const _maxCachedMessages = 300;
+
+  /// Skip rewriting the same transcript every three seconds. Messages are
+  /// append-only in this app, so length plus the last id is a sufficient key.
+  static final Map<String, String> _cachedMessageSignatures = {};
+
+  Future<void> _saveCachedThreads(String uid, List<ChatThread> threads) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        '$_threadsCachePrefix$uid',
+        jsonEncode([
+          for (final t in threads)
+            {
+              'id': t.id,
+              'peerUid': t.peerUid,
+              'peerName': t.peerName,
+              'peerPhoto': t.peerPhoto,
+              'lastMessage': t.lastMessage,
+              'updatedAt': t.updatedAt.millisecondsSinceEpoch,
+            },
+        ]),
       );
-    }).toList();
+    } catch (_) {
+      // A cache write failure must not fail the live list.
+    }
+  }
+
+  Future<List<ChatThread>> _loadCachedThreads(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_threadsCachePrefix$uid');
+      if (raw == null) return const [];
+      final list = jsonDecode(raw) as List;
+      return [
+        for (final item in list)
+          if (item is Map)
+            ChatThread(
+              id: (item['id'] as String?) ?? '',
+              peerUid: (item['peerUid'] as String?) ?? '',
+              peerName: (item['peerName'] as String?) ?? 'User',
+              peerPhoto: (item['peerPhoto'] as String?) ?? '',
+              lastMessage: (item['lastMessage'] as String?) ?? '',
+              updatedAt: DateTime.fromMillisecondsSinceEpoch(
+                (item['updatedAt'] as num?)?.toInt() ?? 0,
+              ),
+            ),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _saveCachedMessages(
+    String chatId,
+    List<ChatMessage> messages,
+  ) async {
+    // An empty response is not worth memoising; keeping the previous non-empty
+    // transcript is safer when a transient read returns nothing.
+    if (messages.isEmpty) return;
+    final signature =
+        '${messages.length}:${messages.last.id}:'
+        '${messages.last.at.millisecondsSinceEpoch}';
+    if (_cachedMessageSignatures[chatId] == signature) return;
+    try {
+      final slice = messages.length > _maxCachedMessages
+          ? messages.sublist(messages.length - _maxCachedMessages)
+          : messages;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        '$_messagesCachePrefix$chatId',
+        jsonEncode([
+          for (final m in slice)
+            {
+              'id': m.id,
+              'senderUid': m.senderUid,
+              'text': m.text,
+              'at': m.at.millisecondsSinceEpoch,
+            },
+        ]),
+      );
+      _cachedMessageSignatures[chatId] = signature;
+    } catch (_) {
+      // Keep polling; the next changed transcript retries the write.
+    }
+  }
+
+  Future<List<ChatMessage>> _loadCachedMessages(String chatId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_messagesCachePrefix$chatId');
+      if (raw == null) return const [];
+      final list = jsonDecode(raw) as List;
+      return [
+        for (final item in list)
+          if (item is Map)
+            ChatMessage(
+              id: (item['id'] as String?) ?? '',
+              senderUid: (item['senderUid'] as String?) ?? '',
+              text: (item['text'] as String?) ?? '',
+              at: DateTime.fromMillisecondsSinceEpoch(
+                (item['at'] as num?)?.toInt() ?? 0,
+              ),
+            ),
+      ];
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Sends a message, creating the conversation on first use.

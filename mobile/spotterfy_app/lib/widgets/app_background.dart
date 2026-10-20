@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:spotterfy_app/providers/theme_controller.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
 /// The app-wide page background.
@@ -21,9 +22,16 @@ class AppBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(gradient: gradient),
-      child: child,
+    // The gradient is built from static theme colours, so it does not depend on
+    // MaterialApp's Theme. Listening here repaints it as soon as the accent is
+    // published, instead of waiting for the route to rebuild (or the user to
+    // refresh the page).
+    return ListenableBuilder(
+      listenable: ThemeController.instance,
+      builder: (context, _) => DecoratedBox(
+        decoration: BoxDecoration(gradient: gradient),
+        child: child,
+      ),
     );
   }
 }
@@ -53,45 +61,50 @@ class AppGradientScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        extendBodyBehindAppBar: extendBodyBehindAppBar,
-        appBar:
-            appBar ??
-            AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              title: title == null
-                  ? null
-                  : Text(
-                      title!,
-                      style: TextStyle(
-                        color: SpotterfyTheme.text,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
+    return ListenableBuilder(
+      listenable: ThemeController.instance,
+      builder: (context, _) => AppBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          extendBodyBehindAppBar: extendBodyBehindAppBar,
+          appBar:
+              appBar ??
+              AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                title: title == null
+                    ? null
+                    : Text(
+                        title!,
+                        style: TextStyle(
+                          color: SpotterfyTheme.text,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
                       ),
+                // Fade behind the bar so content scrolls under it cleanly, the
+                // same treatment BasePageScaffold uses.
+                flexibleSpace: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        SpotterfyTheme.pageGradient.first.withValues(
+                          alpha: 0.96,
+                        ),
+                        SpotterfyTheme.pageGradient[1].withValues(alpha: 0.82),
+                        SpotterfyTheme.background.withValues(alpha: 0.0),
+                      ],
                     ),
-              // Fade behind the bar so content scrolls under it cleanly, the
-              // same treatment BasePageScaffold uses.
-              flexibleSpace: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      SpotterfyTheme.pageGradient.first.withValues(alpha: 0.96),
-                      SpotterfyTheme.pageGradient[1].withValues(alpha: 0.82),
-                      SpotterfyTheme.background.withValues(alpha: 0.0),
-                    ],
                   ),
                 ),
               ),
-            ),
-        body: body,
-        floatingActionButton: floatingActionButton,
+          body: body,
+          floatingActionButton: floatingActionButton,
+        ),
       ),
     );
   }

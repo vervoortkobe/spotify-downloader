@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:spotterfy_app/models/playlist_model.dart';
+import 'package:spotterfy_app/providers/player_provider.dart';
 import 'package:spotterfy_app/screens/playlist_detail_screen.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/app_background.dart';
@@ -100,6 +102,7 @@ class _UserPlaylistsScreenState extends State<UserPlaylistsScreen> {
   @override
   Widget build(BuildContext context) {
     final visible = _visiblePlaylists;
+    final player = context.watch<PlayerProvider>();
     return AppGradientScaffold(
       title: widget.title,
       body: Column(
@@ -204,6 +207,7 @@ class _UserPlaylistsScreenState extends State<UserPlaylistsScreen> {
                       final playlist = visible[i];
                       return ProfilePlaylistTile(
                         playlist: playlist,
+                        isActive: player.isActivePlaylist(playlist.id),
                         onTap: () => Navigator.push(
                           context,
                           swipeRoute(PlaylistDetailScreen(playlist: playlist)),

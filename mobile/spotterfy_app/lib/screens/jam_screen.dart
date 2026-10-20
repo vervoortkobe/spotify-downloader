@@ -9,6 +9,7 @@ import 'package:spotterfy_app/services/social_service.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 import 'package:spotterfy_app/widgets/base_page.dart';
 import 'package:spotterfy_app/widgets/mini_player.dart';
+import 'package:spotterfy_app/widgets/user_avatar.dart';
 import 'package:spotterfy_app/widgets/swipe_navigation.dart';
 import 'package:spotterfy_app/screens/chat_screen.dart';
 import 'package:spotterfy_app/screens/profile_screen.dart';
@@ -657,14 +658,8 @@ class _JamScreenState extends State<JamScreen> {
   ///
   /// [radius] is the circle's radius: callers pass the size they want, since the
   /// old call sites passed diameters here and every avatar came out double size.
-  Widget _avatar(String photoUrl, double radius) => CircleAvatar(
-    radius: radius,
-    backgroundColor: SpotterfyTheme.surface,
-    backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-    child: photoUrl.isEmpty
-        ? Icon(Icons.person, color: SpotterfyTheme.muted, size: radius)
-        : null,
-  );
+  Widget _avatar(String photoUrl, double radius) =>
+      UserAvatar(photoUrl: photoUrl, radius: radius);
 
   /// Nothing at all yet: no notifications, chats, friends or jams.
   Widget _emptyEverything() {
@@ -1177,20 +1172,7 @@ class _FriendPickerState extends State<_FriendPicker> {
                 final f = widget.friends[i];
                 final on = _selected.contains(f.uid);
                 return ListTile(
-                  leading: CircleAvatar(
-                    radius: 20,
-                    backgroundColor: SpotterfyTheme.surface,
-                    backgroundImage: f.photoUrl.isNotEmpty
-                        ? NetworkImage(f.photoUrl)
-                        : null,
-                    child: f.photoUrl.isEmpty
-                        ? Icon(
-                            Icons.person,
-                            color: SpotterfyTheme.muted,
-                            size: 20,
-                          )
-                        : null,
-                  ),
+                  leading: UserAvatar(photoUrl: f.photoUrl, radius: 20),
                   title: Text(
                     f.displayName,
                     style: TextStyle(color: SpotterfyTheme.text),
