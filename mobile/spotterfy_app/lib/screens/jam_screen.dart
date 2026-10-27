@@ -14,7 +14,6 @@ import 'package:spotterfy_app/screens/chat_screen.dart';
 import 'package:spotterfy_app/screens/notifications_screen.dart';
 import 'package:spotterfy_app/widgets/jam_session_sheet.dart';
 import 'package:spotterfy_app/widgets/presence_avatar.dart';
-import 'package:spotterfy_app/widgets/user_avatar.dart';
 
 /// The Chat tab: friend conversations and live jam sessions.
 ///
@@ -92,16 +91,34 @@ class _JamScreenState extends State<JamScreen> {
         icon: Stack(
           clipBehavior: Clip.none,
           children: [
-            Icon(Icons.notifications_none_rounded, color: SpotterfyTheme.muted, size: 21),
+            Icon(
+              Icons.notifications_none_rounded,
+              color: SpotterfyTheme.muted,
+              size: 21,
+            ),
             if (unread > 0)
               Positioned(
                 right: -7,
                 top: -6,
                 child: Container(
-                  constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                  constraints: const BoxConstraints(
+                    minWidth: 15,
+                    minHeight: 15,
+                  ),
                   padding: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(color: SpotterfyTheme.primary, borderRadius: BorderRadius.circular(10)),
-                  child: Text(unread > 99 ? '99+' : '$unread', textAlign: TextAlign.center, style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.w800)),
+                  decoration: BoxDecoration(
+                    color: SpotterfyTheme.primary,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    unread > 99 ? '99+' : '$unread',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
               ),
           ],
@@ -782,7 +799,11 @@ class _JamScreenState extends State<JamScreen> {
                 itemBuilder: (_, i) {
                   final f = friends[i];
                   return ListTile(
-                    leading: PresenceAvatar(uid: f.uid, photoUrl: f.photoUrl, radius: 20),
+                    leading: PresenceAvatar(
+                      uid: f.uid,
+                      photoUrl: f.photoUrl,
+                      radius: 20,
+                    ),
                     title: Text(
                       f.displayName,
                       style: TextStyle(color: SpotterfyTheme.text),

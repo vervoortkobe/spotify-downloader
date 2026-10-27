@@ -28,10 +28,32 @@ UserModel _user({
 
 /// Provider wired to an in-memory Firestore, already loaded, so the moderation
 /// writes are actually exercised rather than mocked away.
+///
+/// Online/listening/jam state lives in `users/{uid}/presence/current`, not on
+/// the user document, so the fixture has to write both collections just like
+/// the app does.
 Future<AdminProvider> _providerWith(List<UserModel> users) async {
   final firestore = FakeFirebaseFirestore();
   for (final u in users) {
-    firestore.collection('users').doc(u.uid).set(u.toFirestore());
+    await firestore.collection('users').doc(u.uid).set(u.toFirestore());
+    final listening = (u.currentListeningTo ?? '').isNotEmpty;
+    final jamming = (u.currentJamSession ?? '').isNotEmpty;
+    if (listening || jamming) {
+      await firestore
+          .collection('users')
+          .doc(u.uid)
+          .collection('presence')
+          .doc('current')
+          .set({
+            if (listening) 'currentListeningTo': u.currentListeningTo,
+            if (jamming) 'currentJamSession': u.currentJamSession,
+            // A user who is listening is necessarily online. The admin list
+            // joins this presence document into the user model.
+            if (listening) 'isOnline': true,
+            if (listening) 'lastActiveAt': DateTime.now(),
+            if (listening) 'currentTrackTitle': u.currentTrackTitle,
+          });
+    }
   }
   final provider = AdminProvider(AdminService(firestore));
   await provider.loadUsers();
@@ -199,15 +221,12 @@ void main() {
       expect(admin.busyUid, isNull);
     });
 
-    test(
-      'a suspended user still appears in the filtered view',
-      () async {
-        final admin = await _providerWith([_user(uid: 'a')]);
-        await admin.suspendUser('a', 'abuse');
-        admin.setFilter(AdminFilter.suspended);
-        expect(admin.visibleUsers.single.uid, 'a');
-      },
-    );
+    test('a suspended user still appears in the filtered view', () async {
+      final admin = await _providerWith([_user(uid: 'a')]);
+      await admin.suspendUser('a', 'abuse');
+      admin.setFilter(AdminFilter.suspended);
+      expect(admin.visibleUsers.single.uid, 'a');
+    });
   });
 
   group('UserModel moderation fields', () {

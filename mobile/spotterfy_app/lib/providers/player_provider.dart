@@ -11,6 +11,7 @@ import 'package:spotterfy_app/services/api_service.dart';
 import 'package:spotterfy_app/services/audio_handler.dart';
 import 'package:spotterfy_app/services/auto_media_library.dart';
 import 'package:spotterfy_app/services/download_service.dart';
+import 'package:spotterfy_app/services/playback_access.dart';
 import 'package:spotterfy_app/providers/equalizer_provider.dart';
 import 'package:spotterfy_app/providers/playback_settings_controller.dart';
 
@@ -26,6 +27,12 @@ class PlayerProvider extends ChangeNotifier {
   int _currentIndex = -1;
   bool _isPlaying = false;
   bool _completed = false;
+
+  /// Guards the queue-end callback: just_audio can emit `completed` more than
+  /// once while the next source is loading, which would otherwise start several
+  /// autoplay playlists at the same time. Cleared once a replacement track
+  /// actually starts (or when playback is explicitly cleared).
+  bool _handlingQueueEnd = false;
   Duration _position = Duration.zero;
   DateTime _lastPositionChangeAt = DateTime.now();
   Timer? _positionFallbackTimer;
@@ -50,6 +57,7 @@ class PlayerProvider extends ChangeNotifier {
   String? _syncedUid;
   int _uidSyncGeneration = 0;
   int _accountPlaybackGeneration = 0;
+  bool _stoppingForSuspension = false;
   Duration _duration = Duration.zero;
   Duration _buffered = Duration.zero;
 
@@ -59,6 +67,25 @@ class PlayerProvider extends ChangeNotifier {
   List<TrackModel> get recentlyPlayed => List.unmodifiable(_recentlyPlayed);
   int get currentIndex => _currentIndex;
   bool get isPlaying => _isPlaying;
+
+  /// Latest state reported by just_audio. Used to tell a buffering start apart
+  /// from a paused player, which otherwise both report `playing == false`.
+  ProcessingState _processingState = ProcessingState.idle;
+
+  /// Whether the current track is still being fetched/buffered and has not
+  /// become audible yet.
+  ///
+  /// This is what lets the transport controls swap the play glyph for a
+  /// spinner while YouTube resolves the stream. It deliberately excludes a
+  /// paused player: pressing pause during a slow load should show Play again,
+  /// not spin forever.
+  bool get isLoading =>
+      _currentTrack != null &&
+      !_pauseRequested &&
+      (_starting ||
+          (_isPlaying &&
+              (_processingState == ProcessingState.loading ||
+                  _processingState == ProcessingState.buffering)));
 
   /// Playlist the current playback was started from, or null when it did not
   /// come from one (search results, downloads, a folder, a jam session).
@@ -148,6 +175,7 @@ class PlayerProvider extends ChangeNotifier {
     _pauseRequested = false;
     _pendingToggles = 0;
     _completed = false;
+    _handlingQueueEnd = false;
     _position = Duration.zero;
     _duration = Duration.zero;
     _buffered = Duration.zero;
@@ -165,6 +193,51 @@ class PlayerProvider extends ChangeNotifier {
     await prefs.remove('player_recently_played');
     await prefs.remove('player_state_uid');
     notifyListeners();
+  }
+
+  /// Silences and hides the current session when the account is suspended.
+  ///
+  /// The queue is kept so an account restored while the app is open can resume
+  /// normally, but every in-flight load is invalidated and the media session is
+  /// cleared so a head unit or Bluetooth button has nothing to start.
+  Future<void> _stopForSuspension() async {
+    if (_stoppingForSuspension) return;
+    _stoppingForSuspension = true;
+    _accountPlaybackGeneration++;
+    _playRequestId++;
+    _activePlay = null;
+    _activePlayTrackId = null;
+    _pendingToggles = 0;
+    _starting = false;
+    _pauseRequested = false;
+    _handlingQueueEnd = false;
+    _radioDriftTimer?.cancel();
+    _radioDriftTimer = null;
+    try {
+      await _cancelCrossfade();
+      await _player.stop();
+    } catch (e) {
+      debugPrint('[Player] could not stop suspended playback: $e');
+    }
+    _isPlaying = false;
+    _completed = false;
+    _processingState = ProcessingState.idle;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _buffered = Duration.zero;
+    positionNotifier.value = Duration.zero;
+    durationNotifier.value = Duration.zero;
+    bufferedNotifier.value = Duration.zero;
+    audioHandler?.clearSession();
+    try {
+      await audioHandler?.stop();
+    } catch (e) {
+      debugPrint('[Player] could not clear suspended media session: $e');
+    }
+    _wasPlayingBeforeRestart = false;
+    notifyListeners();
+    unawaited(_savePlayerState());
+    _stoppingForSuspension = false;
   }
 
   bool _isRadioUrl(String url) {
@@ -218,6 +291,15 @@ class PlayerProvider extends ChangeNotifier {
       const Duration(milliseconds: 500),
       (_) => _syncPositionIfStale(),
     );
+    PlaybackAccess.instance.addListener(_onPlaybackAccessChanged);
+    if (PlaybackAccess.instance.isSuspended) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _stopForSuspension());
+    }
+  }
+
+  void _onPlaybackAccessChanged() {
+    if (!PlaybackAccess.instance.isSuspended) return;
+    unawaited(_stopForSuspension());
   }
 
   // Stream subscriptions for the current primary player. Held so they can be
@@ -285,6 +367,7 @@ class PlayerProvider extends ChangeNotifier {
         return;
       }
       _isPlaying = state.playing;
+      _processingState = state.processingState;
       _completed = state.processingState == ProcessingState.completed;
       if (_completed) {
         _onTrackCompleted();
@@ -324,14 +407,62 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   /// Advances past a track that reached its end: the next queued track, or
-  /// a stop at the end of the queue.
+  /// the configured end-of-queue behaviour.
   void _onTrackCompleted() {
+    if (!PlaybackAccess.instance.canPlay) {
+      _stopAtQueueEnd();
+      return;
+    }
+    if (_handlingQueueEnd) return;
     if (_queue.isNotEmpty && _currentIndex < _queue.length - 1) {
       next();
-    } else {
-      _isPlaying = false;
-      audioHandler?.updatePosition(_position, _duration, false);
+      return;
     }
+
+    _handlingQueueEnd = true;
+    if (!PlaybackSettingsController.instance.continuePlaying) {
+      _stopAtQueueEnd();
+      return;
+    }
+
+    // Continue with the rest of the queue. A one-track queue has no other song
+    // left, so fall through to a random library playlist instead of looping
+    // that single track forever.
+    if (_queue.length > 1) {
+      final queue = List<TrackModel>.from(_queue);
+      unawaited(
+        play(queue.first, queue: queue, sourceId: _sourceId).catchError((
+          Object e,
+          StackTrace st,
+        ) {
+          debugPrint('[Player] queue-end replay failed: $e\n$st');
+          _stopAtQueueEnd();
+        }),
+      );
+      return;
+    }
+
+    final playlist = AutoLibraryBridge.instance.randomLibraryPlaylist();
+    if (playlist == null || playlist.tracks.isEmpty) {
+      _stopAtQueueEnd();
+      return;
+    }
+    unawaited(
+      play(
+        playlist.tracks.first,
+        queue: playlist.tracks,
+        sourceId: playlist.id,
+      ).catchError((Object e, StackTrace st) {
+        debugPrint('[Player] queue-end autoplay failed: $e\n$st');
+        _stopAtQueueEnd();
+      }),
+    );
+  }
+
+  void _stopAtQueueEnd() {
+    _isPlaying = false;
+    audioHandler?.updatePosition(_position, _duration, false);
+    notifyListeners();
   }
 
   // --- crossfade ------------------------------------------------------
@@ -350,6 +481,7 @@ class PlayerProvider extends ChangeNotifier {
   /// instant by design, and pre-loading the next track on every track just to
   /// cover manual skips would double streaming bandwidth for everyone.
   void _maybeStartCrossfade() {
+    if (!PlaybackAccess.instance.canPlay) return;
     if (_crossfading || isRadio) return;
     final seconds = PlaybackSettingsController.instance.crossfadeSeconds;
     if (seconds <= 0) return;
@@ -421,6 +553,10 @@ class PlayerProvider extends ChangeNotifier {
     AudioPlayer cross,
     List<AndroidAudioEffect> crossEffects,
   ) async {
+    if (!PlaybackAccess.instance.canPlay) {
+      await _cancelCrossfade();
+      return;
+    }
     _crossfading = false;
     // The queue may have been edited while the fade ran; only take over if
     // the crossfaded track is still the expected next one.
@@ -439,6 +575,7 @@ class PlayerProvider extends ChangeNotifier {
     _duration = Duration.zero;
     _buffered = Duration.zero;
     _completed = false;
+    _handlingQueueEnd = false;
     _starting = false;
     _pauseRequested = false;
     _isPlaying = true;
@@ -552,6 +689,12 @@ class PlayerProvider extends ChangeNotifier {
     List<TrackModel>? queue,
     String? sourceId,
   }) {
+    if (!PlaybackAccess.instance.canPlay) {
+      if (PlaybackAccess.instance.isSuspended) {
+        unawaited(_stopForSuspension());
+      }
+      return Future<void>.value();
+    }
     // The latest caller owns the playback context, even when the load below is
     // reused - tapping a playlist's play button while its first track is still
     // loading must still move the highlight to that playlist.
@@ -593,6 +736,7 @@ class PlayerProvider extends ChangeNotifier {
     required int request,
   }) async {
     final generation = _accountPlaybackGeneration;
+    if (!PlaybackAccess.instance.canPlay) return;
     await _cancelCrossfade();
     // Superseded while the crossfade was being torn down: the newer request
     // owns the player now, so this one must not touch the queue or the track.
@@ -652,7 +796,10 @@ class PlayerProvider extends ChangeNotifier {
       isCancelled: () => _isSuperseded(request, generation),
     );
     if (generation != _accountPlaybackGeneration) {
-      await _player.stop();
+      // A newer request (or a suspension, which bumps both counters) may own
+      // the shared player by now. Only stop it when this load is still the
+      // latest one; otherwise the stale load would silence the new track.
+      if (request == _playRequestId) await _player.stop();
       return;
     }
     if (request != _playRequestId) {
@@ -661,14 +808,21 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
     if (!loaded) {
-      // Every source failed: don't leave the UI showing a track that isn't
-      // audible. `_onTrackStarted` is skipped so `_isPlaying` stays false.
+      // Every source failed: don't leave the UI (or the car) showing a track
+      // that isn't audible. `_onTrackStarted` is skipped, so clear the playing
+      // flag explicitly - the previous track's completed state may still have
+      // left it true.
       _starting = false;
+      _isPlaying = false;
+      audioHandler?.updatePosition(_position, _duration, false);
+      notifyListeners();
       _savePlayerState();
       return;
     }
-    await _onTrackStarted();
+    // Clear the loading flag before the "started" notification, otherwise the
+    // spinner would stay up until some unrelated state change repainted it.
     _starting = false;
+    await _onTrackStarted();
     _savePlayerState();
   }
 
@@ -882,6 +1036,7 @@ class PlayerProvider extends ChangeNotifier {
   /// page never starts playing something the user already cancelled.
   Future<void> _onTrackStarted() async {
     _completed = false;
+    _handlingQueueEnd = false;
     if (_pauseRequested) {
       _pauseRequested = false;
       _isPlaying = false;
@@ -905,6 +1060,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _startPlayback() async {
+    if (!PlaybackAccess.instance.canPlay) return;
     // just_audio resumes from the completed state otherwise - restart instead.
     if (_completed) {
       await _player.seek(Duration.zero);
@@ -920,9 +1076,18 @@ class PlayerProvider extends ChangeNotifier {
       await ensureAudioHandler();
       _bindHandler();
       _starting = true;
+      // Publish the loading state before the source lookup: a restored session
+      // has no audio yet, and this load can take seconds.
+      notifyListeners();
       final loaded = await _loadInto(_player, track, startAt: _position);
       _starting = false;
-      if (loaded) await _onTrackStarted();
+      if (loaded) {
+        await _onTrackStarted();
+      } else {
+        // Nothing loaded, so stop showing a spinner over a play button that
+        // would start nothing.
+        notifyListeners();
+      }
       return;
     }
     await _playUntilAudibleOn(_player);
@@ -1002,6 +1167,12 @@ class PlayerProvider extends ChangeNotifier {
   int _pendingToggles = 0;
 
   Future<void> togglePlayPause() {
+    if (!PlaybackAccess.instance.canPlay) {
+      if (PlaybackAccess.instance.isSuspended) {
+        unawaited(_stopForSuspension());
+      }
+      return Future<void>.value();
+    }
     _pendingToggles++;
     if (_toggling) return Future<void>.value();
     return _drainToggles();
@@ -1029,6 +1200,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _applyToggle() async {
+    if (!PlaybackAccess.instance.canPlay) return;
     // Decide from BOTH sources *plus* "a track is loading". Treating it as
     // playing when any of them says so is what makes pause reliable: using only
     // `_isPlaying` (the mirror) missed a pause whenever the mirror lagged, and
@@ -1077,6 +1249,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> resume() async {
+    if (!PlaybackAccess.instance.canPlay) return;
     await _startPlayback();
     // A restored track whose source failed to load leaves the player idle;
     // don't broadcast a "playing" state that has no audio behind it.
@@ -1108,23 +1281,23 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> next() async {
-    if (isRadio) return;
+    if (!PlaybackAccess.instance.canPlay) return;
     if (_queue.isEmpty || _currentIndex >= _queue.length - 1) return;
     await _cancelCrossfade();
     _currentIndex++;
     // Advancing keeps the playlist highlight: the queue did not change context.
+    // For radio the queue is the station list, so this also moves to the next
+    // station and the media-session button does the same thing as the UI.
     await play(_queue[_currentIndex], queue: _queue, sourceId: _sourceId);
   }
 
   Future<void> previous() async {
-    if (isRadio) {
-      // Radio: only seek back within listened window, no track switch
-      await seekTo(Duration.zero);
-      return;
-    }
+    if (!PlaybackAccess.instance.canPlay) return;
     if (_queue.isEmpty || _currentIndex <= 0) return;
     await _cancelCrossfade();
-    if (_position.inSeconds > 3) {
+    // Radio skips station-to-station; the seek-back rule is for songs, where
+    // "previous" first restarts the current track once it is more than 3s in.
+    if (!isRadio && _position.inSeconds > 3) {
       await seekTo(Duration.zero);
       return;
     }
@@ -1151,7 +1324,30 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Randomises the queue without interrupting the current track.
+  ///
+  /// The playing row keeps playing; only its position in the list moves. The
+  /// media session is updated with the new order so next/previous from the
+  /// notification and Android Auto follow the same shuffle as the queue page.
+  void shuffleQueue() {
+    if (_queue.length < 2) return;
+    final current = _currentIndex >= 0 && _currentIndex < _queue.length
+        ? _queue[_currentIndex]
+        : null;
+    _queue.shuffle();
+    if (current != null) {
+      var index = _queue.indexWhere((track) => identical(track, current));
+      if (index == -1) {
+        index = _queue.indexWhere((track) => track.id == current.id);
+      }
+      if (index != -1) _currentIndex = index;
+    }
+    audioHandler?.setQueue(_queue, startIndex: _currentIndex);
+    notifyListeners();
+  }
+
   Future<void> playFromQueue(int index) async {
+    if (!PlaybackAccess.instance.canPlay) return;
     if (index < 0 || index >= _queue.length) return;
     _currentIndex = index;
     await play(_queue[index], queue: _queue, sourceId: _sourceId);
@@ -1178,6 +1374,7 @@ class PlayerProvider extends ChangeNotifier {
     _currentIndex = -1;
     _currentTrack = null;
     _isPlaying = false;
+    _handlingQueueEnd = false;
     notifyListeners();
   }
 
@@ -1307,6 +1504,7 @@ class PlayerProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    PlaybackAccess.instance.removeListener(_onPlaybackAccessChanged);
     _radioDriftTimer?.cancel();
     _positionFallbackTimer?.cancel();
     _savePlayerState();
@@ -1334,6 +1532,18 @@ class PlayerProvider extends ChangeNotifier {
       // The queue/track are restored asynchronously; make sure that has
       // happened before publishing the session to the media session.
       await _stateLoadFuture;
+      // A cold Android Auto start can reach this before the auth stream has
+      // reported the cached account. Wait briefly for that decision, then fail
+      // closed rather than expose a suspended account's queue to the car.
+      try {
+        await PlaybackAccess.instance.whenKnown.timeout(
+          const Duration(seconds: 10),
+        );
+      } on TimeoutException {
+        debugPrint('[Player] auto session restore skipped: account unknown');
+        return;
+      }
+      if (!PlaybackAccess.instance.canPlay) return;
       final handler = audioHandler;
       if (handler == null) return;
       if (_queue.isEmpty) {

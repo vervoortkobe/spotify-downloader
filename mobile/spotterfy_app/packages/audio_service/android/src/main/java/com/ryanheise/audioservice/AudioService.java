@@ -319,6 +319,14 @@ public class AudioService extends MediaBrowserServiceCompat {
         mediaSession.setCallback(mediaSessionCallback = new MediaSessionCallback());
         setSessionToken(mediaSession.getSessionToken());
         mediaSession.setQueue(queue);
+        // Bluetooth AVRCP only discovers *active* media sessions. Previously the
+        // session stayed inactive until the first playback state with
+        // playing=true, so a phone that had been restarted (or had never played
+        // in this process) did not appear in the car's media source list and the
+        // head unit could not start it. Activating the idle session here is safe:
+        // it creates no notification by itself and the restored queue/metadata
+        // are published as soon as the audio handler restores the session.
+        mediaSession.setActive(true);
 
         PowerManager pm = (PowerManager)getSystemService(Context.POWER_SERVICE);
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, AudioService.class.getName());

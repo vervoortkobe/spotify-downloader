@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Owns the playback preferences that are not tied to an account: the
-/// song-transition (crossfade) duration and whether the queue is restored on
-/// the next launch.
+/// song-transition (crossfade) duration, whether the queue is restored on the
+/// next launch, and whether playback continues after the queue ends.
 ///
 /// Persisted in SharedPreferences so the choices survive restarts. The
 /// transition value is read by PlayerProvider at the moment a crossfade is
@@ -16,6 +16,7 @@ class PlaybackSettingsController extends ChangeNotifier {
 
   static const _crossfadeKey = 'crossfade_seconds';
   static const _rememberQueueKey = 'remember_queue';
+  static const _continuePlayingKey = 'continue_playing';
 
   /// Crossfade length used when nothing has been stored yet.
   static const int defaultSeconds = 3;
@@ -27,14 +28,22 @@ class PlaybackSettingsController extends ChangeNotifier {
   /// preserves the behaviour the app had before the switch existed.
   static const bool defaultRememberQueue = true;
 
+  /// Keep playing after the last queued track. Defaulting off preserves the
+  /// app's existing stop-at-the-end behaviour until the user opts in.
+  static const bool defaultContinuePlaying = false;
+
   int _crossfadeSeconds = defaultSeconds;
   bool _rememberQueue = defaultRememberQueue;
+  bool _continuePlaying = defaultContinuePlaying;
 
   /// Crossfade length in seconds; 0 disables crossfading.
   int get crossfadeSeconds => _crossfadeSeconds;
 
   /// Whether the queue (and its position) is restored when the app reopens.
   bool get rememberQueue => _rememberQueue;
+
+  /// Whether reaching the end of the queue should keep music going.
+  bool get continuePlaying => _continuePlaying;
 
   bool _loaded = false;
 
@@ -56,6 +65,8 @@ class PlaybackSettingsController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       _crossfadeSeconds = prefs.getInt(_crossfadeKey) ?? defaultSeconds;
       _rememberQueue = prefs.getBool(_rememberQueueKey) ?? defaultRememberQueue;
+      _continuePlaying =
+          prefs.getBool(_continuePlayingKey) ?? defaultContinuePlaying;
     } catch (_) {
       // Preferences unavailable: keep the defaults rather than failing startup.
     }
@@ -83,6 +94,18 @@ class PlaybackSettingsController extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_rememberQueueKey, remember);
+    } catch (_) {
+      // Same as above: the switch still applies for this session.
+    }
+  }
+
+  Future<void> setContinuePlaying(bool continuePlaying) async {
+    if (_continuePlaying == continuePlaying) return;
+    _continuePlaying = continuePlaying;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_continuePlayingKey, continuePlaying);
     } catch (_) {
       // Same as above: the switch still applies for this session.
     }

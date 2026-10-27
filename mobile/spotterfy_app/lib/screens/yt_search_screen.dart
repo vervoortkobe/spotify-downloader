@@ -204,11 +204,10 @@ class _YtSearchScreenState extends State<YtSearchScreen> {
             // Queue and play live on the swipe (right = play now, left = add to
             // queue), so the row carries no inline transport buttons.
             emphasizeActions: true,
-            onPlay: () {
-              final p = context.read<PlayerProvider>();
-              p.setQueue(_results, startIndex: i);
-              p.play(t, queue: _results);
-            },
+            // Play just this result. Queueing every result turned tapping one
+            // song into "play this Search playlist", which made next skip into
+            // unrelated results the user never chose.
+            onPlay: () => context.read<PlayerProvider>().play(t, queue: [t]),
           );
         },
       );

@@ -81,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 _songTransitionRow(),
+                _continuePlayingRow(),
                 _rememberQueueRow(),
 
                 const SizedBox(height: 24),
@@ -419,6 +420,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Switch for keeping music going when the last queued track finishes.
+  Widget _continuePlayingRow() {
+    final controller = PlaybackSettingsController.instance;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final on = controller.continuePlaying;
+        void set(bool value) => controller.setContinuePlaying(value);
+
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: SpotterfyTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => set(!on),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.all_inclusive_rounded,
+                      color: SpotterfyTheme.muted,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Continue Playing',
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Replay the queue, or pick a random library playlist',
+                            style: TextStyle(
+                              color: SpotterfyTheme.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Switch(value: on, onChanged: set),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

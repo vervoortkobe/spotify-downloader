@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,6 +51,18 @@ class PlaylistProvider extends ChangeNotifier {
         shared: List.of(_sharedPlaylists),
         community: await communityPlaylists(),
       );
+    });
+    // Queue-end autoplay asks for a random playlist without a BuildContext.
+    // Pick from the signed-in user's own + shared playlists, skipping anything
+    // whose tracks have not been loaded so autoplay can never start silence.
+    AutoLibraryBridge.instance.bindRandomPlaylist(() {
+      final seen = <String>{};
+      final candidates = <PlaylistModel>[
+        ..._playlists,
+        ..._sharedPlaylists,
+      ].where((p) => p.tracks.isNotEmpty && seen.add(p.id)).toList();
+      if (candidates.isEmpty) return null;
+      return candidates[Random().nextInt(candidates.length)];
     });
   }
 

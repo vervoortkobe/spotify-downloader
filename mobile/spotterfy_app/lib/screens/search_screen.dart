@@ -445,6 +445,21 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
+  /// Builds the playable [TrackModel] for a radio station.
+  TrackModel _radioTrack(Map<String, dynamic> station) => TrackModel(
+    id: 'radio_${station['name']!.replaceAll(' ', '_').toLowerCase()}',
+    title: station['name']!,
+    artists: 'Live Radio',
+    album: 'Radio',
+    cover: station['logo']!,
+    sourceUrl: station['streaming_url']!,
+  );
+
+  /// The full station list as a queue, so prev/next in the now-playing page and
+  /// on the media session move between stations instead of ending playback.
+  List<TrackModel> get _radioQueue =>
+      _radioStations.map(_radioTrack).toList(growable: false);
+
   Future<void> _playRadioStation(Map<String, dynamic> station) async {
     if (!_isOnline) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -453,15 +468,12 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
     final playerProv = context.read<PlayerProvider>();
-    final track = TrackModel(
-      id: 'radio_${station['name']!.replaceAll(' ', '_').toLowerCase()}',
-      title: station['name']!,
-      artists: 'Live Radio',
-      album: 'Radio',
-      cover: station['logo']!,
-      sourceUrl: station['streaming_url']!,
+    final queue = _radioQueue;
+    final index = _radioStations.indexWhere(
+      (s) => s['name'] == station['name'],
     );
-    await playerProv.play(track);
+    final selected = index < 0 ? queue.first : queue[index];
+    await playerProv.play(selected, queue: queue);
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
@@ -821,6 +833,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }) {
     // Square cards; title overlays the cover bottom on a blur
     const cardW = 110.0;
+    const skeletonCount = 5;
     final player = context.watch<PlayerProvider>();
     if (isLoading && data.isEmpty) {
       return Column(
@@ -850,9 +863,12 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
           _cardRow(
-            count: 5,
-            item: (_) => Container(
+            count: skeletonCount,
+            item: (i) => Container(
               width: cardW,
+              // Same 10px gutter as the real cards, so the skeleton has the
+              // same rhythm and does not reflow when the content arrives.
+              margin: EdgeInsets.only(right: i == skeletonCount - 1 ? 0 : 10),
               decoration: BoxDecoration(
                 color: SpotterfyTheme.card,
                 borderRadius: BorderRadius.circular(12),

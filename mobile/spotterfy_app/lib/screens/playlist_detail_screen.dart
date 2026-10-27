@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1403,10 +1401,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   void _playSelection(BuildContext context) {
     final tracks = _selecting ? _selectedTracks : _playlist.tracks;
     if (tracks.isEmpty) return;
+    _startPlayback(context, _shuffleOn ? ([...tracks]..shuffle()) : tracks);
+    _clearSelection();
+  }
+
+  /// Starts [tracks] from the top, with the playlist as playback source.
+  void _startPlayback(BuildContext context, List<TrackModel> tracks) {
+    if (tracks.isEmpty) return;
     final player = context.read<PlayerProvider>();
     player.setQueue(tracks, startIndex: 0);
     player.play(tracks.first, queue: tracks, sourceId: _playlist.id);
-    _clearSelection();
   }
 
   /// Appends the selection (or the whole playlist) to the queue.
@@ -1486,17 +1490,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     }
   }
 
-  /// Plays the playlist from a random track, but keeps the original order.
+  /// Plays the whole playlist in a random order.
   ///
-  /// Shuffling the queue itself would leave the track list scrambled once the
-  /// user hit "next", which is rarely what "shuffle" is meant to mean.
+  /// The randomised order is written into the queue itself, so "next" keeps
+  /// following the shuffle instead of snapping back to the saved order, and the
+  /// queue page shows exactly what will play.
   void _shuffleAll() {
     final tracks = _playbackOrder;
     if (tracks.isEmpty) return;
-    // The index has to match the track, or playback would start on the first
-    // song while the queue claims it's somewhere else.
-    final start = Random().nextInt(tracks.length);
-    _playTrack(context, tracks[start], start);
+    _startPlayback(context, [...tracks]..shuffle());
   }
 
   void _sharePlaylist(BuildContext context) async {

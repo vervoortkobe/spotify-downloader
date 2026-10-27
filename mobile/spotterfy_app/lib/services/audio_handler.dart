@@ -6,6 +6,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:rxdart/rxdart.dart' show ValueStream;
 import '../models/track_model.dart';
 import 'auto_media_library.dart';
+import 'playback_access.dart';
 
 SpotterfyAudioHandler? audioHandler;
 Completer<SpotterfyAudioHandler?>? _initCompleter;
@@ -29,15 +30,6 @@ void bindAudioHandlerCallbacks({
   _onSkipNext = onSkipNext;
   _onSkipPrev = onSkipPrev;
   _onSeek = onSeek;
-}
-
-bool _isRadioTrack(TrackModel t) {
-  final u = t.sourceUrl.toLowerCase();
-  return t.id.startsWith('radio_') ||
-      u.contains('icecast.vrtcdn.be') ||
-      u.contains('qmusic.be') ||
-      u.contains('joe.be') ||
-      u.contains('streamtheworld.com');
 }
 
 /// Broadcast channel backing `subscribeToChildren`.
@@ -143,6 +135,10 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     required bool wasPlaying,
   }) async {
     if (queue.isEmpty) return;
+    if (!PlaybackAccess.instance.canPlay) {
+      clearSession();
+      return;
+    }
     final i = index.clamp(0, queue.length - 1);
     _tracks = List.of(queue);
     _index = i;
@@ -158,6 +154,11 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     mediaItem.add(item);
     AutoLibraryBridge.instance.updatePlaybackState(_tracks, queue[i]);
     _publishCurrentArt();
+    // Publish the paused state immediately. Without this broadcast the session
+    // keeps the empty idle state it got on service creation, so a Bluetooth/AVRCP
+    // head unit sees the restored metadata but has no play/next/previous
+    // transport actions and the progress bar has no duration/position.
+    _markDirty(force: true);
     // Ask the car to re-read the tree now that there is a session to resume.
     AutoLibraryBridge.libraryChanged();
     if (wasPlaying) {
@@ -181,11 +182,9 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     playbackState.add(
       PlaybackState(
         controls: [MediaControl.play],
-        // Skip comes from `controls`, not a seek action. Note that
-        // audio_service's Android service always advertises rewind/fast-forward
-        // (see AUTO_ENABLED_ACTIONS in the plugin), so Android Auto can still
-        // choose its -10s/+10s buttons over prev/next; that is not switchable
-        // from the app without patching the plugin.
+        // The local audio_service Android implementation omits rewind/fast
+        // forward from its default actions, so Android Auto picks track
+        // navigation. Skip is advertised again once the session has a queue.
         systemActions: const {MediaAction.seek},
         androidCompactActionIndices: const [0],
         processingState: AudioProcessingState.idle,
@@ -332,11 +331,16 @@ class SpotterfyAudioHandler extends BaseAudioHandler
   Future<void> playFromMediaId(
     String mediaId, [
     Map<String, dynamic>? extras,
-  ]) => AutoLibraryBridge.instance.playFromMediaId(mediaId);
+  ]) async {
+    if (!PlaybackAccess.instance.canPlay) return;
+    await AutoLibraryBridge.instance.playFromMediaId(mediaId);
+  }
 
   @override
-  Future<void> playFromSearch(String query, [Map<String, dynamic>? extras]) =>
-      AutoLibraryBridge.instance.playFromSearch(query);
+  Future<void> playFromSearch(String query, [Map<String, dynamic>? extras]) {
+    if (!PlaybackAccess.instance.canPlay) return Future<void>.value();
+    return AutoLibraryBridge.instance.playFromSearch(query);
+  }
 
   @override
   ValueStream<Map<String, dynamic>> subscribeToChildren(String parentMediaId) {
@@ -391,31 +395,12 @@ class SpotterfyAudioHandler extends BaseAudioHandler
   }
 
   void _doBroadcast() {
-    final isRadio =
-        _tracks.isNotEmpty && _index >= 0 && _isRadioTrack(_tracks[_index]);
-    // Radio: no next/prev - just play/pause. The seek bar stays (MediaAction
-    // .seek) but the -10s/+10s system buttons are left out.
-    if (isRadio) {
-      playbackState.add(
-        PlaybackState(
-          controls: [_isPlaying ? MediaControl.pause : MediaControl.play],
-          systemActions: const {MediaAction.seek},
-          androidCompactActionIndices: const [0],
-          processingState: AudioProcessingState.ready,
-          playing: _isPlaying,
-          updatePosition: _position,
-          bufferedPosition: _buffered,
-          speed: 1.0,
-          queueIndex: _index >= 0 ? _index : null,
-        ),
-      );
-      return;
-    }
-    final hasPrev = _index > 0;
-    final hasNext = _index + 1 < _tracks.length;
+    final blocked = !PlaybackAccess.instance.canPlay;
+    final hasPrev = !blocked && _index > 0;
+    final hasNext = !blocked && _index + 1 < _tracks.length;
     final controls = <MediaControl>[
       if (hasPrev) MediaControl.skipToPrevious,
-      _isPlaying ? MediaControl.pause : MediaControl.play,
+      if (!blocked) _isPlaying ? MediaControl.pause : MediaControl.play,
       if (hasNext) MediaControl.skipToNext,
     ];
     final prevIdx = controls.indexOf(MediaControl.skipToPrevious);
@@ -426,17 +411,24 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     playbackState.add(
       PlaybackState(
         controls: controls,
-        // Prev/next come from `controls`; `seek` keeps the scrubber. The local
-        // audio_service Android implementation omits rewind/fast-forward from
-        // its default session actions so Android Auto uses track navigation.
-        systemActions: const {MediaAction.seek},
+        // `controls` already contribute their action bits natively; listing the
+        // skip actions here as well makes the transport capabilities explicit
+        // to Bluetooth/AVRCP head units, which do not read the notification
+        // button list. `seek` keeps the progress scrubber alive.
+        systemActions: {
+          if (!blocked) MediaAction.seek,
+          if (hasPrev) MediaAction.skipToPrevious,
+          if (hasNext) MediaAction.skipToNext,
+        },
         androidCompactActionIndices: [
           if (prevIdx != -1) prevIdx,
           if (playIdx != -1) playIdx,
           if (nextIdx != -1) nextIdx,
         ],
-        processingState: AudioProcessingState.ready,
-        playing: _isPlaying,
+        processingState: blocked
+            ? AudioProcessingState.idle
+            : AudioProcessingState.ready,
+        playing: !blocked && _isPlaying,
         updatePosition: _position,
         bufferedPosition: _buffered,
         speed: 1.0,
@@ -475,7 +467,19 @@ class SpotterfyAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> play() async {
+    if (!PlaybackAccess.instance.canPlay) {
+      _isPlaying = false;
+      _markDirty(force: true);
+      return;
+    }
     if (_onPlay != null) await _onPlay!();
+    // The gate can close while the provider is resolving a source. Never leave
+    // the media session claiming to play after a suspended resume.
+    if (!PlaybackAccess.instance.canPlay) {
+      _isPlaying = false;
+      _markDirty(force: true);
+      return;
+    }
     _isPlaying = true;
     _markDirty(force: true);
   }
@@ -487,6 +491,30 @@ class SpotterfyAudioHandler extends BaseAudioHandler
     _markDirty(force: true);
   }
 
+  /// Bluetooth headset/car media buttons arrive here rather than as transport
+  /// callbacks on some head units. The default BaseAudioHandler implementation
+  /// reads the latest broadcast playback state, which can lag one tick behind;
+  /// handling the button against the handler's own state makes play/pause and
+  /// next/previous deterministic.
+  @override
+  Future<void> click([MediaButton button = MediaButton.media]) async {
+    switch (button) {
+      case MediaButton.media:
+        if (_isPlaying) {
+          await pause();
+        } else {
+          await play();
+        }
+        return;
+      case MediaButton.next:
+        await skipToNext();
+        return;
+      case MediaButton.previous:
+        await skipToPrevious();
+        return;
+    }
+  }
+
   @override
   Future<void> stop() async {
     _isPlaying = false;
@@ -495,6 +523,7 @@ class SpotterfyAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToNext() async {
+    if (!PlaybackAccess.instance.canPlay) return;
     if (_onSkipNext != null) {
       await _onSkipNext!();
       return;
@@ -510,6 +539,7 @@ class SpotterfyAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToPrevious() async {
+    if (!PlaybackAccess.instance.canPlay) return;
     if (_onSkipPrev != null) {
       await _onSkipPrev!();
       return;
@@ -525,6 +555,7 @@ class SpotterfyAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToQueueItem(int index) async {
+    if (!PlaybackAccess.instance.canPlay) return;
     if (index < 0 || index >= _tracks.length) return;
     _index = index;
     mediaItem.add(_toMediaItem(_tracks[_index]).copyWith(duration: _duration));

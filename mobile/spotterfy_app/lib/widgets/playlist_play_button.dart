@@ -21,6 +21,9 @@ class PlaylistPlayButton extends StatefulWidget {
   /// Keeps the mini-player button green-tinted regardless of playback state.
   final bool alwaysGreen;
 
+  /// Track is still loading/buffering, so show a spinner instead of the glyph.
+  final bool isLoading;
+
   final String tooltip;
 
   const PlaylistPlayButton({
@@ -30,6 +33,7 @@ class PlaylistPlayButton extends StatefulWidget {
     this.isPlaying = false,
     this.isActive = false,
     this.alwaysGreen = false,
+    this.isLoading = false,
     this.tooltip = 'Play',
   });
 
@@ -114,13 +118,24 @@ class _PlaylistPlayButtonState extends State<PlaylistPlayButton> {
                   ),
                 ],
               ),
-              child: Icon(
-                widget.isPlaying
-                    ? Icons.pause_rounded
-                    : Icons.play_arrow_rounded,
-                color: foreground,
-                size: widget.size * 0.55,
-              ),
+              child: widget.isLoading
+                  ? Center(
+                      child: SizedBox(
+                        width: widget.size * 0.46,
+                        height: widget.size * 0.46,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          valueColor: AlwaysStoppedAnimation<Color>(foreground),
+                        ),
+                      ),
+                    )
+                  : Icon(
+                      widget.isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: foreground,
+                      size: widget.size * 0.55,
+                    ),
             ),
           ),
         ),

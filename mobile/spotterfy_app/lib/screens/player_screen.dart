@@ -222,8 +222,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                       _SeekSection(duration: dur, isRadio: isRadio),
                       const SizedBox(height: 20),
                       // Controls: symmetric layout so play/pause is always dead
-                      // centre regardless of whether the skip buttons are shown.
-                      _PlayerControls(player: player, isRadio: isRadio),
+                      // centre. Radio now has a real station queue too, so its
+                      // prev/next controls work exactly like the song page.
+                      _PlayerControls(player: player),
                       const SizedBox(height: 14),
                       SizedBox(
                         height: 20,
@@ -470,51 +471,44 @@ class _AnimatedGreenBackdropState extends State<_AnimatedGreenBackdrop>
 }
 
 /// Play/pause flanked by the skip buttons, laid out symmetrically so the
-/// primary control is always centred (including for radio, where the skip
-/// buttons are replaced by equal-width spacers).
+/// primary control is always centred. Radio uses the same controls; its queue
+/// is the station list, so prev/next move between stations.
 class _PlayerControls extends StatelessWidget {
   final PlayerProvider player;
-  final bool isRadio;
 
-  const _PlayerControls({required this.player, required this.isRadio});
+  const _PlayerControls({required this.player});
 
   @override
   Widget build(BuildContext context) {
-    const side = 48.0;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (!isRadio)
-          _CircleControlButton(
-            icon: Icons.skip_previous_rounded,
-            tooltip: 'Previous',
-            onTap: () {
-              HapticFeedback.lightImpact();
-              player.previous();
-            },
-          )
-        else
-          const SizedBox(width: side),
+        _CircleControlButton(
+          icon: Icons.skip_previous_rounded,
+          tooltip: 'Previous',
+          onTap: () {
+            HapticFeedback.lightImpact();
+            player.previous();
+          },
+        ),
         const SizedBox(width: 32),
         _PlayPauseButton(
           isPlaying: player.isPlaying,
+          isLoading: player.isLoading,
           onTap: () {
             HapticFeedback.lightImpact();
             player.togglePlayPause();
           },
         ),
         const SizedBox(width: 32),
-        if (!isRadio)
-          _CircleControlButton(
-            icon: Icons.skip_next_rounded,
-            tooltip: 'Next',
-            onTap: () {
-              HapticFeedback.lightImpact();
-              player.next();
-            },
-          )
-        else
-          const SizedBox(width: side),
+        _CircleControlButton(
+          icon: Icons.skip_next_rounded,
+          tooltip: 'Next',
+          onTap: () {
+            HapticFeedback.lightImpact();
+            player.next();
+          },
+        ),
       ],
     );
   }
@@ -522,9 +516,14 @@ class _PlayerControls extends StatelessWidget {
 
 class _PlayPauseButton extends StatelessWidget {
   final bool isPlaying;
+  final bool isLoading;
   final VoidCallback onTap;
 
-  const _PlayPauseButton({required this.isPlaying, required this.onTap});
+  const _PlayPauseButton({
+    required this.isPlaying,
+    required this.isLoading,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -549,11 +548,22 @@ class _PlayPauseButton extends StatelessWidget {
               ),
             ],
           ),
-          child: Icon(
-            isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            color: Colors.white,
-            size: 34,
-          ),
+          child: isLoading
+              ? const Center(
+                  child: SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                )
+              : Icon(
+                  isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 34,
+                ),
         ),
       ),
     );
@@ -983,9 +993,7 @@ class _TrackDownloadButton extends StatelessWidget {
                       ),
                     )
                   : Icon(
-                      downloaded
-                          ? Icons.check_rounded
-                          : Icons.download_rounded,
+                      downloaded ? Icons.check_rounded : Icons.download_rounded,
                       color: downloaded
                           ? SpotterfyTheme.primary
                           : SpotterfyTheme.text,

@@ -455,14 +455,15 @@ class _MiniPlayPauseButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<PlayerProvider, bool>(
-      selector: (_, p) => p.isPlaying,
-      builder: (context, isPlaying, _) => PlaylistPlayButton(
+    return Selector<PlayerProvider, ({bool playing, bool loading})>(
+      selector: (_, p) => (playing: p.isPlaying, loading: p.isLoading),
+      builder: (context, state, _) => PlaylistPlayButton(
         size: 40,
-        isPlaying: isPlaying,
-        isActive: isPlaying,
+        isPlaying: state.playing,
+        isActive: state.playing,
         alwaysGreen: true,
-        tooltip: isPlaying ? 'Pause' : 'Play',
+        isLoading: state.loading,
+        tooltip: state.loading ? 'Loading' : (state.playing ? 'Pause' : 'Play'),
         onPressed: () {
           HapticFeedback.lightImpact();
           player.togglePlayPause();

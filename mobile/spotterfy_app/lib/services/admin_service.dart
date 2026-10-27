@@ -26,8 +26,8 @@ class AdminService {
       _firestore.collection('users').get(),
       _firestore.collectionGroup('presence').get(),
     ]);
-    final userSnap = results[0] as QuerySnapshot<Map<String, dynamic>>;
-    final presenceSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
+    final userSnap = results[0];
+    final presenceSnap = results[1];
     return _decodeUsers(userSnap.docs, _presenceByUid(presenceSnap));
   }
 
@@ -73,20 +73,19 @@ class AdminService {
       controller.add(result);
     }
 
-    final usersSub = _firestore.collection('users').snapshots().listen(
-      (snapshot) {
-        users = snapshot.docs;
-        emit();
-      },
-      onError: controller.addError,
-    );
-    final presenceSub = _firestore.collectionGroup('presence').snapshots().listen(
-      (snapshot) {
-        presence = _presenceByUid(snapshot);
-        emit();
-      },
-      onError: controller.addError,
-    );
+    final usersSub = _firestore.collection('users').snapshots().listen((
+      snapshot,
+    ) {
+      users = snapshot.docs;
+      emit();
+    }, onError: controller.addError);
+    final presenceSub = _firestore
+        .collectionGroup('presence')
+        .snapshots()
+        .listen((snapshot) {
+          presence = _presenceByUid(snapshot);
+          emit();
+        }, onError: controller.addError);
     controller.onCancel = () async {
       await usersSub.cancel();
       await presenceSub.cancel();
@@ -172,4 +171,3 @@ class AdminService {
     await _firestore.collection('feedback').doc(feedbackId).delete();
   }
 }
-

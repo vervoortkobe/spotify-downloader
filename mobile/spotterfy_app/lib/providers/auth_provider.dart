@@ -7,6 +7,7 @@ import 'package:spotterfy_app/models/user_model.dart';
 import 'package:spotterfy_app/services/auth_service.dart';
 import 'package:spotterfy_app/services/avatar_cache.dart';
 import 'package:spotterfy_app/services/firebase_service.dart';
+import 'package:spotterfy_app/services/playback_access.dart';
 
 // Top-level for compute() - must not be inside class
 UserModel? _parseUserIsolate(String cached) {
@@ -75,6 +76,15 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// access to the admin panel.
   bool get needsModeration => isSuspended;
 
+  /// Mirrors the account's moderation state into the playback gate.
+  ///
+  /// This is deliberately synchronous: the moment a profile snapshot says the
+  /// account is suspended, PlayerProvider can stop the current audio before the
+  /// next notification or car button reaches it.
+  void _syncPlaybackAccess() {
+    PlaybackAccess.instance.update(suspended: _user?.isSuspended ?? false);
+  }
+
   AuthProvider() {
     WidgetsBinding.instance.addObserver(this);
     _init();
@@ -105,7 +115,8 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
       _presenceUid = uid;
       _presenceOnline = false;
       _presenceHeartbeat = Timer.periodic(const Duration(minutes: 1), (_) {
-        if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        if (WidgetsBinding.instance.lifecycleState ==
+            AppLifecycleState.resumed) {
           unawaited(_writeOnlineStatus(true));
         }
       });
@@ -151,6 +162,10 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     await _ensureFirebase();
     // Load cached user off UI thread - avoid blocking first frame
     await _loadCachedUser();
+    // A cached suspended account must close the playback gate before Android
+    // Auto restores the saved queue. With no cache the gate stays closed until
+    // the auth stream reports the real account below.
+    if (_user != null) _syncPlaybackAccess();
     // Defer first notify to next frame so Splash can build once without jank
     Future.microtask(() {
       _isLoading = false;
@@ -209,6 +224,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
         debugPrint('Auth state listener error: $e');
       }
       if (generation != _authEventGeneration) return;
+      _syncPlaybackAccess();
       if (firebaseUser != null) {
         _startPresence(firebaseUser.uid);
       } else {
@@ -233,6 +249,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
           return;
         }
         _user = freshUser;
+        _syncPlaybackAccess();
         unawaited(_saveCachedUser());
         notifyListeners();
       },
@@ -333,6 +350,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final user = await _authService.signInWithGoogle();
       _user = user;
+      _syncPlaybackAccess();
       if (user != null) {
         unawaited(AvatarCache.warm(user.photoUrl));
         await _saveCachedUser();
@@ -360,6 +378,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
       debugPrint('Sign-out error (clearing local state anyway): $e');
     }
     _user = null;
+    _syncPlaybackAccess();
     await _saveCachedUser();
     notifyListeners();
   }
@@ -457,6 +476,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     final refreshed = await _authService.getUserData(current.uid);
     if (generation != _authEventGeneration || refreshed == null) return;
     _user = refreshed;
+    _syncPlaybackAccess();
     await _saveCachedUser();
     notifyListeners();
   }

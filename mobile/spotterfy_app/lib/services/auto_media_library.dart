@@ -51,10 +51,30 @@ class AutoLibraryBridge {
 
   Future<AutoLibrarySnapshot> Function()? _libraryLoader;
   Future<void> Function(List<TrackModel> tracks, int index)? _playTracks;
+  PlaylistModel? Function()? _randomPlaylist;
 
   /// [PlaylistProvider] registers the library source here.
   void bindLibrary(Future<AutoLibrarySnapshot> Function() loader) =>
       _libraryLoader = loader;
+
+  /// [PlaylistProvider] registers the in-memory library picker here.
+  ///
+  /// Queue-end autoplay runs from the provider layer, which has no BuildContext
+  /// and therefore cannot read `PlaylistProvider`. Keeping the picker here means
+  /// it uses the library already in memory instead of re-querying Firestore at
+  /// the exact moment a track ends.
+  void bindRandomPlaylist(PlaylistModel? Function() provider) =>
+      _randomPlaylist = provider;
+
+  /// A random non-empty playlist from the user's own/shared library, if any.
+  PlaylistModel? randomLibraryPlaylist() {
+    try {
+      return _randomPlaylist?.call();
+    } catch (e) {
+      debugPrint('[Auto] random playlist lookup failed: $e');
+      return null;
+    }
+  }
 
   /// Fired once the browse tree has content that can be offered to the car.
   ///
@@ -457,7 +477,9 @@ class AutoLibraryBridge {
     duration: t.durationMs > 0
         ? Duration(milliseconds: t.durationMs)
         : _durationCache[t.id],
-    artUri: t.cover.isNotEmpty ? Uri.tryParse(t.cover) : _artUriCache[t.id],
+    // `artwork` also supplies YouTube's predictable thumbnail for yt_ tracks,
+    // which otherwise reached the car with no cover at all.
+    artUri: t.artwork.isNotEmpty ? Uri.tryParse(t.artwork) : _artUriCache[t.id],
   );
 
   // --- Caches -------------------------------------------------------------
@@ -484,8 +506,8 @@ class AutoLibraryBridge {
     if (cached != null || _artUriCache.containsKey(t.id)) return cached;
 
     Uri? uri;
-    if (t.cover.isNotEmpty) {
-      uri = Uri.tryParse(t.cover);
+    if (t.artwork.isNotEmpty) {
+      uri = Uri.tryParse(t.artwork);
     } else if (isStorageTrack(t)) {
       uri = await _extractEmbeddedArt(t);
     }

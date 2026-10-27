@@ -54,6 +54,36 @@ class QueueScreen extends StatelessWidget {
             letterSpacing: -0.5,
           ),
         ),
+        actions: [
+          Consumer<PlayerProvider>(
+            builder: (context, player, _) {
+              final canShuffle = player.queue.length > 1;
+              return IconButton(
+                tooltip: 'Shuffle queue',
+                onPressed: canShuffle
+                    ? () {
+                        HapticFeedback.mediumImpact();
+                        player.shuffleQueue();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text('Queue shuffled'),
+                            duration: const Duration(milliseconds: 900),
+                            backgroundColor: SpotterfyTheme.surface,
+                          ),
+                        );
+                      }
+                    : null,
+                icon: Icon(
+                  Icons.shuffle_rounded,
+                  color: canShuffle
+                      ? SpotterfyTheme.text
+                      : SpotterfyTheme.mutedDark,
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: Consumer<PlayerProvider>(
         builder: (context, player, _) {
