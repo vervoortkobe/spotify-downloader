@@ -7,6 +7,9 @@ import 'package:spotterfy_app/models/user_model.dart';
 import 'package:spotterfy_app/services/auth_service.dart';
 import 'package:spotterfy_app/services/avatar_cache.dart';
 import 'package:spotterfy_app/services/firebase_service.dart';
+import 'package:spotterfy_app/providers/equalizer_provider.dart';
+import 'package:spotterfy_app/providers/playback_settings_controller.dart';
+import 'package:spotterfy_app/providers/theme_controller.dart';
 import 'package:spotterfy_app/services/playback_access.dart';
 
 // Top-level for compute() - must not be inside class
@@ -82,7 +85,10 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// account is suspended, PlayerProvider can stop the current audio before the
   /// next notification or car button reaches it.
   void _syncPlaybackAccess() {
-    PlaybackAccess.instance.update(suspended: _user?.isSuspended ?? false);
+    PlaybackAccess.instance.update(
+      suspended: _user?.isSuspended ?? false,
+      softBanned: _user?.isSoftBanned ?? false,
+    );
   }
 
   AuthProvider() {
@@ -250,6 +256,9 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
         }
         _user = freshUser;
         _syncPlaybackAccess();
+        PlaybackSettingsController.instance.bindUid(freshUser.uid);
+        ThemeController.instance.bindUid(freshUser.uid);
+        EqualizerProvider.setUid(freshUser.uid);
         unawaited(_saveCachedUser());
         notifyListeners();
       },
@@ -379,6 +388,9 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
     _user = null;
     _syncPlaybackAccess();
+    PlaybackSettingsController.instance.bindUid(null);
+    ThemeController.instance.bindUid(null);
+    EqualizerProvider.setUid(null);
     await _saveCachedUser();
     notifyListeners();
   }

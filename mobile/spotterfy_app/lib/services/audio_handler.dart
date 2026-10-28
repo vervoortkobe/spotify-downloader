@@ -185,7 +185,7 @@ class SpotterfyAudioHandler extends BaseAudioHandler
         // The local audio_service Android implementation omits rewind/fast
         // forward from its default actions, so Android Auto picks track
         // navigation. Skip is advertised again once the session has a queue.
-        systemActions: const {MediaAction.seek},
+        systemActions: const {MediaAction.seek, MediaAction.playPause},
         androidCompactActionIndices: const [0],
         processingState: AudioProcessingState.idle,
         playing: false,
@@ -416,7 +416,8 @@ class SpotterfyAudioHandler extends BaseAudioHandler
         // to Bluetooth/AVRCP head units, which do not read the notification
         // button list. `seek` keeps the progress scrubber alive.
         systemActions: {
-          if (!blocked) MediaAction.seek,
+          MediaAction.seek, // ALWAYS — BT/AVRCP needs this unconditionally
+          if (!blocked) MediaAction.playPause,
           if (hasPrev) MediaAction.skipToPrevious,
           if (hasNext) MediaAction.skipToNext,
         },

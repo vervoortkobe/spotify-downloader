@@ -118,24 +118,27 @@ class _PlaylistPlayButtonState extends State<PlaylistPlayButton> {
                   ),
                 ],
               ),
-              child: widget.isLoading
-                  ? Center(
-                      child: SizedBox(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: widget.isLoading
+                    ? SizedBox(
+                        key: const ValueKey('spinner'),
                         width: widget.size * 0.46,
                         height: widget.size * 0.46,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.2,
                           valueColor: AlwaysStoppedAnimation<Color>(foreground),
                         ),
+                      )
+                    : Icon(
+                        key: const ValueKey('icon'),
+                        widget.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        color: foreground,
+                        size: widget.size * 0.55,
                       ),
-                    )
-                  : Icon(
-                      widget.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      color: foreground,
-                      size: widget.size * 0.55,
-                    ),
+              ),
             ),
           ),
         ),

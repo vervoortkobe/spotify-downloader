@@ -468,12 +468,13 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
     final playerProv = context.read<PlayerProvider>();
-    final queue = _radioQueue;
+    final stations = _radioQueue;
     final index = _radioStations.indexWhere(
       (s) => s['name'] == station['name'],
     );
-    final selected = index < 0 ? queue.first : queue[index];
-    await playerProv.play(selected, queue: queue);
+    // Use playRadioStation so the user's song queue is preserved and
+    // prev/next navigates between stations instead of replacing the queue.
+    await playerProv.playRadioStation(stations, index < 0 ? 0 : index);
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,

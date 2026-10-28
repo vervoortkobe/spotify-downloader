@@ -15,7 +15,7 @@ import 'package:spotterfy_app/services/playback_access.dart';
 import 'package:spotterfy_app/providers/equalizer_provider.dart';
 import 'package:spotterfy_app/providers/playback_settings_controller.dart';
 
-class PlayerProvider extends ChangeNotifier {
+class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   // just_audio player with the shared EQ pipeline (equalizer + loudness).
   // Audio focus/session config lives in SpotterfyAudioHandler._initSession.
   // Not final: a crossfade swaps in a secondary player once the incoming
@@ -35,6 +35,7 @@ class PlayerProvider extends ChangeNotifier {
   bool _handlingQueueEnd = false;
   Duration _position = Duration.zero;
   DateTime _lastPositionChangeAt = DateTime.now();
+  DateTime _lastStateSaveAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _positionFallbackTimer;
 
   /// Id of the playlist playback was started from, when it came from one.
@@ -120,8 +121,18 @@ class PlayerProvider extends ChangeNotifier {
   Duration get duration => _duration;
   Duration get buffered => _buffered;
   bool get hasQueue => _queue.isNotEmpty;
-  bool get hasNext => _queue.isNotEmpty && _currentIndex < _queue.length - 1;
-  bool get hasPrevious => _queue.isNotEmpty && _currentIndex > 0;
+  bool get hasNext =>
+      // In radio mode: there's a next station, OR there's a next queue track to fall back to.
+      isRadioMode
+          ? (_radioIndex < _radioStations.length - 1 ||
+                (_queue.isNotEmpty && _currentIndex < _queue.length - 1))
+          : (_queue.isNotEmpty && _currentIndex < _queue.length - 1);
+  bool get hasPrevious =>
+      // In radio mode: there's a previous station, OR there's a previous queue track to fall back to.
+      isRadioMode
+          ? (_radioIndex > 0 ||
+                (_queue.isNotEmpty && _currentIndex > 0))
+          : (_queue.isNotEmpty && _currentIndex > 0);
 
   Future<void> syncUid(String? uid) async {
     final generation = ++_uidSyncGeneration;
@@ -180,6 +191,8 @@ class PlayerProvider extends ChangeNotifier {
     _duration = Duration.zero;
     _buffered = Duration.zero;
     _radioMaxListened = Duration.zero;
+    _radioStations = [];
+    _radioIndex = -1;
     positionNotifier.value = Duration.zero;
     bufferedNotifier.value = Duration.zero;
     durationNotifier.value = Duration.zero;
@@ -189,6 +202,8 @@ class PlayerProvider extends ChangeNotifier {
     await prefs.remove('player_current_index');
     await prefs.remove('player_was_playing');
     await prefs.remove('player_position_ms');
+    await prefs.remove('player_resume_track');
+    await prefs.remove('player_resume_position_ms');
     await prefs.remove('player_source_id');
     await prefs.remove('player_recently_played');
     await prefs.remove('player_state_uid');
@@ -228,6 +243,8 @@ class PlayerProvider extends ChangeNotifier {
     positionNotifier.value = Duration.zero;
     durationNotifier.value = Duration.zero;
     bufferedNotifier.value = Duration.zero;
+    _radioStations = [];
+    _radioIndex = -1;
     audioHandler?.clearSession();
     try {
       await audioHandler?.stop();
@@ -257,11 +274,115 @@ class PlayerProvider extends ChangeNotifier {
 
   Duration get radioMaxListened => _radioMaxListened;
 
+  // --- Radio station mode ---
+  // Radio stations are tracked separately so they never overwrite the user's
+  // song queue. prev/next navigates within stations; at the boundaries it
+  // resumes the regular queue instead.
+  List<TrackModel> _radioStations = [];
+  int _radioIndex = -1;
+
+  /// True when the current track is a radio station that was started via
+  /// [playRadioStation]. Distinct from [isRadio] (which is purely URL-based):
+  /// radio mode is about the context, not the stream type.
+  bool get isRadioMode => _radioStations.isNotEmpty && _radioIndex >= 0;
+
+  /// Plays a radio station from [stations] without touching the song [_queue].
+  ///
+  /// The station list is stored separately so the user's queued songs are
+  /// preserved. prev/next will navigate within [stations]; reaching the first
+  /// or last boundary resumes the regular queue instead.
+  Future<void> playRadioStation(List<TrackModel> stations, int index) {
+    if (!PlaybackAccess.instance.canPlay) {
+      if (PlaybackAccess.instance.isSuspended) {
+        unawaited(_stopForSuspension());
+      }
+      return Future<void>.value();
+    }
+    if (stations.isEmpty) return Future<void>.value();
+    final clampedIndex = index.clamp(0, stations.length - 1);
+    _radioStations = List.from(stations);
+    _radioIndex = clampedIndex;
+    // Delegate to the underlying _playTrack via the deduplication wrapper so
+    // rapid taps on the same station share the in-flight load.
+    final track = _radioStations[_radioIndex];
+    if (_sourceId != null) {
+      _sourceId = _sourceId; // keep existing queue's sourceId
+    }
+    final request = ++_playRequestId;
+    _starting = true;
+    // Don't pass a queue: _playTrack will leave _queue untouched when queue is null.
+    final operation = _playTrackForRadio(track, request: request);
+    _activePlay = operation;
+    _activePlayTrackId = track.id;
+    return operation.whenComplete(() {
+      if (identical(_activePlay, operation)) {
+        _activePlay = null;
+        _activePlayTrackId = null;
+        _starting = false;
+      }
+    });
+  }
+
+  /// Like [_playTrack] but leaves [_queue]/[_currentIndex] untouched so the
+  /// user's song queue survives a radio session.
+  Future<void> _playTrackForRadio(TrackModel track, {required int request}) async {
+    final generation = _accountPlaybackGeneration;
+    if (!PlaybackAccess.instance.canPlay) return;
+    await _cancelCrossfade();
+    if (_isSuperseded(request, generation)) return;
+    _currentTrack = track;
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _buffered = Duration.zero;
+    positionNotifier.value = Duration.zero;
+    durationNotifier.value = Duration.zero;
+    bufferedNotifier.value = Duration.zero;
+    _radioMaxListened = Duration.zero;
+    _starting = true;
+    _pauseRequested = false;
+    _handleRadioDrift();
+    notifyListeners();
+    await ensureAudioHandler();
+    if (_isSuperseded(request, generation)) return;
+    _bindHandler();
+    final h = audioHandler;
+    if (h != null) {
+      await h.updateTrack(
+        track,
+        queue: _queue,
+        position: Duration.zero,
+        duration: Duration.zero,
+        isPlaying: true,
+      );
+      h.onSeekRequested = (pos) async => await seekTo(pos);
+    }
+    final loaded = await _loadInto(
+      _player,
+      track,
+      isCancelled: () => _isSuperseded(request, generation),
+    );
+    if (generation != _accountPlaybackGeneration) {
+      if (request == _playRequestId) await _player.stop();
+      return;
+    }
+    if (request != _playRequestId) return;
+    if (!loaded) {
+      _starting = false;
+      _isPlaying = false;
+      audioHandler?.updatePosition(_position, _duration, false);
+      notifyListeners();
+      return;
+    }
+    _starting = false;
+    await _onTrackStarted();
+  }
+
   // Single unified queue: library, radio and on-device storage tracks share one queue,
   // so storage songs can be queued/mixed with anything else.
   bool _isLocalPath(String p) => p.startsWith('/') || p.startsWith('file://');
 
   PlayerProvider() {
+    WidgetsBinding.instance.addObserver(this);
     _player = AudioPlayer(
       audioPipeline: AudioPipeline(
         androidAudioEffects: [androidEqualizer, androidLoudnessEnhancer],
@@ -294,6 +415,15 @@ class PlayerProvider extends ChangeNotifier {
     PlaybackAccess.instance.addListener(_onPlaybackAccessChanged);
     if (PlaybackAccess.instance.isSuspended) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _stopForSuspension());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_savePlayerState());
     }
   }
 
@@ -331,6 +461,11 @@ class PlayerProvider extends ChangeNotifier {
       // Notifies only the progress bars. See [positionNotifier].
       positionNotifier.value = pos;
       _maybeStartCrossfade();
+      final now = DateTime.now();
+      if (now.difference(_lastStateSaveAt) >= const Duration(seconds: 5)) {
+        _lastStateSaveAt = now;
+        unawaited(_savePlayerState());
+      }
     });
     _durSub = player.durationStream.listen((dur) {
       // Live radio has no duration (null) - keep the previous value.
@@ -409,7 +544,7 @@ class PlayerProvider extends ChangeNotifier {
   /// Advances past a track that reached its end: the next queued track, or
   /// the configured end-of-queue behaviour.
   void _onTrackCompleted() {
-    if (!PlaybackAccess.instance.canPlay) {
+    if (!PlaybackAccess.instance.canStream) {
       _stopAtQueueEnd();
       return;
     }
@@ -473,31 +608,47 @@ class PlayerProvider extends ChangeNotifier {
 
   /// The incoming track's player while [_crossfading] is true.
   AudioPlayer? _crossPlayer;
+  TrackModel? _crossfadeTrack;
+  Future<bool>? _crossfadePreparation;
+  List<AndroidAudioEffect>? _crossfadeEffects;
+  bool _crossfadeLoaded = false;
+  int _crossfadeGeneration = 0;
 
   /// Starts overlapping the next track over the last
   /// [PlaybackSettingsController.crossfadeSeconds] of the current one.
   ///
-  /// Only for automatic transitions (a track playing out): a manual skip is
-  /// instant by design, and pre-loading the next track on every track just to
-  /// cover manual skips would double streaming bandwidth for everyone.
+  /// Prepare the next source before the fade window so its stream has time to
+  /// load. The incoming player stays paused and silent until the transition.
   void _maybeStartCrossfade() {
     if (!PlaybackAccess.instance.canPlay) return;
     if (_crossfading || isRadio) return;
     final seconds = PlaybackSettingsController.instance.crossfadeSeconds;
     if (seconds <= 0) return;
-    if (!hasNext || _duration <= Duration.zero) return;
+    if (!hasNext || _duration <= Duration.zero) {
+      if (_crossPlayer != null) unawaited(_cancelCrossfade());
+      return;
+    }
     final remaining = _duration - _position;
-    if (remaining > Duration(seconds: seconds)) return;
     final nextTrack = _queue[_currentIndex + 1];
+    if (remaining <= Duration(seconds: seconds + 10) &&
+        _crossfadeTrack?.id != nextTrack.id) {
+      unawaited(_prepareCrossfade(nextTrack));
+    }
+    if (remaining > Duration(seconds: seconds)) return;
     _startCrossfade(nextTrack, Duration(seconds: seconds));
   }
 
-  Future<void> _startCrossfade(TrackModel nextTrack, Duration fade) async {
-    _crossfading = true;
-    // The secondary player owns its own effect instances: an effect can only
-    // be attached to one player at a time, so the primary's singletons can't
-    // be shared. They're configured from the stored EQ state once this
-    // player is active (see EqualizerProvider.applyTo).
+  Future<void> _prepareCrossfade(TrackModel nextTrack) async {
+    if (_crossfadeTrack?.id == nextTrack.id &&
+        (_crossPlayer != null || _crossfadePreparation != null)) {
+      return;
+    }
+    final generation = ++_crossfadeGeneration;
+    if (_crossPlayer != null) {
+      await _cancelCrossfade(invalidate: false);
+    }
+    if (generation != _crossfadeGeneration) return;
+
     final crossEq = AndroidEqualizer();
     final crossLoudness = AndroidLoudnessEnhancer();
     final cross = AudioPlayer(
@@ -506,21 +657,75 @@ class PlayerProvider extends ChangeNotifier {
       ),
     );
     _crossPlayer = cross;
+    _crossfadeTrack = nextTrack;
+    _crossfadeEffects = [crossEq, crossLoudness];
+    final preparation = () async {
+      await cross.setVolume(0);
+      return _loadInto(
+        cross,
+        nextTrack,
+        startPlayback: false,
+        isCancelled: () =>
+            generation != _crossfadeGeneration || !identical(_crossPlayer, cross),
+      );
+    }();
+    _crossfadePreparation = preparation;
     try {
-      final loaded = await _loadInto(cross, nextTrack);
+      final loaded = await preparation;
+      if (generation != _crossfadeGeneration ||
+          !identical(_crossPlayer, cross)) {
+        return;
+      }
+      _crossfadeLoaded = loaded;
+    } catch (e) {
+      debugPrint('[Player] next track pre-load failed: $e');
+      if (generation == _crossfadeGeneration &&
+          identical(_crossPlayer, cross)) {
+        _crossfadeLoaded = false;
+      }
+    }
+  }
+
+  Future<void> _startCrossfade(TrackModel nextTrack, Duration fade) async {
+    _crossfading = true;
+    try {
+      if (_crossfadeTrack?.id != nextTrack.id || _crossPlayer == null) {
+        await _prepareCrossfade(nextTrack);
+        _crossfading = true;
+      }
+      final cross = _crossPlayer;
+      final preparation = _crossfadePreparation;
+      final generation = _crossfadeGeneration;
+      final loaded = _crossfadeLoaded ||
+          (preparation != null && await preparation);
+      if (generation != _crossfadeGeneration ||
+          cross == null ||
+          !identical(_crossPlayer, cross)) {
+        return;
+      }
       if (!loaded) {
+        final outgoingEnded =
+            _player.processingState == ProcessingState.completed;
         // The outgoing track may already have ended while this one loaded.
         // Advance manually if so; otherwise it completes naturally.
         await _cancelCrossfade();
-        if (_completed) _onTrackCompleted();
+        if (_completed || outgoingEnded) _onTrackCompleted();
         return;
       }
-      // The incoming track is playing now, so its effect instances can be
-      // configured (parameters are only available once the player is active).
-      await EqualizerProvider.current?.applyTo([crossEq, crossLoudness]);
+      // Start silently so its effect instances become active before applying
+      // the saved EQ. It stays inaudible until the crossfade raises its volume.
+      await _playUntilAudibleOn(cross);
+      final effects = _crossfadeEffects ?? const <AndroidAudioEffect>[];
+      await EqualizerProvider.current?.applyTo(effects);
+      // A slow stream resolve can outlast the outgoing song. In that case,
+      // switch over immediately instead of fading up over silence.
+      if (_player.processingState == ProcessingState.completed) {
+        await cross.setVolume(1);
+        await _finishCrossfade(nextTrack, cross, effects);
+        return;
+      }
       // Start the incoming track silently under the outgoing one, then ramp
       // the two volumes in opposite directions over the fade.
-      await cross.setVolume(0);
       const step = Duration(milliseconds: 50);
       final steps = (fade.inMilliseconds / step.inMilliseconds).round().clamp(
         1,
@@ -538,10 +743,13 @@ class PlayerProvider extends ChangeNotifier {
           return;
         }
       }
-      await _finishCrossfade(nextTrack, cross, [crossEq, crossLoudness]);
+      await _finishCrossfade(nextTrack, cross, effects);
     } catch (e) {
       debugPrint('[Player] crossfade failed: $e');
+      final outgoingEnded =
+          _player.processingState == ProcessingState.completed;
       await _cancelCrossfade();
+      if (_completed || outgoingEnded) _onTrackCompleted();
     }
   }
 
@@ -568,6 +776,11 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
     _crossPlayer = null;
+    _crossfadeTrack = null;
+    _crossfadePreparation = null;
+    _crossfadeEffects = null;
+    _crossfadeLoaded = false;
+    _crossfadeGeneration++;
     final old = _player;
     _currentIndex++;
     _currentTrack = nextTrack;
@@ -609,11 +822,16 @@ class PlayerProvider extends ChangeNotifier {
   /// Aborts an in-flight crossfade: the incoming player is disposed and the
   /// outgoing one keeps playing (its volume is restored by the fade loop's
   /// post-check, or was never touched).
-  Future<void> _cancelCrossfade() async {
+  Future<void> _cancelCrossfade({bool invalidate = true}) async {
+    if (invalidate) _crossfadeGeneration++;
     final cross = _crossPlayer;
-    if (cross == null) return;
     _crossPlayer = null;
+    _crossfadeTrack = null;
+    _crossfadePreparation = null;
+    _crossfadeEffects = null;
+    _crossfadeLoaded = false;
     _crossfading = false;
+    if (cross == null) return;
     await cross.stop();
     await cross.dispose();
     try {
@@ -695,6 +913,8 @@ class PlayerProvider extends ChangeNotifier {
       }
       return Future<void>.value();
     }
+    // Soft-ban: user can browse the app but not stream audio.
+    if (!PlaybackAccess.instance.canStream) return Future<void>.value();
     // The latest caller owns the playback context, even when the load below is
     // reused - tapping a playlist's play button while its first track is still
     // loading must still move the highlight to that playlist.
@@ -836,6 +1056,7 @@ class PlayerProvider extends ChangeNotifier {
     AudioPlayer player,
     TrackModel track, {
     Duration startAt = Duration.zero,
+    bool startPlayback = true,
     bool Function()? isCancelled,
   }) async {
     // The app can be killed while a song is at its final position. Restoring
@@ -855,7 +1076,7 @@ class PlayerProvider extends ChangeNotifier {
             .setFilePath(path, initialPosition: resumeAt)
             .timeout(const Duration(seconds: 30));
         if (isCancelled?.call() ?? false) return false;
-        await _playUntilAudibleOn(player);
+        if (startPlayback) await _playUntilAudibleOn(player);
         return true;
       } catch (e) {
         debugPrint('[Player] local file failed: $e');
@@ -875,7 +1096,7 @@ class PlayerProvider extends ChangeNotifier {
             .setFilePath(downloaded, initialPosition: resumeAt)
             .timeout(const Duration(seconds: 30));
         if (isCancelled?.call() ?? false) return false;
-        await _playUntilAudibleOn(player);
+        if (startPlayback) await _playUntilAudibleOn(player);
         return true;
       } catch (e) {
         debugPrint('[Player] downloaded file failed, streaming instead: $e');
@@ -908,7 +1129,7 @@ class PlayerProvider extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 30));
       if (isCancelled?.call() ?? false) return false;
-      await _playUntilAudibleOn(player);
+      if (startPlayback) await _playUntilAudibleOn(player);
       return true;
     } catch (e) {
       debugPrint('[Player] primary failed: $e');
@@ -923,7 +1144,7 @@ class PlayerProvider extends ChangeNotifier {
             )
             .timeout(const Duration(seconds: 35));
         if (isCancelled?.call() ?? false) return false;
-        await _playUntilAudibleOn(player);
+        if (startPlayback) await _playUntilAudibleOn(player);
         return true;
       } catch (e2) {
         debugPrint('[Player] fallback failed: $e2');
@@ -1246,6 +1467,7 @@ class PlayerProvider extends ChangeNotifier {
     await _cancelCrossfade();
     await _player.pause();
     audioHandler?.updatePosition(_position, _duration, false);
+    await _savePlayerState();
   }
 
   Future<void> resume() async {
@@ -1274,14 +1496,50 @@ class PlayerProvider extends ChangeNotifier {
       _position = clamped;
       audioHandler?.updatePosition(clamped, _duration, _isPlaying);
       positionNotifier.value = clamped;
+      await _savePlayerState();
       return;
     }
     await _player.seek(position);
     audioHandler?.updatePosition(position, _duration, _isPlaying);
+    await _savePlayerState();
   }
 
   Future<void> next() async {
     if (!PlaybackAccess.instance.canPlay) return;
+
+    // --- Radio station mode ---
+    if (isRadioMode) {
+      if (_radioIndex < _radioStations.length - 1) {
+        // Advance to the next station without touching the song queue.
+        _radioIndex++;
+        final station = _radioStations[_radioIndex];
+        final active = _activePlay;
+        if (active != null && _activePlayTrackId == station.id) return;
+        final request = ++_playRequestId;
+        _starting = true;
+        final operation = _playTrackForRadio(station, request: request);
+        _activePlay = operation;
+        _activePlayTrackId = station.id;
+        await operation.whenComplete(() {
+          if (identical(_activePlay, operation)) {
+            _activePlay = null;
+            _activePlayTrackId = null;
+            _starting = false;
+          }
+        });
+        return;
+      } else {
+        // At the last station: leave radio mode and resume the song queue.
+        _radioStations = [];
+        _radioIndex = -1;
+        if (_queue.isEmpty || _currentIndex >= _queue.length - 1) return;
+        await _cancelCrossfade();
+        _currentIndex++;
+        await play(_queue[_currentIndex], queue: _queue, sourceId: _sourceId);
+        return;
+      }
+    }
+
     if (_queue.isEmpty || _currentIndex >= _queue.length - 1) return;
     await _cancelCrossfade();
     _currentIndex++;
@@ -1293,6 +1551,40 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> previous() async {
     if (!PlaybackAccess.instance.canPlay) return;
+
+    // --- Radio station mode ---
+    if (isRadioMode) {
+      if (_radioIndex > 0) {
+        // Go back to the previous station without touching the song queue.
+        _radioIndex--;
+        final station = _radioStations[_radioIndex];
+        final active = _activePlay;
+        if (active != null && _activePlayTrackId == station.id) return;
+        final request = ++_playRequestId;
+        _starting = true;
+        final operation = _playTrackForRadio(station, request: request);
+        _activePlay = operation;
+        _activePlayTrackId = station.id;
+        await operation.whenComplete(() {
+          if (identical(_activePlay, operation)) {
+            _activePlay = null;
+            _activePlayTrackId = null;
+            _starting = false;
+          }
+        });
+        return;
+      } else {
+        // At the first station: leave radio mode and resume the song queue.
+        _radioStations = [];
+        _radioIndex = -1;
+        if (_queue.isEmpty || _currentIndex <= 0) return;
+        await _cancelCrossfade();
+        _currentIndex--;
+        await play(_queue[_currentIndex], queue: _queue, sourceId: _sourceId);
+        return;
+      }
+    }
+
     if (_queue.isEmpty || _currentIndex <= 0) return;
     await _cancelCrossfade();
     // Radio skips station-to-station; the seek-back rule is for songs, where
@@ -1504,6 +1796,7 @@ class PlayerProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     PlaybackAccess.instance.removeListener(_onPlaybackAccessChanged);
     _radioDriftTimer?.cancel();
     _positionFallbackTimer?.cancel();
@@ -1584,13 +1877,16 @@ class PlayerProvider extends ChangeNotifier {
       final queueJson = prefs.getString('player_queue');
       final currentIndex = prefs.getInt('player_current_index') ?? -1;
       final positionMs = prefs.getInt('player_position_ms') ?? 0;
+      var restoredQueue = false;
       if (queueJson != null && settings.rememberQueue) {
         final List<dynamic> queueData = jsonDecode(queueJson);
         _queue = queueData.map((data) => TrackModel.fromJson(data)).toList();
         if (currentIndex >= 0 && currentIndex < _queue.length) {
           _currentIndex = currentIndex;
           _currentTrack = _queue[_currentIndex];
-          _position = Duration(milliseconds: positionMs);
+          _position = settings.resumeLastPosition
+              ? Duration(milliseconds: positionMs)
+              : Duration.zero;
           // Keeps the library's "now playing" tint on the right playlist after
           // a restart with the queue restored.
           _sourceId = prefs.getString('player_source_id');
@@ -1598,8 +1894,38 @@ class PlayerProvider extends ChangeNotifier {
           // driver's decision, not ours.
           _wasPlayingBeforeRestart =
               prefs.getBool('player_was_playing') ?? false;
+          restoredQueue = true;
           notifyListeners();
         }
+      }
+      if (!restoredQueue && settings.resumeLastPosition) {
+        final trackJson = prefs.getString('player_resume_track');
+        if (trackJson != null) {
+          final track = TrackModel.fromJson(
+            Map<String, dynamic>.from(jsonDecode(trackJson) as Map),
+          );
+          _queue = [track];
+          _currentIndex = 0;
+          _currentTrack = track;
+          _position = Duration(
+            milliseconds: prefs.getInt('player_resume_position_ms') ?? 0,
+          );
+          _sourceId = null;
+          _wasPlayingBeforeRestart = false;
+        }
+      }
+      if (_currentTrack != null) {
+        final trackDuration = Duration(
+          milliseconds: _currentTrack!.durationMs,
+        );
+        if (trackDuration > Duration.zero && _position >= trackDuration) {
+          _position = Duration.zero;
+        }
+        _duration = trackDuration;
+        _buffered = Duration.zero;
+        positionNotifier.value = _position;
+        durationNotifier.value = _duration;
+        bufferedNotifier.value = Duration.zero;
       }
       notifyListeners();
     } catch (e) {
@@ -1652,13 +1978,18 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _savePlayerState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final remember = PlaybackSettingsController.instance.rememberQueue;
-      if (remember && _queue.isNotEmpty) {
+      final settings = PlaybackSettingsController.instance;
+      final rememberQueue = settings.rememberQueue;
+      final rememberPosition = settings.resumeLastPosition;
+      if (rememberQueue && _queue.isNotEmpty) {
         final queueJson = jsonEncode(_queue.map((t) => t.toJson()).toList());
         await prefs.setString('player_queue', queueJson);
         await prefs.setInt('player_current_index', _currentIndex);
         await prefs.setBool('player_was_playing', _isPlaying);
-        await prefs.setInt('player_position_ms', _position.inMilliseconds);
+        await prefs.setInt(
+          'player_position_ms',
+          rememberPosition ? _position.inMilliseconds : 0,
+        );
         final source = _sourceId;
         if (source != null) {
           await prefs.setString('player_source_id', source);
@@ -1671,6 +2002,19 @@ class PlayerProvider extends ChangeNotifier {
         await prefs.remove('player_was_playing');
         await prefs.remove('player_position_ms');
         await prefs.remove('player_source_id');
+      }
+      final current = _currentTrack;
+      // Don't save live radio as the resume track — it has no meaningful position
+      // and reloading it would show a radio station instead of the last song.
+      if (rememberPosition && current != null && !isRadioMode) {
+        await prefs.setString('player_resume_track', jsonEncode(current.toJson()));
+        await prefs.setInt(
+          'player_resume_position_ms',
+          _position.inMilliseconds,
+        );
+      } else {
+        await prefs.remove('player_resume_track');
+        await prefs.remove('player_resume_position_ms');
       }
       // Owned independently of the queue: the recently-played list needs an
       // owner even when no queue is being remembered.
@@ -1701,4 +2045,20 @@ class PlayerProvider extends ChangeNotifier {
       debugPrint('[Player] Failed to forget saved state: $e');
     }
   }
+
+  /// Clears only the independent resume point, leaving a remembered queue
+  /// intact so turning this preference off does not disable queue restoration.
+  Future<void> forgetLastPlaybackPosition() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('player_resume_track');
+      await prefs.remove('player_resume_position_ms');
+      // Existing queue state remains restorable, but starts at the beginning.
+      await prefs.setInt('player_position_ms', 0);
+    } catch (e) {
+      debugPrint('[Player] Failed to forget resume position: $e');
+    }
+  }
+
+  Future<void> persistCurrentPlaybackState() => _savePlayerState();
 }

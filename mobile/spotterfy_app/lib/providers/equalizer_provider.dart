@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,6 +43,19 @@ class EqualizerProvider extends ChangeNotifier {
   AndroidEqualizerParameters? _params;
   bool _ready = false;
 
+  /// The uid of the signed-in user, used to sync EQ settings to/from Firestore.
+  String? _syncUid;
+
+  /// Pending uid set by [AuthProvider] before this provider is constructed.
+  static String? _pendingUid;
+
+  /// Sets the signed-in uid, syncing to the live provider if one exists or
+  /// storing it for the constructor to pick up.
+  static void setUid(String? uid) {
+    _pendingUid = uid;
+    current?.bindUid(uid);
+  }
+
   /// Effect instances of the *current* primary player.
   ///
   /// Starts as the singletons but is re-pointed at a crossfade's secondary
@@ -75,6 +91,10 @@ class EqualizerProvider extends ChangeNotifier {
   EqualizerProvider() {
     current = this;
     _load();
+    if (_pendingUid != null) {
+      bindUid(_pendingUid);
+      _pendingUid = null;
+    }
     // Applies once the platform exposes the device bands (after first play).
     _applyWhenReady();
   }
@@ -130,6 +150,89 @@ class EqualizerProvider extends ChangeNotifier {
       await loudness.setEnabled(_enabled && _bassBoost);
     } catch (e) {
       debugPrint('[EQ] applyTo failed: $e');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Firebase sync
+  // ---------------------------------------------------------------------------
+
+  /// Binds (or unbinds) the signed-in user's uid for Firestore sync.
+  ///
+  /// Called by [AuthProvider] when the user signs in or signs out. On sign-in
+  /// the current Firestore values are fetched once so EQ settings roam across
+  /// devices; on sign-out the link is severed.
+  void bindUid(String? uid) {
+    _syncUid = uid;
+    if (uid != null) {
+      unawaited(loadFromFirebase(uid));
+    }
+  }
+
+  /// Writes the current EQ settings to `users/{uid}/settings/equalizer` in
+  /// Firestore.
+  Future<void> syncToFirebase(String uid) async {
+    try {
+      await FirebaseFirestore.instance
+          .doc('users/$uid/settings/equalizer')
+          .set({
+            'enabled': _enabled,
+            'gains': _gains.map((g) => g.toString()).toList(),
+            'bassBoost': _bassBoost,
+            'bassStrength': _bassStrength,
+            'preset': _preset,
+          });
+    } catch (e) {
+      debugPrint('[EQ] syncToFirebase failed: $e');
+    }
+  }
+
+  /// Reads `users/{uid}/settings/equalizer` from Firestore, applies any
+  /// non-null values (overwriting SharedPreferences), and notifies listeners.
+  Future<void> loadFromFirebase(String uid) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .doc('users/$uid/settings/equalizer')
+          .get();
+      if (!snap.exists) return;
+      final data = snap.data();
+      if (data == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+
+      if (data['enabled'] is bool) {
+        _enabled = data['enabled'] as bool;
+        await prefs.setBool('eq_enabled', _enabled);
+      }
+      if (data['gains'] is List) {
+        final raw = (data['gains'] as List)
+            .whereType<String>()
+            .map((s) => double.tryParse(s) ?? 0.0)
+            .toList();
+        if (raw.isNotEmpty) {
+          _gains = raw;
+          await prefs.setStringList(
+            'eq_gains',
+            _gains.map((g) => g.toString()).toList(),
+          );
+        }
+      }
+      if (data['bassBoost'] is bool) {
+        _bassBoost = data['bassBoost'] as bool;
+        await prefs.setBool('eq_bass', _bassBoost);
+      }
+      if (data['bassStrength'] is num) {
+        _bassStrength = (data['bassStrength'] as num).toDouble().clamp(0.0, 12.0);
+        await prefs.setDouble('eq_bass_strength', _bassStrength);
+      }
+      if (data['preset'] is String) {
+        _preset = data['preset'] as String;
+        await prefs.setString('eq_preset', _preset);
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[EQ] loadFromFirebase failed: $e');
     }
   }
 
@@ -212,6 +315,7 @@ class EqualizerProvider extends ChangeNotifier {
       await prefs.setDouble('eq_bass_strength', _bassStrength);
       await prefs.setString('eq_preset', _preset);
     } catch (_) {}
+    if (_syncUid != null) unawaited(syncToFirebase(_syncUid!));
   }
 
   Future<void> _load() async {

@@ -180,6 +180,7 @@ class _AdminScreenState extends State<AdminScreen>
       ('Playlists', '${s.playlists}', Icons.queue_music, SpotterfyTheme.primary),
       ('In a jam', '${s.inJam}', Icons.groups, const Color(0xFFf472b6)),
       ('Suspended', '${s.suspended}', Icons.gpp_maybe, const Color(0xFFef4444)),
+      ('Soft Banned', '${s.softBanned}', Icons.volume_off_rounded, const Color(0xFFf97316)),
     ];
 
     return Padding(
@@ -187,8 +188,8 @@ class _AdminScreenState extends State<AdminScreen>
       child: GridView.count(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 4,
-        childAspectRatio: 0.95,
+        crossAxisCount: 3,
+        childAspectRatio: 1.1,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
         children: [
@@ -343,7 +344,9 @@ class _AdminScreenState extends State<AdminScreen>
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: _chip(
-                label: '${f.label} (${admin.countFor(f)})',
+                label: f.label,
+                count: admin.countFor(f),
+                countIcon: _filterIcon(f),
                 selected: admin.filter == f,
                 onTap: () => admin.setFilter(f),
               ),
@@ -353,8 +356,25 @@ class _AdminScreenState extends State<AdminScreen>
     );
   }
 
+  static IconData _filterIcon(AdminFilter f) {
+    switch (f) {
+      case AdminFilter.all:
+        return Icons.people_outlined;
+      case AdminFilter.active:
+        return Icons.online_prediction;
+      case AdminFilter.suspended:
+        return Icons.gpp_maybe;
+      case AdminFilter.softBanned:
+        return Icons.volume_off_rounded;
+      case AdminFilter.admins:
+        return Icons.admin_panel_settings_outlined;
+    }
+  }
+
   Widget _chip({
     required String label,
+    required int count,
+    required IconData countIcon,
     required bool selected,
     required VoidCallback onTap,
   }) {
@@ -362,7 +382,8 @@ class _AdminScreenState extends State<AdminScreen>
       onTap: onTap,
       child: Container(
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+        height: 32,
         decoration: BoxDecoration(
           color: selected
               ? SpotterfyTheme.primary.withValues(alpha: 0.18)
@@ -374,13 +395,51 @@ class _AdminScreenState extends State<AdminScreen>
                 : SpotterfyTheme.overlay(0.08),
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? SpotterfyTheme.primary : SpotterfyTheme.text,
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? SpotterfyTheme.primary : SpotterfyTheme.text,
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: selected
+                    ? SpotterfyTheme.primary.withValues(alpha: 0.25)
+                    : SpotterfyTheme.overlay(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    countIcon,
+                    size: 10,
+                    color: selected
+                        ? SpotterfyTheme.primary
+                        : SpotterfyTheme.mutedDark,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      color: selected
+                          ? SpotterfyTheme.primary
+                          : SpotterfyTheme.mutedDark,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -546,6 +605,10 @@ class _AdminScreenState extends State<AdminScreen>
                         if (u.isSuspended) ...[
                           const SizedBox(width: 6),
                           const _Tag('Suspended', Color(0xFFef4444)),
+                        ],
+                        if (u.isSoftBanned) ...[
+                          const SizedBox(width: 6),
+                          const _Tag('Stream ban', Color(0xFFf97316)),
                         ],
                         if (u.isOnlineNow) ...[
                           const SizedBox(width: 6),
@@ -730,6 +793,36 @@ class _AdminScreenState extends State<AdminScreen>
                               } else {
                                 Navigator.pop(sheetCtx);
                                 _promptSuspension(target, admin);
+                              }
+                            },
+                    ),
+                    _action(
+                      icon: target.isSoftBanned
+                          ? Icons.volume_up_rounded
+                          : Icons.volume_off_rounded,
+                      color: const Color(0xFFf97316),
+                      label: target.isSoftBanned
+                          ? 'Lift streaming ban'
+                          : 'Streaming ban',
+                      subtitle: target.isSoftBanned
+                          ? 'Allow them to stream audio again'
+                          : 'Blocks audio streaming only, app remains accessible',
+                      onTap: busy
+                          ? null
+                          : () {
+                              Navigator.pop(sheetCtx);
+                              if (target.isSoftBanned) {
+                                admin.liftSoftBan(target.uid);
+                              } else {
+                                _confirm(
+                                  title:
+                                      'Ban streaming for ${target.displayName.isEmpty ? 'this user' : target.displayName}?',
+                                  body:
+                                      'They can still use the app but cannot stream any audio.',
+                                  confirmLabel: 'Ban streaming',
+                                  onConfirm: () =>
+                                      admin.softBanUser(target.uid),
+                                );
                               }
                             },
                     ),
@@ -1013,7 +1106,9 @@ class _AdminScreenState extends State<AdminScreen>
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: _chip(
-                label: '${f.label} (${admin.feedbackCountFor(f)})',
+                label: f.label,
+                count: admin.feedbackCountFor(f),
+                countIcon: Icons.chat_bubble_outline,
                 selected: admin.feedbackFilter == f,
                 onTap: () => admin.setFeedbackFilter(f),
               ),

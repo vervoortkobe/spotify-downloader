@@ -10,6 +10,7 @@ enum AdminFilter {
   all('All'),
   active('Online'),
   suspended('Suspended'),
+  softBanned('Soft Banned'),
   admins('Admins');
 
   const AdminFilter(this.label);
@@ -40,12 +41,14 @@ enum FeedbackFilter {
 /// Aggregate counts for the stats grid.
 class AdminStats {
   final int suspended;
+  final int softBanned;
   final int newLast30Days;
   final int playlists;
   final int inJam;
 
   const AdminStats({
     this.suspended = 0,
+    this.softBanned = 0,
     this.newLast30Days = 0,
     this.playlists = 0,
     this.inJam = 0,
@@ -108,6 +111,7 @@ class AdminProvider extends ChangeNotifier {
     final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
     return AdminStats(
       suspended: _users.where((u) => u.isSuspended).length,
+      softBanned: _users.where((u) => u.isSoftBanned).length,
       newLast30Days: _users.where((u) => u.createdAt.isAfter(thirtyDaysAgo)).length,
       playlists: _playlistCount,
       inJam: _users.where((u) => (u.currentJamSession ?? '').isNotEmpty).length,
@@ -123,6 +127,8 @@ class AdminProvider extends ChangeNotifier {
           return true;
         case AdminFilter.suspended:
           return u.isSuspended;
+        case AdminFilter.softBanned:
+          return u.isSoftBanned;
         case AdminFilter.admins:
           return u.isAdmin;
         case AdminFilter.active:
@@ -169,6 +175,8 @@ class AdminProvider extends ChangeNotifier {
         return _users.length;
       case AdminFilter.suspended:
         return _users.where((u) => u.isSuspended).length;
+      case AdminFilter.softBanned:
+        return _users.where((u) => u.isSoftBanned).length;
       case AdminFilter.admins:
         return _users.where((u) => u.isAdmin).length;
       case AdminFilter.active:
@@ -345,6 +353,18 @@ class AdminProvider extends ChangeNotifier {
     u.suspendedAt = null;
     u.suspendedReason = '';
   }, () => _service.restoreUser(uid));
+
+  Future<void> softBanUser(String uid) => _mutate(
+    uid,
+    (u) => u.isSoftBanned = true,
+    () => _service.softBanUser(uid),
+  );
+
+  Future<void> liftSoftBan(String uid) => _mutate(
+    uid,
+    (u) => u.isSoftBanned = false,
+    () => _service.liftSoftBan(uid),
+  );
 
   Future<void> setAdmin(String uid, bool value) => _mutate(
     uid,

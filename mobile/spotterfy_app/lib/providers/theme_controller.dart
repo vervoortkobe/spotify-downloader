@@ -1,4 +1,7 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotterfy_app/theme/app_theme.dart';
 
@@ -9,6 +12,10 @@ import 'package:spotterfy_app/theme/app_theme.dart';
 /// anything on its own - a plain field is not an inherited widget - so this
 /// notifies and `main.dart` rebuilds the tree below the `MaterialApp`, which
 /// makes every `build()` re-read the colours.
+///
+/// Persisted in SharedPreferences so the choice survives restarts. When a user
+/// is signed in, the accent and OLED choice are also synced to and from
+/// Firestore (`users/{uid}/settings/theme`) so the theme roams across devices.
 class ThemeController extends ChangeNotifier {
   ThemeController._();
 
@@ -48,6 +55,9 @@ class ThemeController extends ChangeNotifier {
   /// Whether the stored choice has been read back yet.
   bool get isLoaded => _loaded;
 
+  /// The uid of the signed-in user, used to sync theme to/from Firestore.
+  String? _syncUid;
+
   static AppPalette _paletteFor(String accent, bool oled) {
     final base = SpotterfyTheme.palettes.firstWhere(
       (p) => p.name == accent,
@@ -79,6 +89,65 @@ class ThemeController extends ChangeNotifier {
     _publish();
   }
 
+  // ---------------------------------------------------------------------------
+  // Firebase sync
+  // ---------------------------------------------------------------------------
+
+  /// Binds (or unbinds) the signed-in user's uid for Firestore sync.
+  ///
+  /// Called by [AuthProvider] when the user signs in or signs out. On sign-in
+  /// the current Firestore values are fetched once so the theme roams across
+  /// devices; on sign-out the link is severed.
+  void bindUid(String? uid) {
+    _syncUid = uid;
+    if (uid != null) {
+      unawaited(loadFromFirebase(uid));
+    }
+  }
+
+  /// Writes the current theme to `users/{uid}/settings/theme` in Firestore.
+  Future<void> syncToFirebase(String uid) async {
+    try {
+      await FirebaseFirestore.instance
+          .doc('users/$uid/settings/theme')
+          .set({
+            'accent': _accent,
+            'oled': _oled,
+          });
+    } catch (e) {
+      debugPrint('[Theme] syncToFirebase failed: $e');
+    }
+  }
+
+  /// Reads `users/{uid}/settings/theme` from Firestore, applies any non-null
+  /// values (overwriting SharedPreferences), and notifies listeners.
+  Future<void> loadFromFirebase(String uid) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .doc('users/$uid/settings/theme')
+          .get();
+      if (!snap.exists) return;
+      final data = snap.data();
+      if (data == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+
+      if (data['accent'] is String) {
+        final name = data['accent'] as String;
+        _accent = _legacyNames[name] ?? name;
+        await prefs.setString(_accentKey, _accent);
+      }
+      if (data['oled'] is bool) {
+        _oled = data['oled'] as bool;
+        await prefs.setBool(_oledKey, _oled);
+      }
+
+      _publish();
+    } catch (e) {
+      debugPrint('[Theme] loadFromFirebase failed: $e');
+    }
+  }
+
   Future<void> setAccent(String name) async {
     if (_accent == name) return;
     _accent = name;
@@ -87,6 +156,7 @@ class ThemeController extends ChangeNotifier {
     // until the selection was written to disk.
     _publish();
     await _persist();
+    if (_syncUid != null) unawaited(syncToFirebase(_syncUid!));
   }
 
   Future<void> setOled(bool value) async {
@@ -94,6 +164,7 @@ class ThemeController extends ChangeNotifier {
     _oled = value;
     _publish();
     await _persist();
+    if (_syncUid != null) unawaited(syncToFirebase(_syncUid!));
   }
 
   Future<void> _persist() async {

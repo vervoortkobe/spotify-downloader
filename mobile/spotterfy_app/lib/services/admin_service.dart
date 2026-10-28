@@ -126,6 +126,20 @@ class AdminService {
     });
   }
 
+  /// Applies a soft-ban: the user can still log in but cannot stream audio.
+  Future<void> softBanUser(String uid) async {
+    await _firestore.collection('users').doc(uid).update({
+      'isSoftBanned': true,
+    });
+  }
+
+  /// Removes a soft-ban, restoring streaming access.
+  Future<void> liftSoftBan(String uid) async {
+    await _firestore.collection('users').doc(uid).update({
+      'isSoftBanned': false,
+    });
+  }
+
   Future<void> setAdmin(String uid, bool value) async {
     await _firestore.collection('users').doc(uid).update({'isAdmin': value});
   }

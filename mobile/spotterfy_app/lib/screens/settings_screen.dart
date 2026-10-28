@@ -83,6 +83,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _songTransitionRow(),
                 _continuePlayingRow(),
                 _rememberQueueRow(),
+                _resumePlaybackRow(),
+                _startOnStartupRow(),
 
                 const SizedBox(height: 24),
                 _sectionLabel('Network'),
@@ -467,7 +469,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Replay the queue, or pick a random library playlist',
+                            'When the queue has finished playing, replay it or pick a random library playlist to resume playing',
                             style: TextStyle(
                               color: SpotterfyTheme.muted,
                               fontSize: 12,
@@ -540,6 +542,143 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 2),
                           Text(
                             'Restore your queue when you reopen the app',
+                            style: TextStyle(
+                              color: SpotterfyTheme.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Switch(value: on, onChanged: set),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Remembers the selected song and playhead independently of queue restore.
+  Widget _resumePlaybackRow() {
+    final controller = PlaybackSettingsController.instance;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final on = controller.resumeLastPosition;
+        Future<void> set(bool value) async {
+          await controller.setResumeLastPosition(value);
+          if (!value) {
+            await context.read<PlayerProvider>().forgetLastPlaybackPosition();
+          } else {
+            await context.read<PlayerProvider>().persistCurrentPlaybackState();
+          }
+        }
+
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: SpotterfyTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => set(!on),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.history_rounded,
+                      color: SpotterfyTheme.muted,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Resume where you left off',
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Open the last song at its saved playback position',
+                            style: TextStyle(
+                              color: SpotterfyTheme.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Switch(value: on, onChanged: set),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Switch for automatically starting playback when opening the app.
+  Widget _startOnStartupRow() {
+    final controller = PlaybackSettingsController.instance;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final on = controller.startOnStartup;
+        void set(bool value) => controller.setStartOnStartup(value);
+
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: SpotterfyTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => set(!on),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.play_circle_outline_rounded,
+                      color: SpotterfyTheme.muted,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Start playing on startup',
+                            style: TextStyle(
+                              color: SpotterfyTheme.text,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Automatically resume playing when opening the app',
                             style: TextStyle(
                               color: SpotterfyTheme.muted,
                               fontSize: 12,

@@ -24,6 +24,12 @@ class UserModel {
   /// Why the account was suspended, shown to the user.
   String suspendedReason;
 
+  /// Soft-ban: user can still open the app but audio streaming is blocked.
+  ///
+  /// Unlike [isSuspended], a soft-banned user can still log in and browse but
+  /// cannot play or stream audio. Absent in older documents defaults to false.
+  bool isSoftBanned;
+
   UserModel({
     required this.uid,
     required this.email,
@@ -42,6 +48,7 @@ class UserModel {
     this.isSuspended = false,
     this.suspendedAt,
     this.suspendedReason = '',
+    this.isSoftBanned = false,
   }) : createdAt = createdAt ?? DateTime.now();
 
   factory UserModel.fromFirestore(
@@ -67,6 +74,7 @@ class UserModel {
     isSuspended: _bool(data['isSuspended']),
     suspendedAt: (data['suspendedAt'] as dynamic)?.toDate(),
     suspendedReason: data['suspendedReason'] as String? ?? '',
+    isSoftBanned: _bool(data['isSoftBanned']),
   );
 
   static bool _bool(dynamic v) {
@@ -86,6 +94,7 @@ class UserModel {
     'isSuspended': isSuspended,
     'suspendedAt': suspendedAt,
     'suspendedReason': suspendedReason,
+    'isSoftBanned': isSoftBanned,
   };
 
   /// True while something is playing for this user.

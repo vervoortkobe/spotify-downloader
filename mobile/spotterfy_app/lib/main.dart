@@ -15,6 +15,7 @@ import 'providers/status_provider.dart';
 import 'providers/theme_controller.dart';
 import 'providers/playback_settings_controller.dart';
 import 'services/network_stats_service.dart';
+import 'services/playback_access.dart';
 import 'screens/splash_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -107,6 +108,13 @@ class _PlaybackPresenceSyncState extends State<_PlaybackPresenceSync> {
   PlayerProvider? _player;
   String? _lastSignature;
   Timer? _retryTimer;
+  bool _startupPlayed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _maybeAutoStart();
+  }
 
   @override
   void didChangeDependencies() {
@@ -123,6 +131,27 @@ class _PlaybackPresenceSyncState extends State<_PlaybackPresenceSync> {
       _lastSignature = null;
       _sync();
     }
+  }
+
+  /// Auto-resumes playback on launch when "Start playing on startup" is on and
+  /// there is a restored queue/track to resume. Waits for the playback settings
+  /// to finish loading so the user's choice is respected.
+  void _maybeAutoStart() {
+    (_runAutoStart)();
+  }
+
+  Future<void> _runAutoStart() async {
+    final settings = PlaybackSettingsController.instance;
+    if (!settings.isLoaded) await settings.load();
+    if (!mounted || _startupPlayed) return;
+    final player = _player;
+    if (player == null) return;
+    if (!settings.startOnStartup) return;
+    if (player.currentTrack == null) return;
+    if (player.isPlaying) return;
+    if (!PlaybackAccess.instance.canStream) return;
+    _startupPlayed = true;
+    await player.resume();
   }
 
   void _sync() {

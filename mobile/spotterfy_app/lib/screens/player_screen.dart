@@ -514,7 +514,7 @@ class _PlayerControls extends StatelessWidget {
   }
 }
 
-class _PlayPauseButton extends StatelessWidget {
+class _PlayPauseButton extends StatefulWidget {
   final bool isPlaying;
   final bool isLoading;
   final VoidCallback onTap;
@@ -526,6 +526,39 @@ class _PlayPauseButton extends StatelessWidget {
   });
 
   @override
+  State<_PlayPauseButton> createState() => _PlayPauseButtonState();
+}
+
+class _PlayPauseButtonState extends State<_PlayPauseButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _spin;
+
+  @override
+  void initState() {
+    super.initState();
+    _spin = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlayPauseButton old) {
+    super.didUpdateWidget(old);
+    if (widget.isLoading && !old.isLoading) {
+      _spin.repeat();
+    } else if (!widget.isLoading && old.isLoading) {
+      _spin.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Material(
       color: SpotterfyTheme.primary.withValues(alpha: 0.18),
@@ -534,7 +567,7 @@ class _PlayPauseButton extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         child: Container(
           width: 68,
           height: 68,
@@ -548,9 +581,10 @@ class _PlayPauseButton extends StatelessWidget {
               ),
             ],
           ),
-          child: isLoading
-              ? const Center(
-                  child: SizedBox(
+          child: widget.isLoading
+              ? RotationTransition(
+                  turns: _spin,
+                  child: const SizedBox(
                     width: 30,
                     height: 30,
                     child: CircularProgressIndicator(
@@ -560,7 +594,7 @@ class _PlayPauseButton extends StatelessWidget {
                   ),
                 )
               : Icon(
-                  isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  widget.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   color: Colors.white,
                   size: 34,
                 ),
